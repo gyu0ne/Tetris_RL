@@ -1,0 +1,4 @@
+C:/Users/User/Downloads/ISHS 김규원/2026 여름방학/TETR.io bot/build/CMakeFiles/unit_tests.dir
+C:/Users/User/Downloads/ISHS 김규원/2026 여름방학/TETR.io bot/build/CMakeFiles/tetrio_engine.dir
+C:/Users/User/Downloads/ISHS 김규원/2026 여름방학/TETR.io bot/build/CMakeFiles/edit_cache.dir
+C:/Users/User/Downloads/ISHS 김규원/2026 여름방학/TETR.io bot/build/CMakeFiles/rebuild_cache.dir
