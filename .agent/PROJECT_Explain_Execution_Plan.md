@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: Phase 1 core and Phase 2 timing/initial-input foundation implemented; target replay adapter/spin/top-out/versus remain
+Current state: Phase 1 core and Phase 2 continuous frame session implemented; exact target ordering/spin/top-out/versus remain
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -28,9 +28,9 @@ Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/
 
 - Implement per-frame input ordering, DAS/ARR/SDF, IRS/IHS, gravity, lock/reset, ARE/line-clear delay and top-out semantics.
 - Add line/spin/perfect-clear detection and scoring profiles for 40 LINES, BLITZ and ZEN/custom.
-- Create a minimal local CLI/replay viewer for diagnosis, kept outside engine state.
+- Keep canonical differential tests headless; a visual replay player/viewer is not required for engine conformance.
 
-Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, configurable lock/reset-cap transitions, held-key IRS/IHS and generic IHS→IRS spawn application are implemented. TETRA LEAGUE does not enforce room handling, so `PlayerHandlingProfile` is a separate normalized input record. `replay-conformance` now compares canonical frame snapshots and reports the first differing component. The workspace has 45 passing unit tests. Exact target stage ordering, `.ttrm` adapter, timing/game lock integration, spin/top-out and solo scoring remain.
+Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, configurable lock/reset-cap transitions, held-key IRS/IHS and generic IHS→IRS spawn application are implemented. `FrameSession` now connects normalization, immediate hold, timing, gravity/lock, `GameState` placement/line clear and next spawn across multiple pieces. TETRA LEAGUE does not enforce room handling, so `PlayerHandlingProfile` is a separate normalized input record. `replay-conformance` compares canonical frame snapshots and reports the first differing component. The workspace has 48 passing unit tests. Exact target stage ordering, spin/top-out and solo scoring remain; an upstream adapter is optional validation tooling rather than an engine feature.
 
 Exit gate: timing boundary fixtures and solo full replays have zero unexplained divergence.
 
@@ -95,11 +95,11 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Obtain one representative pinned-version user-owned TETR.IO replay/config export and inspect its exact structure without using an internal authenticated API.
-2. Add a version-pinned `.ttrm`→canonical trace adapter and target-specific stage order above the implemented generic normalizer/IRS/IHS contract.
-3. Connect timing/handling to lock/clear transitions and run the implemented first-divergence reporter against the normalized fixture.
-4. Inventory CPU cores, RAM and GPU/VRAM so throughput/latency budgets are numerical.
-5. Do not generate heuristic training records until the relevant mechanics profile passes conformance.
+1. Implement last-action/kick metadata, All-Mini+ spin classification, perfect clear and exact top-out semantics in the continuous session.
+2. Implement attack/garbage/round-terminal mechanics after solo clear semantics are fixed.
+3. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
+4. Add a target-specific stage-order adapter only when a suitable version-pinned reference exposes enough expected state to make a differential test meaningful.
+5. Inventory CPU cores, RAM and GPU/VRAM before performance work, and do not generate heuristic training records until relevant mechanics pass conformance.
 
 ## Key risks
 

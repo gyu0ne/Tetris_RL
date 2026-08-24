@@ -1,11 +1,13 @@
 # Replay Conformance 및 IRS/IHS 설계 설명
 
-상태: major design 및 engine-neutral differential foundation 구현 완료
-기준 시각: `2026-08-24T16:57:14+09:00`
+상태: validation-only boundary 및 engine-neutral differential foundation 구현 완료
+기준 시각: `2026-08-24T17:12:25+09:00`
 
 ## 1. 실제 리플레이가 의미하는 것
 
 여기서 reference replay는 사용자가 직접 저장하거나 이미 소유한 TETR.IO `.ttr`/`.ttrm` 파일과 그 경기의 기준 클라이언트 관찰 결과다. 라이브 서비스에 봇을 붙이거나 인증된 내부 API에서 대량 수집한다는 뜻이 아니다.
+
+리플레이는 제품 기능이 아니라 검증용 oracle이다. 화면에 재생하는 player/viewer는 만들지 않는다. 필요한 경우 headless test adapter가 입력 이벤트를 엔진에 다시 적용하고 예상 상태나 최종 집계와 비교할 뿐이다.
 
 리플레이가 필요한 이유는 상수 확인과 transition 확인이 다르기 때문이다. client option에서 gravity나 lock 값을 읽어도 같은 frame의 input, spawn, IRS/IHS, gravity와 lock이 적용되는 순서는 알 수 없다. 동일 입력을 reference와 local engine에 적용해 최초로 다른 frame/state component를 찾아야 정확한 순서를 확정할 수 있다.
 
@@ -49,12 +51,13 @@
 
 ## 6. 완료 조건과 다음 작업
 
+사용자가 제공한 첫 raw fixture는 BLITZ format version 1이며 handling과 frame/subframe input event를 포함하지만 frame별 board checkpoint는 포함하지 않는다. 따라서 이 파일은 형식, handling 변환과 입력 순서 회귀를 검증할 수 있지만 TETRA LEAGUE versus mechanics나 매 프레임 board state를 단독으로 인증할 수 없다. 원본은 Git에서 제외하고 식별 정보 없는 manifest만 커밋한다.
+
 현재 구현은 differential harness의 engine 쪽 기반이 완료됐다는 뜻이다. target conformance 완료에는 다음이 더 필요하다.
 
-1. user-owned current replay sample 1개와 가능한 경우 당시 handling export
-2. sample 구조와 client asset을 기록한 upstream adapter
+1. target mode/version과 일치하며 기준 상태를 제공하는 fixture
+2. 필요한 경우에만 sample 구조와 client asset을 기록한 headless upstream adapter
 3. input event→canonical edge 변환 및 reference snapshot 생성
-4. timing/game lock·clear transition 연결
-5. boundary fixture와 full replay에서 unexplained divergence 0개
+4. boundary fixture에서 unexplained divergence 0개
 
 이 gate 전에는 current generic IHS→IRS 순서나 timing stage order를 TETR.IO와 동일하다고 주장하지 않는다.

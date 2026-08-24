@@ -11,6 +11,7 @@
 - `engine-core::handling`: ordered input edge와 held state를 generic DAS/ARR/DCD/soft-drop action 및 hold request로 바꾸고 spawn 시 held IRS/IHS를 샘플링한다.
 - `rules-tetrio`: target version, mode, 값, 단위, 출처, confidence와 snapshot/fixture ID를 보존한다.
 - `replay-conformance`: upstream wire format과 독립된 canonical frame snapshot을 비교해 최초 divergence를 반환한다.
+- `FrameSession`: handling, timing, hold, lock/clear와 다음 spawn을 한 프레임 API로 연결한다.
 - 후속 target adapter: 실제 player handling의 원본 단위 변환과 정확한 TETR.IO stage order를 replay fixture에서 공급한다.
 
 generic normalizer의 순서는 결정론적 개발 contract다. exact TETR.IO stage order가 입증됐다는 뜻은 아니다.
@@ -77,14 +78,13 @@ generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 
 ## 6. 검증과 남은 작업
 
-현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. `replay-conformance`는 동일 trace, 정확한 board row divergence, timing mismatch와 trace 길이 mismatch를 구분한다.
+현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. 추가된 session test는 hard drop 이후 lock/clear/next spawn 연결, 즉시 hold 순서와 여러 피스에 걸친 clone 결정성을 검사한다. `replay-conformance`는 동일 trace, 정확한 board row divergence, timing mismatch와 trace 길이 mismatch를 구분한다.
 
 남은 핵심 작업은 다음과 같다.
 
-1. user-owned `.ttrm` sample에 맞춘 version-pinned upstream adapter와 원본 단위 변환
-2. exact target same-frame stage order 검증
-3. timing/handling과 `GameState` lock/clear transition 연결
-4. last-action/kick metadata, spin/top-out
-5. reference replay differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
+1. exact target same-frame stage order 검증
+2. last-action/kick metadata, spin/top-out
+3. line/perfect-clear scoring과 solo profile
+4. 충분한 기준 상태를 제공하는 fixture가 확보될 때 reference differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
 
 이 설계 완료는 timing/handling 기반의 로컬 실행이 가능하다는 뜻이며, 전체 TETR.IO mechanics 동등성 완료를 뜻하지 않는다.

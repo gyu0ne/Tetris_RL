@@ -1,7 +1,7 @@
 # Project Architecture
 
-Status: initial major design completed; deterministic core, observed timing, IRS/IHS and canonical replay differential foundation implemented
-Date: 2026-08-24T16:57:14+09:00
+Status: initial major design completed; continuous frame session and canonical validation foundation implemented
+Date: 2026-08-24T17:12:25+09:00
 
 ## Goal boundary
 
@@ -29,7 +29,7 @@ UI / CLI / experiment runner
 
 The authoritative engine is a pure state transition `next_state = step(state, ordered_frame_inputs, rules, seed)`. Rendering, clocks, sockets, and learners cannot mutate engine state except through typed commands.
 
-The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization, and held-key IRS/IHS with generic IHS-before-IRS spawn resolution. `crates/rules-tetrio` is a one-way adapter whose evidence-bearing profile computes observed TL gravity/lock rules and carries normalized player handling. `crates/replay-conformance` captures canonical frame snapshots and returns the first deterministic mismatch without depending on an undocumented upstream wire format. Versus and learning crates remain subsequent layers. Details are in `PROJECT_Explain_Engine_Core_Phase1.md`, `PROJECT_Explain_Timing_and_Rules_Profile.md`, and `PROJECT_Explain_Replay_Conformance.md`.
+The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization, and held-key IRS/IHS with generic IHS-before-IRS spawn resolution. Its `FrameSession` now joins those layers into one continuous transition from ordered input edges through hold, movement/rotation, gravity, lock/line clear and next spawn. `crates/rules-tetrio` is a one-way adapter whose evidence-bearing profile computes observed TL gravity/lock rules and carries normalized player handling. `crates/replay-conformance` captures canonical frame snapshots and returns the first deterministic mismatch without depending on an undocumented upstream wire format. Replay input is validation-only; no visual player/viewer is part of the engine. Versus and learning crates remain subsequent layers. Details are in `PROJECT_Explain_Engine_Core_Phase1.md`, `PROJECT_Explain_Timing_and_Rules_Profile.md`, `PROJECT_Explain_Frame_Session.md`, and `PROJECT_Explain_Replay_Conformance.md`.
 
 ## Core representations
 
@@ -68,6 +68,7 @@ Rust was selected for deterministic low-level control, bit operations, safe para
 
 - `RulesProfile`: immutable/versioned; refuses missing required evidence-backed fields.
 - `FrameNormalizer`: converts ordered edges and held state into DAS/ARR/DCD/soft-drop actions plus hold requests; generic spawn processing samples held IHS/IRS in an explicitly provisional IHS→IRS order.
+- `FrameSession`: owns continuous `GameState`, optional live `TimingState`, `HandlingState`, and frame index; a step either advances the current piece, commits a lock/clear and spawns the next piece, or reaches terminal state.
 - `ReplayAdapter`: version-pinned converter from a verified user-owned upstream sample into canonical edges, handling and snapshots; it is not implemented by guessing an undocumented `.ttrm` schema.
 - `Engine::step`: deterministic and side-effect free except caller-owned state mutation.
 - `Engine::legal_afterstates`: same reachability logic used by the input planner.

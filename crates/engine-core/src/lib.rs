@@ -13,6 +13,7 @@ mod piece;
 mod reachability;
 mod rng;
 mod rotation;
+mod session;
 mod timing;
 
 pub use board::{Board, BoardError, ClearedLines, HEIGHT, LockResult, VISIBLE_HEIGHT, WIDTH};
@@ -28,6 +29,7 @@ pub use piece::{Orientation, PieceKind, PieceState};
 pub use reachability::{GeometricPlacement, Movement, hard_drop, reachable_locks, try_movement};
 pub use rng::{BagOrderError, MinStd, SevenBag};
 pub use rotation::{RotationDirection, RotationResult, kick_tests, try_rotate};
+pub use session::{FrameSession, SessionFrameOutcome, SessionStepError};
 pub use timing::{
     FrameInput, FrameOutcome, Gravity, TimingConfigError, TimingRules, TimingState,
     TimingStepError, step_frame,

@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T16:57:14+09:00
+Last updated: 2026-08-24T17:12:25+09:00
 
 ## 1. Authority and scope
 
@@ -22,7 +22,7 @@ crates/
   rules-tetrio/      # versioned TETR.IO mode/rules profiles
   replay-conformance/# canonical frame snapshots and differential reports
   versus/            # attacks, garbage queues and round-terminal mechanics
-  replay/            # deterministic event log, playback and fixtures
+  replay/            # deterministic event log and validation fixtures
   arena/             # local bot-vs-bot orchestration
   bot-protocol/      # TBP-compatible adapter and local protocol
   py-bridge/         # narrow Python binding for vectorized simulation
@@ -64,6 +64,7 @@ research/            # experiment manifests and generated reports, not code
 - Core state transitions use integer/fixed-point frame units. Floating-point is forbidden in authoritative game-state transitions.
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
+- Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.
 - Conformance changes require golden fixtures and differential tests before merge. “Looks/feels the same” is not evidence.
 - Required mode profiles are staged: common modern core; TETRA LEAGUE Season 2 1v1; 40 LINES; BLITZ; ZEN/custom. QUICK PLAY/ROYALE is a separate profile because its rules differ materially.
 - A candidate feature is in conformance scope when it changes legal action/reachability, observation/transition/RNG, attack/garbage timing, or round terminal. Convenience tooling and service presentation are not conformance features.

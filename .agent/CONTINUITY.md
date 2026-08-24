@@ -11,6 +11,7 @@
 - 2026-08-24T16:05:13+09:00 [USER] Continue engine implementation; configure `https://github.com/gyu0ne/Tetris_RL` as the Git remote, strengthen ignore rules, and create local commits where possible.
 - 2026-08-24T16:28:38+09:00 [USER] Continue implementation and research enough current evidence to fill as many empty mechanics values as possible.
 - 2026-08-24T16:57:14+09:00 [USER] Continue engine work and clarify whether frame-level validation requires obtaining a real TETR.IO replay.
+- 2026-08-24T17:19:31+09:00 [USER] Supplied one raw replay fixture and clarified that replay playback is unnecessary; use replay data only where it validates engine mechanics.
 
 ## [DECISIONS]
 
@@ -38,6 +39,9 @@
 - 2026-08-24T16:57:14+09:00 [CODE] Define reference replay input as a user-owned/exported replay plus version-identified reference observations; prohibit internal authenticated API collection and keep raw replay files out of Git.
 - 2026-08-24T16:57:14+09:00 [CODE] Do not guess the undocumented `.ttrm` wire format. Compare an engine-neutral canonical frame trace now and implement a version-pinned upstream adapter only after inspecting an actual sample.
 - 2026-08-24T16:57:14+09:00 [CODE] Implement deterministic generic spawn handling in IHS-then-IRS order while retaining exact TETR.IO sampling/stage order as fixture-gated and UNCONFIRMED.
+- 2026-08-24T17:19:31+09:00 [CODE] Exclude visual replay playback/player/viewer from the product and conformance scope. A headless adapter may reapply replay input only when it supplies a meaningful engine differential oracle.
+- 2026-08-24T17:19:31+09:00 [CODE] Treat the supplied BLITZ replay as an input-container/handling/subframe-order fixture only; it cannot confirm TETRA LEAGUE versus rules or frame board transitions because it contains no reference state checkpoints.
+- 2026-08-24T17:19:31+09:00 [CODE] Join handling, timing and game state through `FrameSession` using an explicit provisional order: normalize edges, immediate hold, timed actions/gravity/lock, placement/line clear, next spawn, then generic held IHS→IRS. Exact target order remains fixture-gated.
 
 ## [PROGRESS]
 
@@ -70,6 +74,10 @@
 - 2026-08-24T17:01:23+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, 45 unit tests with 0 failures, and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:01:23+09:00 [TOOL] Fresh code-graph indexing found 793 nodes and 2,071 edges; Cargo manifests preserve `engine-core` as the dependency leaf while both rules and replay conformance consume its typed mechanics API.
 - 2026-08-24T17:02:34+09:00 [CODE] Created local commit `4076bd1` (`feat: add initial actions and replay conformance`) containing IRS/IHS, normalized player handling, canonical replay differential code, privacy boundaries, tests and synchronized documents; no push was performed.
+- 2026-08-24T17:19:31+09:00 [CODE] Added `engine-core::session` with continuous input→hold→timing→lock/clear→next-spawn transitions and three tests covering hard-drop progression, immediate hold ordering and multi-piece clone determinism.
+- 2026-08-24T17:19:31+09:00 [CODE] Added an anonymized BLITZ replay manifest while keeping the raw export Git-ignored; updated RULE, README, Korean plan, architecture, execution, timing and replay documents, and created `PROJECT_Explain_Frame_Session.md` to record the validation-only boundary and settled session design.
+- 2026-08-24T17:19:31+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 48 unit tests, optimized release build and parsing of both TOML records; `git diff --check` and the repository trailing-whitespace scan passed.
+- 2026-08-24T17:19:31+09:00 [TOOL] Fresh non-persistent code-graph indexing found 828 nodes and 2,241 edges; `FrameSession::step` is indexed as the new engine-core orchestration boundary while external dependency direction remains into the engine-core leaf.
 
 ## [DISCOVERIES]
 
@@ -89,6 +97,8 @@
 - 2026-08-24T16:28:38+09:00 [TOOL] The current client-derived TL timing values are stable across two asset versions and agree with the Wiki's 500 ms lock and move/rotation reset description, but no reference replay proves margin-boundary or same-frame execution order; confidence remains `OBSERVED`.
 - 2026-08-24T16:28:38+09:00 [TOOL] Current TL exposes inactive room handling fallbacks ARR 2/DAS 10/SDF 6 while `room_handling=false`; using those numbers as every player's effective handling would change reachability and be incorrect.
 - 2026-08-24T16:57:14+09:00 [TOOL] The official `tetrio/tetrio-format-specs` repository currently specifies RSD sound data but no replay schema; official issue #608 is only a historical user feature request mentioning raw `.ttrm`, not a current API/format specification.
+- 2026-08-24T17:19:31+09:00 [TOOL] The supplied raw fixture is BLITZ format version 1/options version 19 with 7,200 frames and 1,420 ordered events: start 1, keydown 709, keyup 709 and end 1. Its handling serializes ARR 2, DAS 10, DCD 2, SDF 41 and tap IRS/IHS; identifying user fields were not copied into committed metadata.
+- 2026-08-24T17:19:31+09:00 [TOOL] The fixture has monotonic frame/subframe input events but no per-frame board checkpoints. It can regress parser/normalization assumptions or final aggregates, but frame-exact local board conformance needs separate reference observations and TL-specific mechanics need a TL fixture.
 
 ## [OUTCOMES]
 
@@ -99,3 +109,4 @@
 - 2026-08-24T16:05:13+09:00 [CODE] The generic frame timing and evidence-bearing rules-profile foundation are implemented and verified. Target TL activation remains intentionally blocked by six unconfirmed timing literals; raw handling normalization, replay fixtures, spin/top-out and versus mechanics remain before heuristic dataset generation.
 - 2026-08-24T16:28:38+09:00 [CODE] Supersede the six-empty-literal status: the observed TL timing profile is complete and locally executable, including gravity progression and generic handling normalization. It is not conformance-certified; player handling serialization, IRS/IHS, replay stage-order fixtures, spin/top-out and versus mechanics remain before demonstration generation.
 - 2026-08-24T17:01:23+09:00 [CODE] Supersede the IRS/IHS-and-first-divergence-not-started status: generic IRS/IHS, normalized player handling and canonical replay differential reporting are implemented and verified. A user-owned version-identified replay sample is now required only to implement the upstream adapter and certify target frame order; spin/top-out, lock/clear integration and versus mechanics still precede demonstration generation.
+- 2026-08-24T17:19:31+09:00 [CODE] Supersede the lock/clear-integration-not-started and replay-sample-required statuses: a verified continuous generic frame session now advances multiple pieces through lock, line clear and next spawn, and the supplied BLITZ replay is retained only as anonymized validation metadata. No replay player was built. Next engine work is last-action/kick metadata, All-Mini+ spin, perfect clear, exact top-out and versus mechanics before heuristic data generation.

@@ -1,0 +1,43 @@
+schema_version = 1
+fixture_id = "blitz-format-v1-local-001"
+source_kind = "user_owned_replay"
+raw_committed = false
+raw_sha256 = "343c3c9e69fe3dddd7246c792596dcf29aca52305ab9e994ae2abff6aa59922a"
+gamemode = "blitz"
+format_version = 1
+replay_options_version = 19
+frames = 7200
+event_count = 1420
+reference_state_checkpoints_present = false
+suitable_for_tetra_league = false
+
+[events]
+start = 1
+keydown = 709
+keyup = 709
+end = 1
+multi_event_frames = 123
+max_events_per_frame = 3
+
+[subframe]
+minimum = 0.0
+maximum = 0.9
+zero = 107
+fractional = 1311
+monotonic = true
+outside_unit_interval = 0
+
+[handling]
+arr = 2
+das = 10
+dcd = 2
+sdf = 41
+safelock = true
+cancel = false
+may20g = true
+irs = "tap"
+ihs = "tap"
+
+[scope]
+validates = ["replay_container_shape", "handling_serialization", "frame_subframe_event_order"]
+does_not_validate = ["frame_board_states", "tetra_league_versus_rules", "visual_playback"]

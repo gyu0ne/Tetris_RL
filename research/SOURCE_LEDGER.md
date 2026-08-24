@@ -24,6 +24,7 @@
 | T14 | [Season 2 Surge/downstack 논의](https://www.reddit.com/r/Tetris/comments/1ogo885) | Reddit 경험 기록 | Surge가 전략에 미치는 체감과 adversarial test style | 정량·규칙 확정 근거 아님 |
 | T15 | [공식 TETR.IO file format specs](https://github.com/tetrio/tetrio-format-specs) | 공식 GitHub 저장소, 확인일 2026-08-24 | 공개 형식 명세의 현재 범위 확인 | 현재 RSD sound spritesheet만 명시하며 `.ttr`/`.ttrm` replay schema를 제공하지 않음 |
 | T16 | [공식 issue #608](https://github.com/tetrio/issues/issues/608) | 공식 issue tracker의 2021 feature request | `.ttrm` raw replay와 공개 download endpoint가 역사적으로 요청됐음을 확인 | issue 작성자의 설명이며 현재 API/format authority가 아님; 내부 API 사용 근거로 삼지 않음 |
+| T17 | 사용자 제공 local replay fixture, raw Git 제외, SHA-256 `343c3c9e69fe3dddd7246c792596dcf29aca52305ab9e994ae2abff6aa59922a` | BLITZ format v1, replay options v19 | handling ARR 2/DAS 10/DCD 2/SDF 41, IRS/IHS tap, 7,200 frames와 ordered frame/subframe key events의 실제 직렬화 구조 | 개인정보를 기록하지 않은 local 검증 자료; frame별 board checkpoint가 없고 BLITZ이므로 TL versus mechanics의 확정 근거가 아님 |
 
 ## B. 학습·보상·평가
 
