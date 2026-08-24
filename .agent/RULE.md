@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T18:00:13+09:00
+Last updated: 2026-08-24T19:17:00+09:00
 
 ## 1. Authority and scope
 
@@ -67,6 +67,9 @@ research/            # experiment manifests and generated reports, not code
 - Perfect clear is evaluated from the board after line compaction. Block-out, lock-out and partial lock-out remain distinct typed outcomes; unconfirmed target variants must stay disabled rather than being guessed.
 - `engine-core::ClearEvent` contains only transition facts. Attack/B2B/combo/Surge and ordered attack packets belong to `versus`; solo score points must not leak into either layer.
 - Authoritative attack transitions use integers only. Any upstream floating-point formula must be converted to reviewed integer thresholds or exact rationals and checked against generated fixtures.
+- Garbage is represented as ordered packets. Cancellation must preserve attack packet order, consume attack budget before opener-only budget, and update round sent totals between packets.
+- Board occupancy and garbage provenance are separate aligned bit layers. Garbage clear bonuses must come from compacted lock provenance, never from stack-shape inference.
+- Transit eligibility, cancellation eligibility and insertion eligibility are distinct states. Under the observed TL zero-passthrough profile an in-transit packet may cancel, but it may not rise before its ready frame.
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
 - Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.

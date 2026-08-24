@@ -10,6 +10,7 @@ const FULL_ROW: u16 = (1_u16 << WIDTH) - 1;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Board {
     rows: [u16; HEIGHT],
+    garbage_rows: [u16; HEIGHT],
 }
 
 impl Default for Board {
@@ -20,10 +21,20 @@ impl Default for Board {
 
 impl Board {
     pub const fn empty() -> Self {
-        Self { rows: [0; HEIGHT] }
+        Self {
+            rows: [0; HEIGHT],
+            garbage_rows: [0; HEIGHT],
+        }
     }
 
     pub fn from_rows(rows: [u16; HEIGHT]) -> Result<Self, BoardError> {
+        Self::from_layers(rows, [0; HEIGHT])
+    }
+
+    pub fn from_layers(
+        rows: [u16; HEIGHT],
+        garbage_rows: [u16; HEIGHT],
+    ) -> Result<Self, BoardError> {
         if let Some((y, row)) = rows
             .iter()
             .copied()
@@ -32,11 +43,30 @@ impl Board {
         {
             return Err(BoardError::InvalidRow { y, row });
         }
-        Ok(Self { rows })
+        if let Some((y, garbage, occupied)) = garbage_rows
+            .iter()
+            .copied()
+            .zip(rows.iter().copied())
+            .enumerate()
+            .find_map(|(y, (garbage, occupied))| {
+                (garbage & !occupied != 0).then_some((y, garbage, occupied))
+            })
+        {
+            return Err(BoardError::GarbageOutsideOccupancy {
+                y,
+                garbage,
+                occupied,
+            });
+        }
+        Ok(Self { rows, garbage_rows })
     }
 
     pub const fn rows(&self) -> &[u16; HEIGHT] {
         &self.rows
+    }
+
+    pub const fn garbage_rows(&self) -> &[u16; HEIGHT] {
+        &self.garbage_rows
     }
 
     pub fn is_empty(&self) -> bool {
@@ -54,6 +84,13 @@ impl Board {
             .map(|row| row & (1_u16 << x) != 0)
     }
 
+    pub fn is_garbage(&self, x: usize, y: usize) -> Option<bool> {
+        self.garbage_rows
+            .get(y)
+            .filter(|_| x < WIDTH)
+            .map(|row| row & (1_u16 << x) != 0)
+    }
+
     pub fn set_cell(&mut self, x: usize, y: usize, occupied: bool) -> Result<(), BoardError> {
         if x >= WIDTH || y >= HEIGHT {
             return Err(BoardError::CellOutOfBounds { x, y });
@@ -63,8 +100,49 @@ impl Board {
             self.rows[y] |= mask;
         } else {
             self.rows[y] &= !mask;
+            self.garbage_rows[y] &= !mask;
         }
         Ok(())
+    }
+
+    pub fn set_garbage_cell(
+        &mut self,
+        x: usize,
+        y: usize,
+        garbage: bool,
+    ) -> Result<(), BoardError> {
+        if x >= WIDTH || y >= HEIGHT {
+            return Err(BoardError::CellOutOfBounds { x, y });
+        }
+        let mask = 1_u16 << x;
+        if garbage {
+            self.rows[y] |= mask;
+            self.garbage_rows[y] |= mask;
+        } else {
+            self.garbage_rows[y] &= !mask;
+        }
+        Ok(())
+    }
+
+    /// Pushes one garbage row from the floor, shifting every existing row up.
+    /// The return value reports only loss beyond the 40-row storage buffer;
+    /// mode-specific top-out policy remains outside this primitive.
+    pub fn push_garbage_line(
+        &mut self,
+        hole_column: usize,
+    ) -> Result<GarbagePushResult, BoardError> {
+        if hole_column >= WIDTH {
+            return Err(BoardError::GarbageHoleOutOfBounds(hole_column));
+        }
+
+        let overflowed_buffer = self.rows[HEIGHT - 1] != 0;
+        self.rows.copy_within(0..HEIGHT - 1, 1);
+        self.garbage_rows.copy_within(0..HEIGHT - 1, 1);
+        let garbage = FULL_ROW & !(1_u16 << hole_column);
+        self.rows[0] = garbage;
+        self.garbage_rows[0] = garbage;
+
+        Ok(GarbagePushResult { overflowed_buffer })
     }
 
     pub fn collides(&self, piece: PieceState) -> bool {
@@ -96,9 +174,10 @@ impl Board {
             self.rows[y as usize] |= 1_u16 << x;
         }
 
-        let cleared = self.clear_full_lines();
+        let (cleared, cleared_garbage) = self.clear_full_lines();
         Ok(LockResult {
             cleared,
+            cleared_garbage,
             perfect_clear: self.is_empty(),
             visibility,
         })
@@ -118,8 +197,8 @@ impl Board {
     /// Stable FNV-1a checksum for replay checkpoints. This is not a cryptographic hash.
     pub fn checksum(&self) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-        for row in self.rows {
-            for byte in row.to_le_bytes() {
+        for (row, garbage) in self.rows.into_iter().zip(self.garbage_rows) {
+            for byte in row.to_le_bytes().into_iter().chain(garbage.to_le_bytes()) {
                 hash ^= u64::from(byte);
                 hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
             }
@@ -127,21 +206,25 @@ impl Board {
         hash
     }
 
-    fn clear_full_lines(&mut self) -> ClearedLines {
+    fn clear_full_lines(&mut self) -> (ClearedLines, bool) {
         let mut cleared = ClearedLines::default();
+        let mut cleared_garbage = false;
         let mut write_y = 0;
 
         for read_y in 0..HEIGHT {
             if self.rows[read_y] == FULL_ROW {
                 cleared.push(read_y as u8);
+                cleared_garbage |= self.garbage_rows[read_y] != 0;
             } else {
                 self.rows[write_y] = self.rows[read_y];
+                self.garbage_rows[write_y] = self.garbage_rows[read_y];
                 write_y += 1;
             }
         }
 
         self.rows[write_y..].fill(0);
-        cleared
+        self.garbage_rows[write_y..].fill(0);
+        (cleared, cleared_garbage)
     }
 }
 
@@ -170,8 +253,14 @@ impl ClearedLines {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LockResult {
     pub cleared: ClearedLines,
+    pub cleared_garbage: bool,
     pub perfect_clear: bool,
     pub visibility: LockVisibility,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbagePushResult {
+    pub overflowed_buffer: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,8 +272,20 @@ pub enum LockVisibility {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoardError {
-    InvalidRow { y: usize, row: u16 },
-    CellOutOfBounds { x: usize, y: usize },
+    InvalidRow {
+        y: usize,
+        row: u16,
+    },
+    GarbageOutsideOccupancy {
+        y: usize,
+        garbage: u16,
+        occupied: u16,
+    },
+    CellOutOfBounds {
+        x: usize,
+        y: usize,
+    },
+    GarbageHoleOutOfBounds(usize),
     PieceCollision(PieceState),
 }
 
@@ -194,8 +295,22 @@ impl fmt::Display for BoardError {
             Self::InvalidRow { y, row } => {
                 write!(formatter, "row {y} has out-of-width bits: {row:#06x}")
             }
+            Self::GarbageOutsideOccupancy {
+                y,
+                garbage,
+                occupied,
+            } => write!(
+                formatter,
+                "garbage row {y} ({garbage:#06x}) is not a subset of occupancy ({occupied:#06x})"
+            ),
             Self::CellOutOfBounds { x, y } => {
                 write!(formatter, "cell ({x}, {y}) is outside the board")
+            }
+            Self::GarbageHoleOutOfBounds(column) => {
+                write!(
+                    formatter,
+                    "garbage hole column {column} is outside the board"
+                )
             }
             Self::PieceCollision(piece) => write!(formatter, "piece collides at {piece:?}"),
         }
@@ -216,6 +331,22 @@ mod tests {
         assert_eq!(
             Board::from_rows(rows),
             Err(BoardError::InvalidRow { y: 3, row: 1 << 10 })
+        );
+    }
+
+    #[test]
+    fn rejects_garbage_bits_without_occupancy() {
+        let rows = [0; HEIGHT];
+        let mut garbage_rows = [0; HEIGHT];
+        garbage_rows[2] = 1 << 4;
+
+        assert_eq!(
+            Board::from_layers(rows, garbage_rows),
+            Err(BoardError::GarbageOutsideOccupancy {
+                y: 2,
+                garbage: 1 << 4,
+                occupied: 0,
+            })
         );
     }
 
@@ -269,6 +400,38 @@ mod tests {
         assert_eq!(result.cleared.rows(), &[0]);
         assert!(result.perfect_clear);
         assert!(board.is_empty());
+    }
+
+    #[test]
+    fn garbage_push_shifts_both_layers_and_marks_the_new_row() {
+        let mut board = Board::empty();
+        board.set_cell(2, 0, true).expect("valid cell");
+
+        let pushed = board.push_garbage_line(4).expect("valid hole");
+
+        assert!(!pushed.overflowed_buffer);
+        assert_eq!(board.row(0), Some(FULL_ROW & !(1 << 4)));
+        assert_eq!(board.garbage_rows()[0], FULL_ROW & !(1 << 4));
+        assert_eq!(board.row(1), Some(1 << 2));
+        assert_eq!(board.garbage_rows()[1], 0);
+        assert_eq!(board.is_garbage(4, 0), Some(false));
+        assert_eq!(board.is_garbage(3, 0), Some(true));
+    }
+
+    #[test]
+    fn clearing_a_garbage_row_reports_provenance() {
+        let mut rows = [0; HEIGHT];
+        rows[0] = FULL_ROW & !0b00_0111_1000;
+        let garbage_rows = rows;
+        let mut board = Board::from_layers(rows, garbage_rows).expect("valid garbage layer");
+        let piece = PieceState::new(PieceKind::I, Orientation::Reverse, 3, -1);
+
+        let result = board.lock(piece).expect("I piece completes garbage row");
+
+        assert_eq!(result.cleared.rows(), &[0]);
+        assert!(result.cleared_garbage);
+        assert!(result.perfect_clear);
+        assert!(board.garbage_rows().iter().all(|row| *row == 0));
     }
 
     #[test]

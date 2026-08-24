@@ -9,7 +9,7 @@
 use engine_core::{
     Gravity, HandlingRules, SoftDropMode, SpinRules, TimingConfigError, TimingRules,
 };
-use versus::{AttackConfigError, AttackRules, ComboRule};
+use versus::{AttackConfigError, AttackRules, ComboRule, GarbageConfigError, GarbageRules};
 
 pub const TARGET_PROFILE_ID: &str = "tetrio-beta-1.7.8-tetra-league-season-2";
 pub const RESEARCH_ACCESS_DATE: &str = "2026-08-24";
@@ -21,6 +21,7 @@ const CURRENT_CLIENT_ASSET: &str =
     "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705";
 const CLIENT_OPTIONS_FIXTURE: &str = "client-options-hv-63ab5c7c7-20260824";
 const CLIENT_FIREPOWER_FIXTURE: &str = "client-firepower-hv-63ab5c7c7-20260824";
+const CLIENT_GARBAGE_FIXTURE: &str = "client-garbage-hv-63ab5c7c7-20260824";
 
 static MULTIPLIER_ZERO_BASE_THRESHOLDS: [u32; 22] = [
     2,
@@ -152,6 +153,14 @@ pub struct AttackProfileDraft {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbageProfileDraft {
+    pub travel_frames: Sourced<u32>,
+    pub garbage_cap: Sourced<u8>,
+    pub opener_phase_pieces: Sourced<u64>,
+    pub combo_blocking: Sourced<bool>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RoomHandlingProfileDraft {
     pub enforced: Sourced<bool>,
     pub inactive_arr_frames: Sourced<u16>,
@@ -217,6 +226,7 @@ pub struct TetrioRulesDraft {
     pub spin_system: Sourced<SpinSystem>,
     pub timing: TimingProfileDraft,
     pub attack: AttackProfileDraft,
+    pub garbage: GarbageProfileDraft,
     pub room_handling: RoomHandlingProfileDraft,
 }
 
@@ -286,6 +296,12 @@ impl TetrioRulesDraft {
             Confidence::Observed,
             Some(CLIENT_FIREPOWER_FIXTURE),
             "Current client tables and 53 generated clear/combo/B2B/All-Clear cases; snapshot SHA-256 b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b.",
+        );
+        let client_garbage = Evidence::new(
+            CURRENT_CLIENT_ASSET,
+            Confidence::Observed,
+            Some(CLIENT_GARBAGE_FIXTURE),
+            "Current TL preset plus FightLines/TakeAllDamage control flow; bundle SHA-256 aab6d586aaaef57f84553cbd60237604832be420fa2b27773b6e697f66b84d66.",
         );
 
         Self {
@@ -386,6 +402,12 @@ impl TetrioRulesDraft {
                     "garbage lines",
                     client_firepower,
                 ),
+            },
+            garbage: GarbageProfileDraft {
+                travel_frames: Sourced::new(Some(20), "frames", client_garbage),
+                garbage_cap: Sourced::new(Some(8), "lines per tank", client_garbage),
+                opener_phase_pieces: Sourced::new(Some(14), "placed pieces", client_garbage),
+                combo_blocking: Sourced::new(Some(true), "boolean", client_garbage),
             },
             room_handling: RoomHandlingProfileDraft {
                 enforced: Sourced::new(Some(false), "boolean", client_options),
@@ -498,6 +520,41 @@ impl TetrioRulesDraft {
             .map_err(ProfileActivationError::InvalidAttackConfiguration)?;
         Ok(rules)
     }
+
+    pub fn missing_required_garbage_fields(self) -> Vec<&'static str> {
+        required_garbage_fields(self.garbage)
+            .into_iter()
+            .filter_map(|(name, value_present, _)| (!value_present).then_some(name))
+            .collect()
+    }
+
+    pub fn garbage_conformance_blockers(self) -> Vec<&'static str> {
+        required_garbage_fields(self.garbage)
+            .into_iter()
+            .filter_map(|(name, _, evidence)| {
+                (evidence.confidence != Confidence::Confirmed || evidence.fixture_id.is_none())
+                    .then_some(name)
+            })
+            .collect()
+    }
+
+    pub fn try_garbage_rules(self) -> Result<GarbageRules, ProfileActivationError> {
+        let missing = self.missing_required_garbage_fields();
+        if !missing.is_empty() {
+            return Err(ProfileActivationError::MissingRequiredFields(missing));
+        }
+
+        let rules = GarbageRules {
+            travel_frames: required(self.garbage.travel_frames.value)?,
+            garbage_cap: required(self.garbage.garbage_cap.value)?,
+            opener_phase_pieces: required(self.garbage.opener_phase_pieces.value)?,
+            combo_blocking: required(self.garbage.combo_blocking.value)?,
+        };
+        rules
+            .validate()
+            .map_err(ProfileActivationError::InvalidGarbageConfiguration)?;
+        Ok(rules)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -505,6 +562,7 @@ pub enum ProfileActivationError {
     MissingRequiredFields(Vec<&'static str>),
     InvalidTimingConfiguration(TimingConfigError),
     InvalidAttackConfiguration(AttackConfigError),
+    InvalidGarbageConfiguration(GarbageConfigError),
     ZeroTickRate,
     TimingArithmeticOverflow,
     InternalValidationInvariant,
@@ -659,6 +717,31 @@ fn required_attack_fields(attack: AttackProfileDraft) -> [(&'static str, bool, E
             "attack.garbage_clear_special_bonus",
             attack.garbage_clear_special_bonus.value.is_some(),
             attack.garbage_clear_special_bonus.evidence,
+        ),
+    ]
+}
+
+fn required_garbage_fields(garbage: GarbageProfileDraft) -> [(&'static str, bool, Evidence); 4] {
+    [
+        (
+            "garbage.travel_frames",
+            garbage.travel_frames.value.is_some(),
+            garbage.travel_frames.evidence,
+        ),
+        (
+            "garbage.garbage_cap",
+            garbage.garbage_cap.value.is_some(),
+            garbage.garbage_cap.evidence,
+        ),
+        (
+            "garbage.opener_phase_pieces",
+            garbage.opener_phase_pieces.value.is_some(),
+            garbage.opener_phase_pieces.evidence,
+        ),
+        (
+            "garbage.combo_blocking",
+            garbage.combo_blocking.value.is_some(),
+            garbage.combo_blocking.evidence,
         ),
     ]
 }
@@ -870,5 +953,24 @@ mod tests {
             AttackPacketKind::PerfectClear
         );
         assert!(!profile.attack_conformance_blockers().is_empty());
+    }
+
+    #[test]
+    fn observed_garbage_profile_activates_with_current_tl_values() {
+        let profile = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2();
+        let rules = profile
+            .try_garbage_rules()
+            .expect("garbage profile activates");
+
+        assert!(profile.missing_required_garbage_fields().is_empty());
+        assert_eq!(rules.travel_frames, 20);
+        assert_eq!(rules.garbage_cap, 8);
+        assert_eq!(rules.opener_phase_pieces, 14);
+        assert!(rules.combo_blocking);
+        assert_eq!(
+            profile.garbage.travel_frames.evidence.fixture_id,
+            Some("client-garbage-hv-63ab5c7c7-20260824")
+        );
+        assert!(!profile.garbage_conformance_blockers().is_empty());
     }
 }

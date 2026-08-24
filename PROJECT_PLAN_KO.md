@@ -418,7 +418,7 @@ non-learning baseline은 반드시 유지한다.
 - 결정론적 2인 scheduling과 명시적인 latency model을 추가한다.
 - 최소화한 사례에 이어 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
 
-**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 부동소수점 없이 계산한다. profile은 `OBSERVED`로 실행 가능하지만 reference conformance 인증은 아니다. incoming garbage, cancellation/insertion, opener double-cancel, 두 player scheduling과 terminal은 남아 있다.
+**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 부동소수점 없이 계산한다. 이어 direct client control flow에서 TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough와 opener 14를 추출해 ordered incoming queue, packet별 attack-first/opener-second 상쇄, transit gate 및 non-clear insertion을 구현했다. `Board`는 garbage provenance layer를 함께 압축해 special +1 context를 실제 lock에서 공급한다. profile은 `OBSERVED`로 실행 가능하지만 reference conformance 인증은 아니다. change-on-attack hole RNG, margin multiplier, 두 player scheduling과 terminal은 남아 있다.
 
 **통과 조건:** 선언된 corpus에 대해 C2~C5가 통과하고 남은 `UNCONFIRMED` 항목과 coverage가 공개되어야 한다.
 
@@ -499,8 +499,8 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. ordered attack packet을 받는 incoming garbage queue, cancellation과 insertion을 구현한다.
-2. opener 14-piece double-cancel, 두 player scheduling과 round terminal을 구현한다.
+1. change-on-attack hole RNG와 packet 소진·상쇄 때의 RNG 소비를 구현한다.
+2. 180초 garbage margin multiplier, 두 player scheduling과 round terminal을 구현한다.
 3. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위는 충분한 target fixture로만 확정한다.
 4. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
 5. CPU/RAM/GPU 예산을 수치화하고 관련 mechanics conformance 뒤 휴리스틱 기록 생성을 시작한다.

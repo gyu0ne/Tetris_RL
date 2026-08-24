@@ -42,7 +42,7 @@ Exit gate: timing boundary fixtures and solo full replays have zero unexplained 
 
 Exit gate: conformance C2–C5 pass for the declared corpus. Publish coverage and remaining `UNCONFIRMED` cases.
 
-Progress: `crates/versus` now implements integer-only observed TL base attacks, multiplier combo, flat B2B, B2B Charging/Surge with current-client three-packet ordering, separate perfect-clear packets and post-rounding garbage-clear +1. The profile is executable as `OBSERVED`, not conformance-certified. Opener cancellation, incoming garbage state/cancellation/insertion, two-player scheduling and terminal rules remain.
+Progress: `crates/versus` now implements integer-only observed TL base attacks, multiplier combo, flat B2B, B2B Charging/Surge with current-client three-packet ordering, separate perfect-clear packets and post-rounding garbage-clear +1. Ordered incoming packets, attack-first/opener-second cancellation, the 14-piece boundary, 20-frame transit gate, combo blocking, 8-line insertion cap and board garbage provenance are also executable as `OBSERVED`. Change-on-attack hole RNG, margin scaling, two-player scheduling and terminal rules remain; the profile is not conformance-certified.
 
 ## Phase 4 — Bot arena and strong baselines
 
@@ -97,8 +97,8 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Implement incoming garbage packets, cancellation and insertion around the ordered attack packets already emitted by `versus`.
-2. Add opener-phase double cancellation and deterministic two-player scheduling, then round terminal.
+1. Implement change-on-attack hole RNG including packet cancellation/depletion RNG consumption.
+2. Add garbage margin scaling and deterministic two-player scheduling, then round terminal.
 3. Resolve exact T kick-index upgrade and Clutch Clear/top-out priority only from a suitable target fixture; keep current provisional boundaries labeled.
 4. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
 5. Inventory CPU cores, RAM and GPU/VRAM before performance work, and do not generate heuristic training records until relevant mechanics pass conformance.

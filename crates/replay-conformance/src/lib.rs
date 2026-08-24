@@ -35,6 +35,7 @@ impl From<&TimingState> for TimingSnapshot {
 pub struct FrameSnapshot {
     pub frame: u64,
     pub board_rows: [u16; HEIGHT],
+    pub garbage_rows: [u16; HEIGHT],
     pub active: PieceState,
     pub hold: Option<PieceKind>,
     pub preview: Vec<PieceKind>,
@@ -47,6 +48,7 @@ impl FrameSnapshot {
         Self {
             frame,
             board_rows: *game.board().rows(),
+            garbage_rows: *game.board().garbage_rows(),
             active: game.active(),
             hold: game.hold(),
             preview: game.preview(),
@@ -59,6 +61,7 @@ impl FrameSnapshot {
         Self {
             frame,
             board_rows: *game.board().rows(),
+            garbage_rows: *game.board().garbage_rows(),
             active: timing.piece,
             hold: game.hold(),
             preview: game.preview(),
@@ -82,6 +85,7 @@ pub enum SnapshotDifference {
         actual: u64,
     },
     BoardRows(Vec<RowDifference>),
+    GarbageRows(Vec<RowDifference>),
     ActivePiece {
         expected: PieceState,
         actual: PieceState,
@@ -176,6 +180,22 @@ fn compare_snapshot(
             .collect();
         return Some(SnapshotDifference::BoardRows(differences));
     }
+    if expected.garbage_rows != actual.garbage_rows {
+        let differences = expected
+            .garbage_rows
+            .iter()
+            .zip(actual.garbage_rows)
+            .enumerate()
+            .filter_map(|(row, (expected, actual))| {
+                (*expected != actual).then_some(RowDifference {
+                    row,
+                    expected: *expected,
+                    actual,
+                })
+            })
+            .collect();
+        return Some(SnapshotDifference::GarbageRows(differences));
+    }
     if expected.active != actual.active {
         return Some(SnapshotDifference::ActivePiece {
             expected: expected.active,
@@ -245,6 +265,27 @@ mod tests {
         assert_eq!(rows[0].row, 3);
         assert_eq!(rows[0].expected, 0);
         assert_eq!(rows[0].actual, 3);
+    }
+
+    #[test]
+    fn garbage_provenance_difference_is_not_hidden_by_equal_occupancy() {
+        let mut expected = vec![snapshot(12)];
+        let mut actual = expected.clone();
+        expected[0].board_rows[2] = 0b0000_0011;
+        actual[0].board_rows[2] = 0b0000_0011;
+        actual[0].garbage_rows[2] = 0b0000_0001;
+
+        let mismatch = compare_traces(&expected, &actual).expect_err("provenance must differ");
+        let ConformanceMismatch::Frame(frame) = mismatch else {
+            panic!("expected frame mismatch");
+        };
+        let SnapshotDifference::GarbageRows(rows) = frame.difference else {
+            panic!("expected garbage row mismatch");
+        };
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].row, 2);
+        assert_eq!(rows[0].expected, 0);
+        assert_eq!(rows[0].actual, 1);
     }
 
     #[test]

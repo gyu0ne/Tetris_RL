@@ -23,6 +23,15 @@ generated_cases = 53
 fixture_id = "client-firepower-hv-63ab5c7c7-20260824"
 confidence = "OBSERVED"
 
+[provenance.current_garbage]
+asset = "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705"
+extracted_at = "2026-08-24T19:17:00+09:00"
+client_bundle_sha256 = "aab6d586aaaef57f84553cbd60237604832be420fa2b27773b6e697f66b84d66"
+extractor_repository = "https://github.com/EdamAme-x/tetris-analyzes"
+extractor_revision = "712dc10be43d5a6c54a35b62608ab9f4a2eaa324"
+fixture_id = "client-garbage-hv-63ab5c7c7-20260824"
+confidence = "OBSERVED"
+
 [provenance.previous_client]
 asset = "https://tetr.io/js/tetrio.js?hv=7eebfc9cd.987f91854aad.20260504T210001"
 extracted_at = "2026-05-15T14:42:44+09:00"
@@ -90,6 +99,26 @@ confidence = "OBSERVED"
 
 [attack.note]
 text = "Solo score points are intentionally absent. The multiplier logarithm is represented by reviewed integer thresholds, and Surge packet order is preserved before the current clear packet."
+
+[garbage]
+travel_frames = 20
+garbage_cap = 8
+garbage_cap_increase = 0.0
+garbage_cap_max = 40
+garbage_blocking = "combo blocking"
+passthrough = "zero"
+opener_phase_pieces = 14
+cancel_multiplier = 1.0
+garbage_entry = "instant"
+garbage_queue = false
+garbage_phase = 0
+messiness_change = 1.0
+messiness_inner = 0.0
+messiness_no_same = false
+confidence = "OBSERVED"
+
+[garbage.note]
+text = "FightLines cancels each ordered attack packet against incoming garbage before sending its remainder. During pieces 1-14, if pending garbage is at least the round sent total, a second attack-sized cancellation budget is consumed after the attack budget. TakeAllDamage inserts at most eight ready lines after a non-clear placement; any line clear blocks insertion. Hole RNG/messiness generation and margin-time attack scaling remain separate follow-up mechanics."
 
 [conformance]
 timing_values_present = true

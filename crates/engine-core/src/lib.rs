@@ -20,7 +20,8 @@ mod timing;
 mod topout;
 
 pub use board::{
-    Board, BoardError, ClearedLines, HEIGHT, LockResult, LockVisibility, VISIBLE_HEIGHT, WIDTH,
+    Board, BoardError, ClearedLines, GarbagePushResult, HEIGHT, LockResult, LockVisibility,
+    VISIBLE_HEIGHT, WIDTH,
 };
 pub use clear::ClearEvent;
 pub use game::{

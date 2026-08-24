@@ -83,7 +83,7 @@
 - authoritative 구현은 logarithm을 직접 실행하지 않고 같은 floor 결과가 처음 나타나는 정수 combo-index 임계표를 사용한다. `OBSERVED`
 - B2B를 유지하는 difficult clear는 공격마다 +1을 더한다. previous B2B가 4를 초과한 상태에서 chain을 끊으면 `previous - 4` Surge를 방출한다. `OBSERVED`, 시작점은 patch note로 `CONFIRMED`
 - Surge 총량 `s`는 `[round(s/3), round(s/3), s - 2×round(s/3)]` 순서로 전송하며 0 packet은 생략한다. 따라서 `s=5`는 `[2,2,1]`, `s=4`는 `[1,1,2]`다. 이 current-client 관찰은 과거의 “remainder front-loading” 설명을 대체한다. `OBSERVED`
-- opener phase는 첫 14 pieces 동안 적용되고, 해당 round에서 이미 보낸 line보다 pending garbage가 많을 때 cancellation power가 두 배가 된다. `OBSERVED`, 도입 사실은 `CONFIRMED`
+- opener phase는 첫 14 pieces 동안 ordered attack packet마다 재평가된다. `pending >= round sent total`이면 attack budget을 먼저 상쇄한 뒤 같은 packet 크기의 추가 cancellation budget을 사용하며, 잔여 송신량은 다음 packet 전에 sent total에 반영된다. `OBSERVED`, 도입 사실은 `CONFIRMED`
 - garbage를 포함한 line을 지우는 Quad와 Spin 계열은 flat +1 special bonus를 받는다. multiplier에 의해 확대되지 않는다. `CONFIRMED`
 - All Clear의 공격량은 5다. `CONFIRMED`
 - current client에서 관찰한 적용 순서는 `B2B/Surge state와 Surge packet → base+B2B → combo floor → garbage-clear +1 → clear packet → Perfect Clear packet`이다. 구현했지만 reference differential 전까지 conformance는 `UNCONFIRMED`다.
@@ -99,9 +99,9 @@
 
 ### 3.5 garbage와 round 종료
 
-- TL은 passthrough를 비활성화한 계열이다. 다만 동일 frame 양측 공격의 cancel/block 순서와 garbage activation timing은 fixture로 고정한다.
+- current TL preset은 `passthrough=zero`, `garbagespeed=20`, `garbagecap=8`, `garbageblocking=combo blocking`, `openerphase=14`다. 이동 중 packet은 상쇄할 수 있지만 20-frame 준비 전에는 삽입하지 않고, line clear가 없는 placement에서만 최대 8줄이 오른다. `OBSERVED`
 - historical bot 문서에는 `garbagespeed`, `garbagecap`, `garbagecapincrease`, `garbagecapmax`, `garbagemultiplier`, `garbagemargin`, `garbageincrease`, `passthrough`, `clutch` 등의 room field가 기록되어 있다. 이 문서는 2022년 client를 대상으로 하므로 현재 기본값을 제공하는 근거로 사용하지 않는다.
-- garbage hole generator와 messiness, packet merge/split, queue cap, cancellation order, multiplier margin은 전략에 직접 영향을 주므로 값을 추측하지 않는다. `UNCONFIRMED`
+- current client control flow에서 cancellation order와 transit/cap/insertion은 구현했다. 기본 change-on-attack option은 `messiness_change=1`, `messiness_inner=0`, `messiness_nosame=false`로 관찰됐지만 packet 소진·완전 상쇄 때의 RNG 소비까지 포함한 hole generator와 180초 이후 multiplier margin은 아직 구현하지 않는다. `OBSERVED` 값, 전이 구현은 `UNCONFIRMED`
 - Clutch Clear는 BETA 1.5.0 이후 현재 mechanics에 포함한다. top-out 판정과 next-piece upward displacement의 정확한 경계는 fixture가 필요하다.
 - round 승패, draw/동시 사망과 terminal state는 학습 보상을 결정하므로 포함한다. 반면 rating 계산과 matchmaking은 제외한다.
 

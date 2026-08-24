@@ -14,6 +14,7 @@
 - 2026-08-24T17:19:31+09:00 [USER] Supplied one raw replay fixture and clarified that replay playback is unnecessary; use replay data only where it validates engine mechanics.
 - 2026-08-24T17:38:13+09:00 [USER] Continue engine implementation and prefer implementation over new web research where the required mechanics are already evidenced.
 - 2026-08-24T18:07:05+09:00 [USER] Exclude 40 LINES and BLITZ scoring; retain only an unscored solo test mode and 1v1 versus play, then continue implementation.
+- 2026-08-24T19:24:10+09:00 [USER] Continue the engine milestone after the score-free versus attack implementation; proceed with the next in-scope 1v1 mechanics work.
 
 ## [DECISIONS]
 
@@ -50,6 +51,9 @@
 - 2026-08-24T18:07:05+09:00 [CODE] Supersede the staged 40 LINES/BLITZ/ZEN/custom score profiles with one score-free solo sandbox; mode scoring is excluded unless the user explicitly restores it.
 - 2026-08-24T18:07:05+09:00 [CODE] Normalize lock results into `engine-core::ClearEvent` and keep all attack literals/state in `versus` plus `rules-tetrio`; score points are absent from both interfaces.
 - 2026-08-24T18:07:05+09:00 [CODE] Convert the current client multiplier logarithm to reviewed integer combo-index thresholds and preserve observed packet order `Surge -> clear -> Perfect Clear`; no floating point enters authoritative attack transitions.
+- 2026-08-24T19:24:10+09:00 [CODE] Represent board occupancy and garbage provenance as aligned 10x40 bit layers so line compaction and the difficult garbage-clear +1 derive from lock facts instead of stack-shape inference.
+- 2026-08-24T19:24:10+09:00 [CODE] Model zero-passthrough cancellation and transit readiness separately: incoming packets may cancel before their 20-frame ready boundary, but only ready packets may rise; explicit packet holes are accepted until the exact change-on-attack RNG consumer is implemented.
+- 2026-08-24T19:24:10+09:00 [CODE] Apply opener cancellation per ordered attack packet, consuming attack budget before the equal-size opener-only budget and updating round sent totals before evaluating the next packet.
 
 ## [PROGRESS]
 
@@ -98,6 +102,11 @@
 - 2026-08-24T18:09:28+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, all 71 unit tests, optimized release build and Python 3.13 parsing of the versioned TOML record; `git diff --check` passed.
 - 2026-08-24T18:09:28+09:00 [TOOL] Fresh non-persistent code-graph indexing found 1,054 nodes and 3,112 edges; `resolve_attack` is isolated in `versus`, depends inward on score-free core events, and is consumed by the evidence-bearing rules test with no learning or rendering dependency.
 - 2026-08-24T18:10:58+09:00 [CODE] Created local commit `eaf3d95` (`feat: add score-free versus attack mechanics`) containing the verified scope change, current firepower evidence, clear-event boundary, versus attack implementation, tests and synchronized documentation; no push was performed.
+- 2026-08-24T19:24:10+09:00 [TOOL] Rechecked current public client asset `63ab5c7c7.efa161fa8f91.20260810T191705`; direct bundle SHA-256 is `aab6d586aaaef57f84553cbd60237604832be420fa2b27773b6e697f66b84d66`, and the supporting `tetris-analyzes` clone is revision `712dc10be43d5a6c54a35b62608ab9f4a2eaa324`.
+- 2026-08-24T19:24:10+09:00 [CODE] Added dual-layer board provenance, garbage row push/compaction, `PlacementOutcome::cleared_garbage`, provenance-aware replay snapshots, `IncomingGarbageQueue`, per-packet cancellation/opener accounting, transit-ready insertion and observed TL garbage rules/profile fields.
+- 2026-08-24T19:24:10+09:00 [CODE] Added `PROJECT_Explain_Garbage_Pipeline.md`; synchronized RULE, README, Korean plan, execution/frame/attack explanations, mechanics research, source ledger and the versioned observed TOML record.
+- 2026-08-24T19:24:10+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, 83 unit tests with 0 failures, optimized release build, and Python 3.13 TOML parsing; `git diff --check` also passed.
+- 2026-08-24T19:24:10+09:00 [TOOL] Fresh full non-persistent code-graph indexing found 1,207 nodes and 3,733 edges; `cancel_attack_packets` is isolated in the versus cluster while rules and replay layers consume typed core state.
 
 ## [DISCOVERIES]
 
@@ -123,6 +132,9 @@
 - 2026-08-24T17:38:13+09:00 [CODE] Perfect clear can be determined without a mode constant by checking the compacted board after clear. In contrast, exact T kick upgrade and Clutch Clear/top-out ordering are profile behavior and remain fixture-gated.
 - 2026-08-24T18:07:05+09:00 [TOOL] Direct current-client inspection contradicts the earlier remainder-front-loading note: Surge `s` uses `[round(s/3), round(s/3), s-2*round(s/3)]` with zero packets omitted, so 5 becomes `[2,2,1]` and 4 becomes `[1,1,2]`.
 - 2026-08-24T18:07:05+09:00 [TOOL] Current-client ordering sends Surge packets while breaking B2B, then the current clear packet, then a separate Perfect Clear packet; garbage-clear difficult bonus increments the already rounded clear attack by one.
+- 2026-08-24T19:24:10+09:00 [TOOL] Current TL preset directly exposes `garbagespeed=20`, `garbagecap=8`, `garbageblocking=combo blocking`, `passthrough=zero` and `openerphase=14`; unchanged option defaults provide `cancelmultiplier=1`, instant entry, queue false and phase 0.
+- 2026-08-24T19:24:10+09:00 [TOOL] Current-client `FightLines` cancels garbage-ARE entries before pending damage, skips hardened entries, consumes packet attack before extra cancellation, and re-evaluates `piecesplaced <= openerphase && pending >= stats.garbage.sent` for every packet.
+- 2026-08-24T19:24:10+09:00 [TOOL] Current-client `TakeAllDamage` inserts only active spawn-status garbage, at most the effective cap per tank; combo blocking prevents a tank on any line clear. Default messiness selects change-on-attack holes, but exact hole RNG consumption remains unimplemented.
 
 ## [OUTCOMES]
 
@@ -136,3 +148,4 @@
 - 2026-08-24T17:19:31+09:00 [CODE] Supersede the lock/clear-integration-not-started and replay-sample-required statuses: a verified continuous generic frame session now advances multiple pieces through lock, line clear and next spawn, and the supplied BLITZ replay is retained only as anonymized validation metadata. No replay player was built. Next engine work is last-action/kick metadata, All-Mini+ spin, perfect clear, exact top-out and versus mechanics before heuristic data generation.
 - 2026-08-24T17:38:13+09:00 [CODE] Supersede the last-action/spin/perfect-clear-not-started status: the continuous engine now emits rotation provenance, All-Mini+ candidate classification, perfect clear, lock visibility and typed top-out. Exact target kick/top-out edges and solo scoring remain before versus attack/garbage and heuristic data generation.
 - 2026-08-24T18:07:05+09:00 [CODE] Supersede the solo-scoring and versus-attack-not-started statuses: solo is intentionally unscored, while observed TL clear/combo/B2B/Surge/Perfect-Clear attack transitions now execute with ordered packets. Incoming garbage/cancellation/insertion, opener double-cancel, two-player scheduling and round terminal remain before heuristic data generation.
+- 2026-08-24T19:24:10+09:00 [CODE] Supersede the incoming-garbage/opener-not-started status: ordered queueing, zero-passthrough cancellation, 14-piece packet-level opener cancellation, 20-frame ready gating, combo blocking, 8-line insertion and garbage-clear provenance now execute as an observed local pipeline. Change-on-attack hole RNG, margin scaling, two-player scheduling, Clutch/top-out ordering and round terminal remain before heuristic data generation.

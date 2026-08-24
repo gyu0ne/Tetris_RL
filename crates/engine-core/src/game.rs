@@ -247,6 +247,7 @@ impl GameState {
         Ok(PlacementOutcome {
             cleared: lock.cleared,
             clear: ClearEvent::from_lock(placement.kind, lock.cleared, spin, lock.perfect_clear),
+            cleared_garbage: lock.cleared_garbage,
             lock_visibility: lock.visibility,
             top_out: self.is_top_out(),
             top_out_reason: self.top_out,
@@ -296,6 +297,7 @@ pub struct InitialActionOutcome {
 pub struct PlacementOutcome {
     pub cleared: ClearedLines,
     pub clear: ClearEvent,
+    pub cleared_garbage: bool,
     pub lock_visibility: LockVisibility,
     pub top_out: bool,
     pub top_out_reason: Option<TopOutReason>,
