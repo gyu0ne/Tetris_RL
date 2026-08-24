@@ -1,7 +1,7 @@
 [package]
-name = "rules-tetrio"
+name = "versus"
 version = "0.1.0"
-description = "Versioned, evidence-bearing TETR.IO mechanics profiles"
+description = "Deterministic 1v1 attack-state mechanics"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,7 +9,6 @@ repository.workspace = true
 
 [dependencies]
 engine-core = { path = "../engine-core" }
-versus = { path = "../versus" }
 
 [lints]
 workspace = true

@@ -19,12 +19,13 @@
 | T09 | [TETR.IO SRS+ issue #506](https://github.com/tetrio/issues/issues/506) | GitHub issue와 community/maintainer-adjacent 논의 | SRS+ table 차이를 검증할 사례 | 현재 textual specification 아님 |
 | T10 | [Cold Clear](https://github.com/MinusKelvin/cold-clear) | Rust 공개 봇, 2024-01-22 archived | bitboard/battle/search/opening/TBP 구조 참고 | 현재 TL rule authority 아님 |
 | T11 | [Tetris Bot Protocol](https://github.com/tetris-bot-protocol/tbp-spec) | 공개 protocol specification | local engine-bot adapter 경계 | live service 연결 허가가 아님 |
-| T12 | [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes) | 독립 extractor commit `712dc10`, client assets 2026-05-04/2026-08-10 | reproducible TL option extraction; 두 snapshot의 31개 field가 모두 동일하며 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE 0, lock 30/15, `room_handling=false`를 관찰 | `OBSERVED`; extractor adoption이 낮고 reference replay differential이 없어 `CONFIRMED` authority는 아님 |
+| T12 | [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes) | 독립 extractor commit `712dc10`, client assets 2026-05-04/2026-08-10 | reproducible TL option/firepower extraction; 두 snapshot의 31개 option이 동일하며 current asset에서 53개 clear/combo/B2B/All-Clear case와 ordered Surge 분할을 재현 | `OBSERVED`; reference replay differential이 없어 `CONFIRMED` authority는 아님 |
 | T13 | [Season 2 opener double-cancel 논의](https://www.reddit.com/r/Tetris/comments/1hjvuig) | Reddit 경험 기록 | opener 경계 fixture 후보 | 가설 생성용만 사용 |
 | T14 | [Season 2 Surge/downstack 논의](https://www.reddit.com/r/Tetris/comments/1ogo885) | Reddit 경험 기록 | Surge가 전략에 미치는 체감과 adversarial test style | 정량·규칙 확정 근거 아님 |
 | T15 | [공식 TETR.IO file format specs](https://github.com/tetrio/tetrio-format-specs) | 공식 GitHub 저장소, 확인일 2026-08-24 | 공개 형식 명세의 현재 범위 확인 | 현재 RSD sound spritesheet만 명시하며 `.ttr`/`.ttrm` replay schema를 제공하지 않음 |
 | T16 | [공식 issue #608](https://github.com/tetrio/issues/issues/608) | 공식 issue tracker의 2021 feature request | `.ttrm` raw replay와 공개 download endpoint가 역사적으로 요청됐음을 확인 | issue 작성자의 설명이며 현재 API/format authority가 아님; 내부 API 사용 근거로 삼지 않음 |
 | T17 | 사용자 제공 local replay fixture, raw Git 제외, SHA-256 `343c3c9e69fe3dddd7246c792596dcf29aca52305ab9e994ae2abff6aa59922a` | BLITZ format v1, replay options v19 | handling ARR 2/DAS 10/DCD 2/SDF 41, IRS/IHS tap, 7,200 frames와 ordered frame/subframe key events의 실제 직렬화 구조 | 개인정보를 기록하지 않은 local 검증 자료; frame별 board checkpoint가 없고 BLITZ이므로 TL versus mechanics의 확정 근거가 아님 |
+| T18 | [current public TETR.IO client asset](https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705) | 2026-08-24 container 재추출, firepower SHA-256 `b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b` | base attack, multiplier combo/floor, flat B2B, charge threshold, Surge `[round(s/3), round(s/3), remainder]`, All Clear 5, garbage-clear +1과 packet 적용 순서 | public client의 직접 관찰을 독립 script로 구조화한 `OBSERVED`; minified implementation 복사 없이 값·순서만 재구현, reference differential 필요 |
 
 ## B. 학습·보상·평가
 

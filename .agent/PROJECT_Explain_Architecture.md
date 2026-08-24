@@ -1,11 +1,11 @@
 # Project Architecture
 
-Status: continuous frame session, spin provenance/classification and typed top-out foundation implemented
-Date: 2026-08-24T17:34:50+09:00
+Status: score-free clear events and observed TL attack/B2B/combo/Surge transition implemented
+Date: 2026-08-24T18:00:13+09:00
 
 ## Goal boundary
 
-The system will reproduce a pinned TETR.IO rules profile locally and provide a fast, deterministic 1v1 research arena. Engine equivalence covers mechanics that can affect learning: pieces, randomizer, spawn/hold, SRS+ movement, DAS/ARR/SDF handling, gravity/lock reset, line/spin detection, scoring where relevant, attacks, B2B/Surge, combo, cancellation, garbage timing/cap/messiness, top-out, round terminal, and replay.
+The system will reproduce a pinned TETR.IO rules profile locally and provide a fast, deterministic 1v1 research arena. Engine equivalence covers mechanics that can affect learning: pieces, randomizer, spawn/hold, SRS+ movement, DAS/ARR/SDF handling, gravity/lock reset, line/spin detection, attacks, B2B/Surge, combo, cancellation, garbage timing/cap/messiness, top-out, round terminal, and replay. Solo play is an unscored mechanics sandbox; mode score systems are not part of the product.
 
 Accounts, matchmaking rating, official servers, cosmetics, audio, anti-cheat, and unknown network implementation are not engine semantics. Match-between-round progression is excluded unless a later learning objective explicitly needs it. Network delay can be simulated as an explicit arena parameter, but it must not be presented as a copy of hidden production behavior.
 
@@ -29,7 +29,7 @@ UI / CLI / experiment runner
 
 The authoritative engine is a pure state transition `next_state = step(state, ordered_frame_inputs, rules, seed)`. Rendering, clocks, sockets, and learners cannot mutate engine state except through typed commands.
 
-The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization, and held-key IRS/IHS with generic IHS-before-IRS spawn resolution. Its `FrameSession` joins those layers into one continuous transition from ordered input edges through hold, movement/rotation, gravity, lock/line clear and next spawn. The timing state now preserves last successful player action, rotation direction and kick index; the lock transition derives All-Mini+ spin candidates, post-clear perfect clear, lock visibility and typed top-out reasons. `crates/rules-tetrio` is a one-way adapter whose evidence-bearing profile computes observed TL gravity/lock rules, maps the observed All-Mini+ mode and carries normalized player handling. `crates/replay-conformance` captures canonical frame snapshots and returns the first deterministic mismatch without depending on an undocumented upstream wire format. Replay input is validation-only; no visual player/viewer is part of the engine. Versus and learning crates remain subsequent layers. Details are in `PROJECT_Explain_Engine_Core_Phase1.md`, `PROJECT_Explain_Timing_and_Rules_Profile.md`, `PROJECT_Explain_Frame_Session.md`, `PROJECT_Explain_Spin_and_Topout.md`, and `PROJECT_Explain_Replay_Conformance.md`.
+The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization, and held-key IRS/IHS with generic IHS-before-IRS spawn resolution. Its `FrameSession` joins those layers into one continuous transition from ordered input edges through hold, movement/rotation, gravity, lock/line clear and next spawn. The timing state preserves last successful player action, rotation direction and kick index; the lock transition emits a score-free `ClearEvent` containing line count, All-Mini+ spin candidate and post-clear perfect-clear fact, plus lock visibility and typed top-out reasons. `crates/versus` consumes that event and emits ordered integer attack packets for the observed TL base table, multiplier combo, flat B2B, B2B Charging/Surge, perfect clear and garbage-clear special bonus. `crates/rules-tetrio` owns both timing and attack literals with evidence. `crates/replay-conformance` captures canonical frame snapshots and returns the first deterministic mismatch without depending on an undocumented upstream wire format. Replay input is validation-only; no visual player/viewer is part of the engine. Garbage queue, two-player scheduling and learning crates remain subsequent layers. Details include `PROJECT_Explain_Versus_Attack.md`.
 
 ## Core representations
 
@@ -46,8 +46,9 @@ Rules are data-backed profiles layered over shared mechanics:
 
 1. `modern-core`: 10-column field, tetromino geometry, hold, 7-bag, SRS+/180, frame handling.
 2. `tetrio-beta-1_7_8-tl-s2`: Season 2 1v1 All-Mini+, attack, Surge, opener, garbage and round-terminal rules. Values not evidenced by fixtures remain unavailable, not default-guessed.
-3. `40-lines`, `blitz`, `zen-custom`: mode-specific gravity, scoring, goal, and option surfaces.
-4. `quick-play-royale`: deferred independent profile due to height multipliers, targeting, mods, and other non-1v1 behavior.
+3. `solo-sandbox`: unscored single-board survival and transition testing over `modern-core`.
+
+40 LINES, BLITZ, ZEN/custom scoring and QUICK PLAY/ROYALE profiles are excluded from the planned product.
 
 ## Engine/learning boundary
 
@@ -70,6 +71,7 @@ Rust was selected for deterministic low-level control, bit operations, safe para
 - `FrameNormalizer`: converts ordered edges and held state into DAS/ARR/DCD/soft-drop actions plus hold requests; generic spawn processing samples held IHS/IRS in an explicitly provisional IHS→IRS order.
 - `FrameSession`: owns continuous `GameState`, optional live `TimingState`, `HandlingState`, and frame index; a step either advances the current piece, commits a lock/clear and spawns the next piece, or reaches terminal state.
 - `SpinClassifier`: consumes board-before-lock, final piece, last successful player action and profile rules; returns Mini/Full plus rotation provenance without embedding attack values.
+- `AttackResolver`: consumes `ClearEvent`, prior combo/B2B state, garbage-clear context and immutable rules; returns the next state plus ordered Surge, clear and perfect-clear packets without score points or floating point.
 - `TopOutRules`: always reports colliding spawn as `BlockOut`; lock-out variants consume pre-clear lock visibility and are enabled only by an explicit profile.
 - `ReplayAdapter`: version-pinned converter from a verified user-owned upstream sample into canonical edges, handling and snapshots; it is not implemented by guessing an undocumented `.ttrm` schema.
 - `Engine::step`: deterministic and side-effect free except caller-owned state mutation.

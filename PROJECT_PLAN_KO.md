@@ -1,7 +1,7 @@
 # TETR.IO 동등 엔진 및 강화학습 1 대 1 봇 통합 개발 계획서
 
 > 기준일: 2026-08-24
-> 현재 상태: Phase 1 deterministic core와 Phase 2 continuous frame session 구현, target conformance 미완료
+> 현재 상태: deterministic core, score-free solo session과 observed TL 공격 전이 구현, target conformance 미완료
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 
@@ -26,7 +26,7 @@ TETR.IO의 서버 및 내부 소스 코드는 공개되어 있지 않으므로, 
 - seed 기반 7-bag과 piece 순서
 - SRS+ 회전, kick, 180도 회전 및 이동 가능성
 - DAS, ARR, DCD, SDF, gravity, lock delay와 reset
-- line clear, spin, perfect clear와 모드별 점수
+- line clear, spin과 perfect clear를 담은 score-free event
 - 공격량, combo, B2B Charging/Surge와 상쇄
 - garbage 전송, 이동 중 상태, cap, messiness, 삽입 및 hole
 - top-out, 동시 사망, Clutch Clear 및 round terminal
@@ -131,8 +131,9 @@ next_state = step(state, ordered_frame_inputs, rules, seed)
 
 1. `modern-core`: 10열 field, tetromino geometry, hold, 7-bag, SRS+/180도 회전, frame 처리
 2. `tetrio-beta-1_7_8-tl-s2`: Season 2 1 대 1 All-Mini+, 공격, Surge, opener, garbage 및 round-terminal 규칙
-3. `40-lines`, `blitz`, `zen-custom`: 각 모드의 gravity, score, 목표 및 사용자 설정
-4. `quick-play-royale`: 높이 배수, targeting, mod 등 1 대 1과 다른 동작 때문에 별도 후속 profile로 분리
+3. `solo-sandbox`: `modern-core` 위에서 동작하는 무점수 생존·상태 전이 시험 환경
+
+40 LINES, BLITZ, ZEN/custom의 점수·목표 및 QUICK PLAY/ROYALE profile은 제품 범위에서 제외한다.
 
 fixture로 입증되지 않은 필수 값은 임의의 기본값으로 채우지 않으며, 해당 profile을 사용 불가 상태로 둔다.
 
@@ -205,6 +206,7 @@ Rust는 결정론적 저수준 제어, bit 연산, 안전한 병렬 simulation �
 - multiplayer piece 생성은 seed가 있는 7-bag이다.
 - 커뮤니티 protocol 문서가 보고한 입력 순서 `ZLOSIJT`는 replay fixture로 확인하기 전까지 `OBSERVED`다.
 - current-client 추출에서 TL timing option은 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE/line-clear ARE 0, lock time 30, lock resets 15로 두 asset snapshot에 걸쳐 동일했다. 이 값은 `OBSERVED`이며 reference replay 검증 전에는 `CONFIRMED`가 아니다. garbage cap/messiness, frame order, top-out과 mechanics 관련 round parameter는 여전히 `UNCONFIRMED`다.
+- current client의 53개 firepower case에서 normal/Mini/Full attack table, multiplier combo, B2B +1, Surge 3분할, Perfect Clear 5와 garbage-clear +1의 값·순서를 `OBSERVED`로 채웠다. reference differential 전에는 `CONFIRMED`가 아니다.
 
 ### 8.3 Fixture 행렬
 
@@ -217,7 +219,7 @@ Rust는 결정론적 저수준 제어, bit 연산, 안전한 병렬 simulation �
 - combo, B2B 유지·중단, Surge charge/release/split, 첫 14개 piece 상쇄 경계, garbage-clear bonus
 - garbage transit, zero passthrough, 상쇄 순서, cap, packet 경계, hole 반복·변경, 삽입·활성화와 lethal garbage
 - block-out, lock-out, partial lock-out, simultaneous death, Clutch Clear/out-of-bounds 동작, round terminal
-- 40 LINES와 BLITZ의 score, gravity와 종료, custom option serialization, 이후 QUICK PLAY 별도 suite
+- 무점수 solo session 회귀와 TETRA LEAGUE 1 대 1 mechanics만 검증한다. 40 LINES, BLITZ, ZEN/custom scoring과 QUICK PLAY는 제외한다.
 
 ### 8.4 Differential harness
 
@@ -395,15 +397,15 @@ non-learning baseline은 반드시 유지한다.
 
 **통과 조건:** debug와 release의 replay/state hash가 같고 C1 geometry/RNG/movement fixture가 통과해야 한다.
 
-### Phase 2 — Timing 및 solo profile
+### Phase 2 — Timing 및 무점수 solo sandbox
 
 **수행 내용**
 
 - frame 입력 순서, DAS/ARR/SDF, IRS/IHS, gravity, lock/reset, ARE, line-clear delay와 top-out을 구현한다.
-- line/spin/perfect-clear 및 40 LINES, BLITZ, ZEN/custom 점수 profile을 구현한다.
+- line/spin/perfect-clear를 score-free `ClearEvent`로 내보내고 single-board 생존·전이 시험 sandbox를 제공한다. 40 LINES, BLITZ, ZEN/custom 점수 profile은 구현하지 않는다.
 - canonical differential test는 headless로 유지하며 시각적 replay player/viewer는 구현하지 않는다.
 
-**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. `FrameSession`은 이들을 즉시 hold, 이동/회전, gravity/lock, `GameState` line clear와 다음 spawn까지 연속 전이로 연결한다. 마지막 성공 입력과 회전 방향/kick index를 보존하고, All-Mini+의 T corner·immobility 및 non-T immobility 경로, post-clear perfect clear, lock visibility와 typed block/lock/partial-lock out을 구현했다. TL에서 확인되지 않은 lock-out 변형은 기본 비활성이고 exact T kick upgrade 및 Clutch Clear 우선순위는 `UNCONFIRMED`다. `replay-conformance`는 last action과 top-out reason까지 비교한다. 현재 전체 61개 unit test가 통과한다. exact same-frame stage order와 solo scoring은 아직 남아 있다.
+**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. `FrameSession`은 이들을 즉시 hold, 이동/회전, gravity/lock, `GameState` line clear와 다음 spawn까지 연속 전이로 연결한다. 마지막 성공 입력과 회전 방향/kick index를 보존하고, All-Mini+의 T corner·immobility 및 non-T immobility 경로, post-clear perfect clear, score-free `ClearEvent`, lock visibility와 typed block/lock/partial-lock out을 구현했다. TL에서 확인되지 않은 lock-out 변형은 기본 비활성이고 exact T kick upgrade 및 Clutch Clear 우선순위는 `UNCONFIRMED`다. `replay-conformance`는 last action과 top-out reason까지 비교한다. exact same-frame stage order는 아직 남아 있다.
 
 **통과 조건:** timing 경계 fixture와 solo 전체 replay에서 설명되지 않은 차이가 0개여야 한다.
 
@@ -415,6 +417,8 @@ non-learning baseline은 반드시 유지한다.
 - garbage packet transit/cancel/cap/messiness/insertion과 round-terminal rule을 구현한다.
 - 결정론적 2인 scheduling과 명시적인 latency model을 추가한다.
 - 최소화한 사례에 이어 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
+
+**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 부동소수점 없이 계산한다. profile은 `OBSERVED`로 실행 가능하지만 reference conformance 인증은 아니다. incoming garbage, cancellation/insertion, opener double-cancel, 두 player scheduling과 terminal은 남아 있다.
 
 **통과 조건:** 선언된 corpus에 대해 C2~C5가 통과하고 남은 `UNCONFIRMED` 항목과 coverage가 공개되어야 한다.
 
@@ -495,9 +499,9 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. line-clear event category와 40 LINES/BLITZ/사용자 모드 scoring을 구현한다.
-2. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위는 충분한 target fixture로만 확정한다.
-3. attack/B2B/combo/Surge 이후 garbage/round terminal mechanics를 versus layer에 구현한다.
+1. ordered attack packet을 받는 incoming garbage queue, cancellation과 insertion을 구현한다.
+2. opener 14-piece double-cancel, 두 player scheduling과 round terminal을 구현한다.
+3. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위는 충분한 target fixture로만 확정한다.
 4. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
 5. CPU/RAM/GPU 예산을 수치화하고 관련 mechanics conformance 뒤 휴리스틱 기록 생성을 시작한다.
 

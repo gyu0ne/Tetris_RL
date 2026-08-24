@@ -18,4 +18,12 @@ name = "rules-tetrio"
 version = "0.1.0"
 dependencies = [
  "engine-core",
+ "versus",
+]
+
+[[package]]
+name = "versus"
+version = "0.1.0"
+dependencies = [
+ "engine-core",
 ]

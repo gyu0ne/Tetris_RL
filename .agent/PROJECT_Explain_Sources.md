@@ -33,7 +33,7 @@ Use: researched design; current rule literals still require pinned replay/config
 - TETR.IO bot protocol notes: https://github.com/lemoncove/tetrio-bot-docs
   Room options and piece RNG observations. Its README pins the documentation to client 6.2.0 (2022-03-16), so it is historical schema evidence only; values remain `OBSERVED` until current fixtures reproduce them.
 - tetris-analyzes: https://github.com/EdamAme-x/tetris-analyzes
-  - 2026-08-24에는 commit `712dc10`의 extractor를 container에서 실행해 2026-08-10 client asset을 재추출했다. 2026-05 snapshot과 TL option 31개가 동일했으나 reference replay가 없으므로 `OBSERVED`로만 사용한다.
+  - 2026-08-24에는 commit `712dc10`의 extractor를 container에서 실행해 2026-08-10 client asset을 재추출했다. 2026-05 snapshot과 TL option 31개 및 firepower 결과가 동일했고, current asset에서 53개 clear/combo/B2B/All-Clear case를 생성했다. firepower snapshot SHA-256은 `b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b`다. reference replay가 없으므로 `OBSERVED`로만 사용한다.
   Independent current-client extraction and freshness-check idea. Low-adoption implementation candidate, not rule authority.
 - Fan attack calculator: https://github.com/skysomorphic/tetrio-attack-calculator
   Documents extrapolated older formulas and uncertainty; useful specifically as a warning not to copy formulas across versions.

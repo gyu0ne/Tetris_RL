@@ -13,6 +13,16 @@ generated_snapshot_sha256 = "7e0f6ba9ce214a9d2af226e35868031406c6553af4a040c9862
 fixture_id = "client-options-hv-63ab5c7c7-20260824"
 confidence = "OBSERVED"
 
+[provenance.current_firepower]
+asset = "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705"
+extracted_at = "2026-08-24T17:52:00+09:00"
+extractor_repository = "https://github.com/EdamAme-x/tetris-analyzes"
+extractor_revision = "712dc10be43d5a6c54a35b62608ab9f4a2eaa324"
+generated_snapshot_sha256 = "b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b"
+generated_cases = 53
+fixture_id = "client-firepower-hv-63ab5c7c7-20260824"
+confidence = "OBSERVED"
+
 [provenance.previous_client]
 asset = "https://tetr.io/js/tetrio.js?hv=7eebfc9cd.987f91854aad.20260504T210001"
 extracted_at = "2026-05-15T14:42:44+09:00"
@@ -56,6 +66,30 @@ confidence = "OBSERVED"
 
 [handling.note]
 text = "The numeric room handling fields are inactive because room_handling_enforced is false. DAS, ARR, DCD and SDF must be supplied from the player/replay config and must not be treated as TL constants."
+
+[attack]
+normal_clear = [0, 0, 1, 2, 4]
+mini_spin = [0, 0, 1, 2, 4]
+full_spin = [0, 2, 4, 6, 10]
+combo_table = "multiplier"
+combo_increment_numerator = 1
+combo_increment_denominator = 4
+back_to_back_bonus = 1
+back_to_back_charging = true
+back_to_back_charge_at = 4
+back_to_back_charge_base = 0
+perfect_clear_attack = 5
+perfect_clear_back_to_back = 1
+perfect_clear_back_to_back_sends = false
+perfect_clear_back_to_back_dupes = true
+perfect_clear_charges = false
+garbage_clear_special_bonus = 1
+surge_packets = "round(total/3), round(total/3), remainder; zero packets omitted"
+round_mode = "down"
+confidence = "OBSERVED"
+
+[attack.note]
+text = "Solo score points are intentionally absent. The multiplier logarithm is represented by reviewed integer thresholds, and Surge packet order is preserved before the current clear packet."
 
 [conformance]
 timing_values_present = true

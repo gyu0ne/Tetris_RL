@@ -20,7 +20,7 @@
 - garbage 생성·packet·cancel·cap·activation·messiness
 - top-out, simultaneous death, Clutch Clear와 round terminal
 
-round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다. 최소한의 round score나 win condition도 terminal 판정에 필요한 만큼만 포함한다.
+round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다. 승패 조건은 terminal 판정에 필요한 만큼만 포함하며, 누적 점수 체계는 포함하지 않는다.
 
 ## 제외
 
@@ -29,6 +29,7 @@ round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다.
 - shop, achievement, profile, moderation, anti-cheat
 - official server/network infrastructure의 비공개 구현
 - 학습과 무관한 match 사이 progression
+- 40 LINES, BLITZ, ZEN/custom의 점수·목표·기록 체계
 
 네트워크 지연은 local arena parameter로 연구할 수 있으나 TETR.IO 서버 동작의 복제라고 표시하지 않는다. 제외된 기능이 관측·행동·보상에 영향을 준다는 증거가 생기면 영향 범위만 다시 포함한다.
 

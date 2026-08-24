@@ -77,14 +77,16 @@
 
 ### 3.3 line·spin·공격
 
-- combo multiplier는 base attack이 양수일 때 `base × (1 + 0.25 × combo)`로 설명되어 있다. base가 0이고 combo가 2 이상이면 `ln(1 + 1.25 × combo)` 계열을 사용한다. `OBSERVED`
-- TL/일반 multiplayer는 이 결과에 downward/floor rounding을 적용하고 Quick Play의 stochastic rounding과 구별된다. `OBSERVED`
-- B2B를 유지하는 difficult clear는 공격마다 +1을 더하고 charge를 쌓는다. B2Bx4에서 Surge가 4로 시작하고 B2B count에 따라 제한 없이 성장한다. `OBSERVED`, 시작점은 patch note로 `CONFIRMED`
-- B2B를 끊으면 저장한 Surge를 3 packet으로 방출하며 3으로 나누어떨어지지 않는 remainder는 앞 packet부터 배분되는 것으로 문서화되어 있다. `OBSERVED`
+- current public client asset `63ab5c7c7.efa161fa8f91.20260810T191705`에서 53개 firepower case를 재생성했다. snapshot SHA-256은 `b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b`다. 독립 extractor를 거친 client 관찰이므로 `OBSERVED`이며 reference fixture 인증은 아니다.
+- base attack은 normal `[0,0,1,2,4]`, Mini spin `[0,0,1,2,4]`, Full spin `[0,2,4,6,10]`으로 관찰됐다. index는 clear line 수 0~4다. `OBSERVED`
+- combo count가 `c`일 때 양수 attack은 `attack × (1 + 0.25 × (c - 1))`을 적용하고 아래로 내림한다. attack이 0이면 `c > 2`에서 `ln(1 + 1.25 × (c - 1))` minimum과 비교한다. `OBSERVED`
+- authoritative 구현은 logarithm을 직접 실행하지 않고 같은 floor 결과가 처음 나타나는 정수 combo-index 임계표를 사용한다. `OBSERVED`
+- B2B를 유지하는 difficult clear는 공격마다 +1을 더한다. previous B2B가 4를 초과한 상태에서 chain을 끊으면 `previous - 4` Surge를 방출한다. `OBSERVED`, 시작점은 patch note로 `CONFIRMED`
+- Surge 총량 `s`는 `[round(s/3), round(s/3), s - 2×round(s/3)]` 순서로 전송하며 0 packet은 생략한다. 따라서 `s=5`는 `[2,2,1]`, `s=4`는 `[1,1,2]`다. 이 current-client 관찰은 과거의 “remainder front-loading” 설명을 대체한다. `OBSERVED`
 - opener phase는 첫 14 pieces 동안 적용되고, 해당 round에서 이미 보낸 line보다 pending garbage가 많을 때 cancellation power가 두 배가 된다. `OBSERVED`, 도입 사실은 `CONFIRMED`
 - garbage를 포함한 line을 지우는 Quad와 Spin 계열은 flat +1 special bonus를 받는다. multiplier에 의해 확대되지 않는다. `CONFIRMED`
 - All Clear의 공격량은 5다. `CONFIRMED`
-- 정확한 base attack table, combo index 시작점, rounding 적용 순서, bonus와 B2B/Surge 결합 순서는 current fixture와 client-derived snapshot으로 재검증한다. `UNCONFIRMED`
+- current client에서 관찰한 적용 순서는 `B2B/Surge state와 Surge packet → base+B2B → combo floor → garbage-clear +1 → clear packet → Perfect Clear packet`이다. 구현했지만 reference differential 전까지 conformance는 `UNCONFIRMED`다.
 
 ### 3.4 All-Mini+
 
@@ -103,7 +105,9 @@
 - Clutch Clear는 BETA 1.5.0 이후 현재 mechanics에 포함한다. top-out 판정과 next-piece upward displacement의 정확한 경계는 fixture가 필요하다.
 - round 승패, draw/동시 사망과 terminal state는 학습 보상을 결정하므로 포함한다. 반면 rating 계산과 matchmaking은 제외한다.
 
-## 4. Quick Play와 다른 mode의 분리
+## 4. Solo 및 다른 mode의 분리
+
+솔로는 점수 없는 생존·전이 test sandbox만 제공한다. 40 LINES, BLITZ, ZEN/custom 점수와 목표는 학습할 1 대 1 mechanics에 필요하지 않으므로 구현하지 않는다.
 
 Quick Play에는 height multiplier, targeting, mod, garbage activation과 rounding 등 TL 1 대 1과 다른 규칙이 있다. 다음 이유로 core profile에서 제외한다.
 
@@ -122,7 +126,7 @@ Quick Play에는 height multiplier, targeting, mod, garbage activation과 roundi
 - garbage speed, activation, cap, cap increase/max
 - hole generator, messiness, packet merge/split
 - garbage multiplier/increase/margin과 cancel/block 순서
-- exact base attack table의 모든 spin/kick/combo edge case
+- observed attack table·combo threshold·Surge packet order의 reference differential 승격과 exact spin/kick edge case
 - current piece RNG 구현과 seed normalization
 - block-out, lock-out, partial lock-out, simultaneous death의 정확한 우선순위
 - round option과 win condition 중 mechanics에 해당하는 값

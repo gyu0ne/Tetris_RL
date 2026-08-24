@@ -1,6 +1,6 @@
 use crate::{
-    BagOrderError, Board, BoardError, ClearedLines, InitialActions, LastAction, LockVisibility,
-    Orientation, PieceKind, PieceState, RotationResult, SevenBag, SpinOutcome, SpinRules,
+    BagOrderError, Board, BoardError, ClearEvent, ClearedLines, InitialActions, LastAction,
+    LockVisibility, Orientation, PieceKind, PieceState, RotationResult, SevenBag, SpinRules,
     TopOutReason, TopOutRules, classify_spin, reachable_locks, try_rotate,
 };
 use std::collections::VecDeque;
@@ -246,9 +246,8 @@ impl GameState {
 
         Ok(PlacementOutcome {
             cleared: lock.cleared,
-            perfect_clear: lock.perfect_clear,
+            clear: ClearEvent::from_lock(placement.kind, lock.cleared, spin, lock.perfect_clear),
             lock_visibility: lock.visibility,
-            spin,
             top_out: self.is_top_out(),
             top_out_reason: self.top_out,
             next_active: self.active,
@@ -296,9 +295,8 @@ pub struct InitialActionOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlacementOutcome {
     pub cleared: ClearedLines,
-    pub perfect_clear: bool,
+    pub clear: ClearEvent,
     pub lock_visibility: LockVisibility,
-    pub spin: Option<SpinOutcome>,
     pub top_out: bool,
     pub top_out_reason: Option<TopOutReason>,
     pub next_active: PieceState,

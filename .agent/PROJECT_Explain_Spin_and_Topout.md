@@ -67,4 +67,4 @@ Clutch Clear, line-clear와 spawn 충돌의 우선순위 및 next-piece upward d
 - block-out 사유와 선택 가능한 lock-out 변형
 - `rules-tetrio` All-Mini+ profile의 core rule mapping
 
-다음 단계는 line-clear event/scoring이며, exact target spin/top-out edge는 별도의 differential fixture gate로 남는다.
+후속 단계에서 score-free `ClearEvent`와 observed versus attack transition을 구현했다. exact target spin/top-out edge는 별도의 differential fixture gate로 남는다.

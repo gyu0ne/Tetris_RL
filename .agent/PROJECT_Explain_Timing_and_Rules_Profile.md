@@ -84,7 +84,7 @@ generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 
 1. exact target same-frame stage order 검증
 2. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위
-3. line-clear event 및 solo scoring profile
+3. completed: score-free `ClearEvent` and observed TL attack rules; no solo scoring profile is planned
 4. 충분한 기준 상태를 제공하는 fixture가 확보될 때 reference differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
 
 이 설계 완료는 timing/handling 기반의 로컬 실행이 가능하다는 뜻이며, 전체 TETR.IO mechanics 동등성 완료를 뜻하지 않는다.

@@ -9,6 +9,7 @@
 use engine_core::{
     Gravity, HandlingRules, SoftDropMode, SpinRules, TimingConfigError, TimingRules,
 };
+use versus::{AttackConfigError, AttackRules, ComboRule};
 
 pub const TARGET_PROFILE_ID: &str = "tetrio-beta-1.7.8-tetra-league-season-2";
 pub const RESEARCH_ACCESS_DATE: &str = "2026-08-24";
@@ -19,6 +20,32 @@ const WIKI_MECHANICS: &str = "https://tetrio.wiki.gg/wiki/Mechanics";
 const CURRENT_CLIENT_ASSET: &str =
     "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705";
 const CLIENT_OPTIONS_FIXTURE: &str = "client-options-hv-63ab5c7c7-20260824";
+const CLIENT_FIREPOWER_FIXTURE: &str = "client-firepower-hv-63ab5c7c7-20260824";
+
+static MULTIPLIER_ZERO_BASE_THRESHOLDS: [u32; 22] = [
+    2,
+    6,
+    16,
+    43,
+    118,
+    322,
+    877,
+    2_384,
+    6_482,
+    17_621,
+    47_899,
+    130_204,
+    353_930,
+    962_083,
+    2_615_214,
+    7_108_888,
+    19_323_962,
+    52_527_975,
+    142_785_840,
+    388_132_156,
+    1_055_052_587,
+    2_867_930_277,
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Confidence {
@@ -107,6 +134,24 @@ pub struct TimingProfileDraft {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AttackProfileDraft {
+    pub normal_clear: Sourced<[u16; 5]>,
+    pub mini_spin: Sourced<[u16; 5]>,
+    pub full_spin: Sourced<[u16; 5]>,
+    pub combo: Sourced<ComboRule>,
+    pub back_to_back_bonus: Sourced<u16>,
+    pub back_to_back_charging: Sourced<bool>,
+    pub back_to_back_charge_at: Sourced<u32>,
+    pub back_to_back_charge_base: Sourced<u32>,
+    pub perfect_clear_attack: Sourced<u16>,
+    pub perfect_clear_back_to_back: Sourced<u32>,
+    pub perfect_clear_back_to_back_sends: Sourced<bool>,
+    pub perfect_clear_back_to_back_dupes: Sourced<bool>,
+    pub perfect_clear_charges: Sourced<bool>,
+    pub garbage_clear_special_bonus: Sourced<u16>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RoomHandlingProfileDraft {
     pub enforced: Sourced<bool>,
     pub inactive_arr_frames: Sourced<u16>,
@@ -171,6 +216,7 @@ pub struct TetrioRulesDraft {
     pub rotation_system: Sourced<RotationSystem>,
     pub spin_system: Sourced<SpinSystem>,
     pub timing: TimingProfileDraft,
+    pub attack: AttackProfileDraft,
     pub room_handling: RoomHandlingProfileDraft,
 }
 
@@ -235,6 +281,12 @@ impl TetrioRulesDraft {
             Some(CLIENT_OPTIONS_FIXTURE),
             "Wiki documents move/rotation resets; client options independently expose a 15-reset cap.",
         );
+        let client_firepower = Evidence::new(
+            CURRENT_CLIENT_ASSET,
+            Confidence::Observed,
+            Some(CLIENT_FIREPOWER_FIXTURE),
+            "Current client tables and 53 generated clear/combo/B2B/All-Clear cases; snapshot SHA-256 b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b.",
+        );
 
         Self {
             profile_id: TARGET_PROFILE_ID,
@@ -294,6 +346,46 @@ impl TetrioRulesDraft {
                 max_lock_resets: Sourced::new(Some(15), "resets", client_options),
                 reset_on_lateral_move: Sourced::new(Some(true), "boolean", reset_behavior),
                 reset_on_rotation: Sourced::new(Some(true), "boolean", reset_behavior),
+            },
+            attack: AttackProfileDraft {
+                normal_clear: Sourced::new(
+                    Some([0, 0, 1, 2, 4]),
+                    "garbage lines",
+                    client_firepower,
+                ),
+                mini_spin: Sourced::new(Some([0, 0, 1, 2, 4]), "garbage lines", client_firepower),
+                full_spin: Sourced::new(Some([0, 2, 4, 6, 10]), "garbage lines", client_firepower),
+                combo: Sourced::new(
+                    Some(ComboRule::Multiplier {
+                        increment_numerator: 1,
+                        increment_denominator: 4,
+                        zero_base_min_combo_index: &MULTIPLIER_ZERO_BASE_THRESHOLDS,
+                    }),
+                    "integer transition rule",
+                    client_firepower,
+                ),
+                back_to_back_bonus: Sourced::new(Some(1), "garbage lines", client_firepower),
+                back_to_back_charging: Sourced::new(Some(true), "boolean", client_firepower),
+                back_to_back_charge_at: Sourced::new(Some(4), "B2B count", client_firepower),
+                back_to_back_charge_base: Sourced::new(Some(0), "garbage lines", client_firepower),
+                perfect_clear_attack: Sourced::new(Some(5), "garbage lines", client_firepower),
+                perfect_clear_back_to_back: Sourced::new(Some(1), "B2B count", client_firepower),
+                perfect_clear_back_to_back_sends: Sourced::new(
+                    Some(false),
+                    "boolean",
+                    client_firepower,
+                ),
+                perfect_clear_back_to_back_dupes: Sourced::new(
+                    Some(true),
+                    "boolean",
+                    client_firepower,
+                ),
+                perfect_clear_charges: Sourced::new(Some(false), "boolean", client_firepower),
+                garbage_clear_special_bonus: Sourced::new(
+                    Some(1),
+                    "garbage lines",
+                    client_firepower,
+                ),
             },
             room_handling: RoomHandlingProfileDraft {
                 enforced: Sourced::new(Some(false), "boolean", client_options),
@@ -357,12 +449,62 @@ impl TetrioRulesDraft {
     pub fn try_timing_rules(self) -> Result<TimingRules, ProfileActivationError> {
         self.try_timing_profile()?.core_rules_at_frame(0)
     }
+
+    pub fn missing_required_attack_fields(self) -> Vec<&'static str> {
+        required_attack_fields(self.attack)
+            .into_iter()
+            .filter_map(|(name, value_present, _)| (!value_present).then_some(name))
+            .collect()
+    }
+
+    pub fn attack_conformance_blockers(self) -> Vec<&'static str> {
+        required_attack_fields(self.attack)
+            .into_iter()
+            .filter_map(|(name, _, evidence)| {
+                (evidence.confidence != Confidence::Confirmed || evidence.fixture_id.is_none())
+                    .then_some(name)
+            })
+            .collect()
+    }
+
+    pub fn try_attack_rules(self) -> Result<AttackRules, ProfileActivationError> {
+        let missing = self.missing_required_attack_fields();
+        if !missing.is_empty() {
+            return Err(ProfileActivationError::MissingRequiredFields(missing));
+        }
+
+        let rules = AttackRules {
+            normal_clear: required(self.attack.normal_clear.value)?,
+            mini_spin: required(self.attack.mini_spin.value)?,
+            full_spin: required(self.attack.full_spin.value)?,
+            combo: required(self.attack.combo.value)?,
+            back_to_back_bonus: required(self.attack.back_to_back_bonus.value)?,
+            back_to_back_charging: required(self.attack.back_to_back_charging.value)?,
+            back_to_back_charge_at: required(self.attack.back_to_back_charge_at.value)?,
+            back_to_back_charge_base: required(self.attack.back_to_back_charge_base.value)?,
+            perfect_clear_attack: required(self.attack.perfect_clear_attack.value)?,
+            perfect_clear_back_to_back: required(self.attack.perfect_clear_back_to_back.value)?,
+            perfect_clear_back_to_back_sends: required(
+                self.attack.perfect_clear_back_to_back_sends.value,
+            )?,
+            perfect_clear_back_to_back_dupes: required(
+                self.attack.perfect_clear_back_to_back_dupes.value,
+            )?,
+            perfect_clear_charges: required(self.attack.perfect_clear_charges.value)?,
+            garbage_clear_special_bonus: required(self.attack.garbage_clear_special_bonus.value)?,
+        };
+        rules
+            .validate()
+            .map_err(ProfileActivationError::InvalidAttackConfiguration)?;
+        Ok(rules)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProfileActivationError {
     MissingRequiredFields(Vec<&'static str>),
     InvalidTimingConfiguration(TimingConfigError),
+    InvalidAttackConfiguration(AttackConfigError),
     ZeroTickRate,
     TimingArithmeticOverflow,
     InternalValidationInvariant,
@@ -442,6 +584,81 @@ fn required_timing_fields(timing: TimingProfileDraft) -> [(&'static str, bool, E
             "timing.reset_on_rotation",
             timing.reset_on_rotation.value.is_some(),
             timing.reset_on_rotation.evidence,
+        ),
+    ]
+}
+
+fn required_attack_fields(attack: AttackProfileDraft) -> [(&'static str, bool, Evidence); 14] {
+    [
+        (
+            "attack.normal_clear",
+            attack.normal_clear.value.is_some(),
+            attack.normal_clear.evidence,
+        ),
+        (
+            "attack.mini_spin",
+            attack.mini_spin.value.is_some(),
+            attack.mini_spin.evidence,
+        ),
+        (
+            "attack.full_spin",
+            attack.full_spin.value.is_some(),
+            attack.full_spin.evidence,
+        ),
+        (
+            "attack.combo",
+            attack.combo.value.is_some(),
+            attack.combo.evidence,
+        ),
+        (
+            "attack.back_to_back_bonus",
+            attack.back_to_back_bonus.value.is_some(),
+            attack.back_to_back_bonus.evidence,
+        ),
+        (
+            "attack.back_to_back_charging",
+            attack.back_to_back_charging.value.is_some(),
+            attack.back_to_back_charging.evidence,
+        ),
+        (
+            "attack.back_to_back_charge_at",
+            attack.back_to_back_charge_at.value.is_some(),
+            attack.back_to_back_charge_at.evidence,
+        ),
+        (
+            "attack.back_to_back_charge_base",
+            attack.back_to_back_charge_base.value.is_some(),
+            attack.back_to_back_charge_base.evidence,
+        ),
+        (
+            "attack.perfect_clear_attack",
+            attack.perfect_clear_attack.value.is_some(),
+            attack.perfect_clear_attack.evidence,
+        ),
+        (
+            "attack.perfect_clear_back_to_back",
+            attack.perfect_clear_back_to_back.value.is_some(),
+            attack.perfect_clear_back_to_back.evidence,
+        ),
+        (
+            "attack.perfect_clear_back_to_back_sends",
+            attack.perfect_clear_back_to_back_sends.value.is_some(),
+            attack.perfect_clear_back_to_back_sends.evidence,
+        ),
+        (
+            "attack.perfect_clear_back_to_back_dupes",
+            attack.perfect_clear_back_to_back_dupes.value.is_some(),
+            attack.perfect_clear_back_to_back_dupes.evidence,
+        ),
+        (
+            "attack.perfect_clear_charges",
+            attack.perfect_clear_charges.value.is_some(),
+            attack.perfect_clear_charges.evidence,
+        ),
+        (
+            "attack.garbage_clear_special_bonus",
+            attack.garbage_clear_special_bonus.value.is_some(),
+            attack.garbage_clear_special_bonus.evidence,
         ),
     ]
 }
@@ -529,7 +746,8 @@ mod tests {
         Confidence, PLAYER_HANDLING_SCHEMA_VERSION, PlayerHandlingProfile, TARGET_PROFILE_ID,
         TetrioRulesDraft,
     };
-    use engine_core::{SoftDropMode, SpinMode};
+    use engine_core::{ClearEvent, PieceKind, SoftDropMode, SpinMode};
+    use versus::{AttackContext, AttackPacketKind, AttackState, resolve_attack};
 
     #[test]
     fn observed_target_has_no_missing_timing_literals_and_activates() {
@@ -623,5 +841,34 @@ mod tests {
 
         assert_eq!(spin.mode, SpinMode::AllMiniPlus);
         assert_eq!(spin.t_full_kick_upgrade_mask, 0);
+    }
+
+    #[test]
+    fn observed_attack_profile_activates_and_carries_current_fixture() {
+        let profile = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2();
+        let rules = profile
+            .try_attack_rules()
+            .expect("attack profile activates");
+        let outcome = resolve_attack(
+            AttackState::default(),
+            ClearEvent::new(PieceKind::I, 4, None, true),
+            AttackContext::default(),
+            rules,
+        )
+        .expect("quad perfect clear attack");
+
+        assert!(profile.missing_required_attack_fields().is_empty());
+        assert_eq!(profile.attack.normal_clear.value, Some([0, 0, 1, 2, 4]));
+        assert_eq!(
+            profile.attack.combo.evidence.fixture_id,
+            Some("client-firepower-hv-63ab5c7c7-20260824")
+        );
+        assert_eq!(outcome.total_attack(), 10);
+        assert_eq!(outcome.packets.as_slice()[0].kind, AttackPacketKind::Clear);
+        assert_eq!(
+            outcome.packets.as_slice()[1].kind,
+            AttackPacketKind::PerfectClear
+        );
+        assert!(!profile.attack_conformance_blockers().is_empty());
     }
 }

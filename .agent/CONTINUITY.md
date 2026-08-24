@@ -13,6 +13,7 @@
 - 2026-08-24T16:57:14+09:00 [USER] Continue engine work and clarify whether frame-level validation requires obtaining a real TETR.IO replay.
 - 2026-08-24T17:19:31+09:00 [USER] Supplied one raw replay fixture and clarified that replay playback is unnecessary; use replay data only where it validates engine mechanics.
 - 2026-08-24T17:38:13+09:00 [USER] Continue engine implementation and prefer implementation over new web research where the required mechanics are already evidenced.
+- 2026-08-24T18:07:05+09:00 [USER] Exclude 40 LINES and BLITZ scoring; retain only an unscored solo test mode and 1v1 versus play, then continue implementation.
 
 ## [DECISIONS]
 
@@ -46,6 +47,9 @@
 - 2026-08-24T17:38:13+09:00 [CODE] Reuse the existing source ledger for this milestone: last-action state, post-clear emptiness and typed top-out are engine invariants, while existing BETA 1.5.0 evidence supports provisional All-Mini+ paths. No new web research was needed.
 - 2026-08-24T17:38:13+09:00 [CODE] Preserve rotation provenance across automatic gravity and zero-distance hard drop; only a successful player translation or a hard drop that changes rows replaces it.
 - 2026-08-24T17:38:13+09:00 [CODE] Externalize T Mini-to-Full kick upgrades as an explicit mask and leave the target provisional mask at zero; keep lock-out/partial-lock-out configurable but disabled by default. Exact kick, Clutch Clear and top-out priority remain UNCONFIRMED rather than guessed.
+- 2026-08-24T18:07:05+09:00 [CODE] Supersede the staged 40 LINES/BLITZ/ZEN/custom score profiles with one score-free solo sandbox; mode scoring is excluded unless the user explicitly restores it.
+- 2026-08-24T18:07:05+09:00 [CODE] Normalize lock results into `engine-core::ClearEvent` and keep all attack literals/state in `versus` plus `rules-tetrio`; score points are absent from both interfaces.
+- 2026-08-24T18:07:05+09:00 [CODE] Convert the current client multiplier logarithm to reviewed integer combo-index thresholds and preserve observed packet order `Surge -> clear -> Perfect Clear`; no floating point enters authoritative attack transitions.
 
 ## [PROGRESS]
 
@@ -88,6 +92,11 @@
 - 2026-08-24T17:38:13+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 61 unit tests and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:38:13+09:00 [TOOL] Fresh non-persistent code-graph indexing found 905 nodes and 2,634 edges; `classify_spin` and `lock_placement_with_action` form new engine-core clusters while rules/replay dependencies still point inward to the core leaf.
 - 2026-08-24T17:39:46+09:00 [CODE] Created local commit `0436545` (`feat: add spin and top-out classification`) containing the verified provenance, spin, perfect-clear and typed top-out mechanics plus synchronized design documents; no push was performed.
+- 2026-08-24T18:07:05+09:00 [TOOL] Regenerated 53 firepower cases from current public client asset `63ab5c7c7.efa161fa8f91.20260810T191705` using `tetris-analyzes` revision `712dc10`; snapshot SHA-256 is `b92d2446e42752a8ba86d873696a83cee0d99223d4bdafc1355a22cabbb3206b` and only source identity differs from the 2026-05 fixture.
+- 2026-08-24T18:07:05+09:00 [CODE] Added score-free `ClearEvent`, the new `versus` crate, fixed-capacity ordered attack packets, checked combo/B2B counters, integer multiplier thresholds, B2B Charging/Surge, separate Perfect Clear and garbage-clear special bonus.
+- 2026-08-24T18:07:05+09:00 [CODE] Extended the evidence-bearing TL profile and TOML record with base attack tables, combo, B2B/Surge and Perfect Clear fields plus the current firepower fixture; created `PROJECT_Explain_Versus_Attack.md` and synchronized scope/architecture/plan/research documents.
+- 2026-08-24T18:09:28+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, all 71 unit tests, optimized release build and Python 3.13 parsing of the versioned TOML record; `git diff --check` passed.
+- 2026-08-24T18:09:28+09:00 [TOOL] Fresh non-persistent code-graph indexing found 1,054 nodes and 3,112 edges; `resolve_attack` is isolated in `versus`, depends inward on score-free core events, and is consumed by the evidence-bearing rules test with no learning or rendering dependency.
 
 ## [DISCOVERIES]
 
@@ -111,6 +120,8 @@
 - 2026-08-24T17:19:31+09:00 [TOOL] The fixture has monotonic frame/subframe input events but no per-frame board checkpoints. It can regress parser/normalization assumptions or final aggregates, but frame-exact local board conformance needs separate reference observations and TL-specific mechanics need a TL fixture.
 - 2026-08-24T17:38:13+09:00 [TOOL] Tests confirm that moving hard drop replaces rotation provenance while zero-distance hard drop preserves it; this prevents a final-position rotation from being erased solely by the lock command.
 - 2026-08-24T17:38:13+09:00 [CODE] Perfect clear can be determined without a mode constant by checking the compacted board after clear. In contrast, exact T kick upgrade and Clutch Clear/top-out ordering are profile behavior and remain fixture-gated.
+- 2026-08-24T18:07:05+09:00 [TOOL] Direct current-client inspection contradicts the earlier remainder-front-loading note: Surge `s` uses `[round(s/3), round(s/3), s-2*round(s/3)]` with zero packets omitted, so 5 becomes `[2,2,1]` and 4 becomes `[1,1,2]`.
+- 2026-08-24T18:07:05+09:00 [TOOL] Current-client ordering sends Surge packets while breaking B2B, then the current clear packet, then a separate Perfect Clear packet; garbage-clear difficult bonus increments the already rounded clear attack by one.
 
 ## [OUTCOMES]
 
@@ -123,3 +134,4 @@
 - 2026-08-24T17:01:23+09:00 [CODE] Supersede the IRS/IHS-and-first-divergence-not-started status: generic IRS/IHS, normalized player handling and canonical replay differential reporting are implemented and verified. A user-owned version-identified replay sample is now required only to implement the upstream adapter and certify target frame order; spin/top-out, lock/clear integration and versus mechanics still precede demonstration generation.
 - 2026-08-24T17:19:31+09:00 [CODE] Supersede the lock/clear-integration-not-started and replay-sample-required statuses: a verified continuous generic frame session now advances multiple pieces through lock, line clear and next spawn, and the supplied BLITZ replay is retained only as anonymized validation metadata. No replay player was built. Next engine work is last-action/kick metadata, All-Mini+ spin, perfect clear, exact top-out and versus mechanics before heuristic data generation.
 - 2026-08-24T17:38:13+09:00 [CODE] Supersede the last-action/spin/perfect-clear-not-started status: the continuous engine now emits rotation provenance, All-Mini+ candidate classification, perfect clear, lock visibility and typed top-out. Exact target kick/top-out edges and solo scoring remain before versus attack/garbage and heuristic data generation.
+- 2026-08-24T18:07:05+09:00 [CODE] Supersede the solo-scoring and versus-attack-not-started statuses: solo is intentionally unscored, while observed TL clear/combo/B2B/Surge/Perfect-Clear attack transitions now execute with ordered packets. Incoming garbage/cancellation/insertion, opener double-cancel, two-player scheduling and round terminal remain before heuristic data generation.

@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T17:34:50+09:00
+Last updated: 2026-08-24T18:00:13+09:00
 
 ## 1. Authority and scope
 
@@ -10,6 +10,7 @@ Last updated: 2026-08-24T17:34:50+09:00
 - The initial conformance target is `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`, pending capture of authoritative replay/config fixtures. A later upstream patch does not silently change the target.
 - Equivalence covers only mechanics that can change legal actions/reachability, observable state transitions, attack/garbage behavior, or round-terminal reward. Accounts, rating, matchmaking, UI/audio/cosmetics, anti-cheat, and undisclosed service infrastructure are excluded.
 - Round/top-out/simultaneous-death/Clutch-Clear semantics remain in scope because they determine terminal reward. Match-level progression stays out of scope unless an explicit learning objective needs it.
+- Solo play is an unscored engine sandbox for survival, transition inspection, and bot smoke tests. 40 LINES, BLITZ, ZEN/custom scoring and goal profiles are excluded unless the user explicitly restores them.
 - The current multiplayer spin target is `All-Mini+`, introduced in BETA 1.5.0. Historical Season 2 `All-Mini` behavior must not be used as the current default.
 
 ## 2. Required repository structure
@@ -64,11 +65,13 @@ research/            # experiment manifests and generated reports, not code
 - Core state transitions use integer/fixed-point frame units. Floating-point is forbidden in authoritative game-state transitions.
 - Spin classification must use the last successful player action plus rotation direction/kick index. Automatic gravity does not erase rotation provenance; a hard drop erases it only when it actually translates the piece.
 - Perfect clear is evaluated from the board after line compaction. Block-out, lock-out and partial lock-out remain distinct typed outcomes; unconfirmed target variants must stay disabled rather than being guessed.
+- `engine-core::ClearEvent` contains only transition facts. Attack/B2B/combo/Surge and ordered attack packets belong to `versus`; solo score points must not leak into either layer.
+- Authoritative attack transitions use integers only. Any upstream floating-point formula must be converted to reviewed integer thresholds or exact rationals and checked against generated fixtures.
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
 - Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.
 - Conformance changes require golden fixtures and differential tests before merge. “Looks/feels the same” is not evidence.
-- Required mode profiles are staged: common modern core; TETRA LEAGUE Season 2 1v1; 40 LINES; BLITZ; ZEN/custom. QUICK PLAY/ROYALE is a separate profile because its rules differ materially.
+- Required profiles are staged: common modern core, unscored solo sandbox, and TETRA LEAGUE Season 2 1v1. 40 LINES, BLITZ, ZEN/custom scoring, and QUICK PLAY/ROYALE are out of scope.
 - A candidate feature is in conformance scope when it changes legal action/reachability, observation/transition/RNG, attack/garbage timing, or round terminal. Convenience tooling and service presentation are not conformance features.
 
 ## 5. Learning and reward rules

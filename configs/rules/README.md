@@ -6,3 +6,4 @@
 - `CONFIRMED` 승격에는 기준 replay/config와 differential fixture ID가 필요하다.
 - `room_handling = false`인 mode의 ARR/DAS/SDF는 player-specific input이며 mode 고정값으로 사용하지 않는다.
 - client-derived record는 asset hash/version, 추출 시각, extractor revision과 snapshot hash를 함께 기록한다.
+- solo score points는 record에 넣지 않는다. attack record는 1 대 1 terminal에 영향을 주는 base/combo/B2B/Surge/Perfect-Clear/garbage-clear 값과 ordered packet 규칙만 보존한다.

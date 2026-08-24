@@ -4,6 +4,7 @@ members = [
     "crates/engine-core",
     "crates/replay-conformance",
     "crates/rules-tetrio",
+    "crates/versus",
 ]
 
 [workspace.package]

@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod board;
+mod clear;
 mod game;
 mod handling;
 mod piece;
@@ -21,6 +22,7 @@ mod topout;
 pub use board::{
     Board, BoardError, ClearedLines, HEIGHT, LockResult, LockVisibility, VISIBLE_HEIGHT, WIDTH,
 };
+pub use clear::ClearEvent;
 pub use game::{
     GameConfig, GameError, GameState, HoldOutcome, InitialActionOutcome, PlacementOutcome,
     SpawnRules,

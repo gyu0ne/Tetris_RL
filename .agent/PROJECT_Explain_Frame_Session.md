@@ -45,4 +45,4 @@
 
 ## 5. 남은 conformance 작업
 
-연속 상태 전이와 generic last-action/spin/perfect-clear/typed-top-out 기반은 완료됐지만 전체 mechanics는 아직 완료되지 않았다. 다음 단계는 line-clear event/scoring과 versus attack/garbage/round terminal이다. exact T kick upgrade, Clutch Clear/top-out priority와 generic same-frame stage order는 충분한 기준 state가 있는 target fixture로 별도 검증한다.
+연속 상태 전이와 generic last-action/spin/perfect-clear/typed-top-out 기반은 완료됐고, lock 결과는 score-free `ClearEvent`로 versus 계층에 전달된다. observed attack/B2B/combo/Surge도 구현됐으며 다음 단계는 garbage queue/cancellation/insertion과 round terminal이다. exact T kick upgrade, Clutch Clear/top-out priority와 generic same-frame stage order는 충분한 기준 state가 있는 target fixture로 별도 검증한다.

@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: Phase 1 core and Phase 2 spin/perfect-clear/typed-top-out foundation implemented; exact kick/top-out boundaries, scoring and versus remain
+Current state: score-free solo mechanics and observed TL attack/B2B/combo/Surge implemented; garbage, round terminal and exact conformance edges remain
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -24,13 +24,13 @@ Progress: workspace/container, bitboard, geometry, generic MINSTD 7-bag, configu
 
 Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/movement conformance C1 passes.
 
-## Phase 2 — Timing and solo profiles
+## Phase 2 — Timing and unscored solo sandbox
 
 - Implement per-frame input ordering, DAS/ARR/SDF, IRS/IHS, gravity, lock/reset, ARE/line-clear delay and top-out semantics.
-- Add line/spin/perfect-clear detection and scoring profiles for 40 LINES, BLITZ and ZEN/custom.
+- Emit score-free line/spin/perfect-clear events and expose a single-board survival/test sandbox. Do not implement 40 LINES, BLITZ or ZEN/custom scoring/goal profiles.
 - Keep canonical differential tests headless; a visual replay player/viewer is not required for engine conformance.
 
-Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, configurable lock/reset-cap transitions, held-key IRS/IHS and generic IHS→IRS spawn application are implemented. `FrameSession` connects normalization, immediate hold, timing, gravity/lock, `GameState` placement/line clear and next spawn across multiple pieces. Timing preserves last successful action and rotation kick provenance. The lock path classifies observed All-Mini+ T/non-T cases, detects post-clear perfect clear, distinguishes lock visibility and reports typed block/lock/partial-lock out. Unconfirmed lock-out variants are configurable but disabled by default. TETRA LEAGUE does not enforce room handling, so `PlayerHandlingProfile` is a separate normalized input record. `replay-conformance` compares canonical state including last action and top-out reason. The workspace has 61 passing unit tests. Exact target stage ordering, T kick-index upgrade, Clutch Clear/top-out priority and solo scoring remain.
+Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, configurable lock/reset-cap transitions, held-key IRS/IHS and generic IHS→IRS spawn application are implemented. `FrameSession` connects normalization, immediate hold, timing, gravity/lock, `GameState` placement/line clear and next spawn across multiple pieces. Timing preserves last successful action and rotation kick provenance. The lock path classifies observed All-Mini+ T/non-T cases, detects post-clear perfect clear, emits score-free `ClearEvent`, distinguishes lock visibility and reports typed block/lock/partial-lock out. Unconfirmed lock-out variants are configurable but disabled by default. TETRA LEAGUE does not enforce room handling, so `PlayerHandlingProfile` is a separate normalized input record. `replay-conformance` compares canonical state including last action and top-out reason. Exact target stage ordering, T kick-index upgrade and Clutch Clear/top-out priority remain.
 
 Exit gate: timing boundary fixtures and solo full replays have zero unexplained divergence.
 
@@ -41,6 +41,8 @@ Exit gate: timing boundary fixtures and solo full replays have zero unexplained 
 - Differential-test minimized cases, then at least 10,000 randomized seeded cases.
 
 Exit gate: conformance C2–C5 pass for the declared corpus. Publish coverage and remaining `UNCONFIRMED` cases.
+
+Progress: `crates/versus` now implements integer-only observed TL base attacks, multiplier combo, flat B2B, B2B Charging/Surge with current-client three-packet ordering, separate perfect-clear packets and post-rounding garbage-clear +1. The profile is executable as `OBSERVED`, not conformance-certified. Opener cancellation, incoming garbage state/cancellation/insertion, two-player scheduling and terminal rules remain.
 
 ## Phase 4 — Bot arena and strong baselines
 
@@ -95,9 +97,9 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Add explicit line-clear event categories and mode scoring, keeping attack calculation out of `engine-core`.
-2. Resolve exact T kick-index upgrade and Clutch Clear/top-out priority only from a suitable target fixture; keep current provisional boundaries labeled.
-3. Implement attack/B2B/combo/Surge and then garbage/round-terminal mechanics in the versus layer.
+1. Implement incoming garbage packets, cancellation and insertion around the ordered attack packets already emitted by `versus`.
+2. Add opener-phase double cancellation and deterministic two-player scheduling, then round terminal.
+3. Resolve exact T kick-index upgrade and Clutch Clear/top-out priority only from a suitable target fixture; keep current provisional boundaries labeled.
 4. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
 5. Inventory CPU cores, RAM and GPU/VRAM before performance work, and do not generate heuristic training records until relevant mechanics pass conformance.
 

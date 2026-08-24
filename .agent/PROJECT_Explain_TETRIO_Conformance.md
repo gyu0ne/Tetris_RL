@@ -1,7 +1,7 @@
 # TETR.IO Conformance Strategy
 
-Status: mechanics scope settled; canonical first-divergence harness implemented; upstream replay adapter and target fixtures pending
-Date: 2026-08-24T16:57:14+09:00
+Status: mechanics scope settled; canonical first-divergence harness and observed attack fixtures implemented; reference target fixtures pending
+Date: 2026-08-24T18:00:13+09:00
 
 ## Meaning of equivalence
 
@@ -31,6 +31,7 @@ Conflicts are resolved upward in this hierarchy. Version/date differences are in
 - Default rotation is SRS+, not optional SRS-X.
 - Multiplayer piece generation uses a seeded 7-bag; community protocol documentation reports the input order `ZLOSIJT`, which must be confirmed by replay fixtures before becoming `CONFIRMED`.
 - Current TL timing literals are populated as stable client-derived `OBSERVED` values, while exact frame semantics, garbage cap/messiness/multiplier, top-out, and mechanics-related round parameters remain fixture-gated.
+- Current TL firepower literals and ordering are populated from 53 regenerated client-derived cases: base clear/spin tables, multiplier combo, flat B2B, B2B Charging/Surge splitting, separate All Clear 5 and garbage-clear +1. They remain `OBSERVED` until reference differential fixtures pass.
 
 ## Fixture matrix
 
@@ -43,7 +44,7 @@ Each row becomes a minimal replay plus expected event/state hashes:
 - Combo values, B2B continuation/break, Surge charge/release/splitting, first-14-piece cancellation boundary, garbage-clear bonus.
 - Garbage transit, zero-passthrough behavior, cancellation order, cap, packet boundaries, hole repetition/change, insertion/activation and lethal garbage.
 - Block-out/lock-out/partial lock-out/top-out, simultaneous deaths, Clutch Clear/out-of-bounds behavior, and round terminal.
-- 40 LINES and BLITZ scoring/gravity/finish; custom option serialization; later, QUICK PLAY as a separate suite.
+- Unscored solo survival/session regression and TETRA LEAGUE 1v1 only. 40 LINES, BLITZ, ZEN/custom scoring and QUICK PLAY are excluded.
 
 Boundary tests use `n-1`, `n`, and `n+1` frames/pieces/lines for every threshold.
 
