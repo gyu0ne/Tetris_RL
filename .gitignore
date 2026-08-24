@@ -1,0 +1,51 @@
+# Rust build and profiling output
+/target/
+**/*.rs.bk
+*.pdb
+*.profraw
+*.profdata
+/coverage/
+/flamegraph.svg
+
+# Python environments, caches, and coverage
+/.venv/
+**/__pycache__/
+*.py[cod]
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+.coverage
+/htmlcov/
+
+# Generated learning data and model artifacts
+/datasets/
+/checkpoints/
+/artifacts/
+/runs/
+/wandb/
+/tensorboard/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.parquet
+*.arrow
+
+# Local secrets and machine-specific overrides
+.env
+.env.*
+!.env.example
+*.local.toml
+*.local.json
+
+# Editors and operating systems
+/.vscode/
+/.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp

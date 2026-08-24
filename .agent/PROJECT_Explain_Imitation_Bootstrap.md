@@ -1,0 +1,74 @@
+# 휴리스틱 기록 기반 모방학습 Bootstrap
+
+상태: 조사 기반 설계 완료, 구현 미착수
+
+결정일: `2026-08-24`
+
+## 결정
+
+강화학습 전에 heuristic/search teacher가 생성한 대량의 state-candidate-action 기록으로 기본 모델을 pretrain한다. 다만 one-shot behavior cloning을 최종 정책으로 사용하지 않고, 다음 순서를 채택한다.
+
+```text
+검증된 mechanics
+  -> 여러 heuristic/search teacher와 상대 pool
+  -> 후보 전체 점수 포함 trajectory dataset
+  -> behavior cloning + value/rank distillation
+  -> learner rollout 상태에 teacher를 다시 질의하는 dataset aggregation
+  -> terminal 승패 목적의 self-play RL fine-tuning
+```
+
+## 근거
+
+- 2010년 Tetris imitation 연구는 placement 선택을 classification으로 변환해 서로 다른 인간 style을 모방할 수 있음을 보였다. 다만 오래된 별도 환경이므로 TL 성능 근거는 아니다.
+- DAgger는 learner의 행동이 이후 state distribution을 바꿔 독립적인 demonstration만으로 학습한 정책의 오류가 누적되는 문제를 다룬다.
+- DQfD는 supervised demonstration loss와 temporal-difference 학습을 함께 사용해 초기 학습을 가속할 수 있음을 보였다. variable afterstate action을 쓰는 이 프로젝트에 알고리즘을 그대로 복사하지 않고 원리만 적용한다.
+- Tetris CBMPI 연구는 강한 기존 policy가 방문한 state와 rollout 비교를 이용한 classification/policy improvement가 sample-efficient한 기준선이 될 수 있음을 보였다.
+- 여러 수준의 teacher를 섞으면 약한 행동까지 동등하게 모방할 위험이 있으므로 teacher identity, strength와 state별 margin을 보존한다.
+
+## 데이터 원칙
+
+- 선택 행동 하나만 저장하지 않고 모든 legal afterstate token, teacher score, rank와 top-2 margin을 저장한다.
+- `rules_hash`, engine revision, seed, player side, opponent, teacher weight/search budget hash, observation/action schema version을 필수 provenance로 둔다.
+- split은 row 단위가 아니라 seed와 match 단위로 분리한다.
+- deterministic tie 하나만 반복하지 않도록 여러 teacher weight/style, node budget과 tie seed를 사용한다.
+- solo heuristic 기록은 board feature bootstrap에만 사용한다. 최종 base policy는 attack/garbage/상대 상태가 있는 1 대 1 teacher 기록으로 다시 학습한다.
+- dataset/checkpoint 본체는 저장소에 commit하지 않고 manifest, schema, 생성 config와 검증 report만 commit한다.
+
+## 손실과 단계
+
+1. teacher top action에 대한 cross-entropy 기준선을 만든다.
+2. near-tie에서 과도하게 확신하지 않도록 candidate score를 temperature soft target 또는 pairwise/listwise rank loss로 distill한다.
+3. teacher rollout의 terminal outcome/search value로 value head를 pretrain하되 reward shaping label을 섞지 않는다.
+4. learner를 local engine에서 rollout하고 learner가 방문한 state에 teacher label을 추가한다.
+5. dataset aggregation 뒤 closed-loop strength가 개선될 때만 RL 초기 checkpoint로 승격한다.
+6. RL 단계에서는 imitation loss를 별도 ablation하고 점차 줄이거나 demonstration replay 비율을 제어한다.
+
+## 데이터 규모 게이트
+
+처음부터 막연히 수억 건을 만들지 않는다.
+
+- smoke: `100k` decisions, schema·determinism·loader 검증
+- pilot: `1M` decisions, teacher mix와 BC architecture 비교
+- medium: `10M` decisions, dataset aggregation과 held-out strength 확인
+- large: 이전 단계의 strength-per-byte/second 개선이 확인된 경우만 승인
+
+실제 수치는 simulator와 storage benchmark 뒤 experiment config에서 확정한다.
+
+## 평가
+
+offline top-1 accuracy만으로 채택하지 않는다.
+
+- held-out seed/match의 top-1, top-k, KL/rank correlation
+- teacher action과 다른 경우의 teacher score regret
+- closed-loop teacher·scripted·held-out style 상대 승률
+- learner rollout에서의 illegal/unreachable action 0건
+- inference latency, dataset bytes/decision, generation decisions/s
+- BC only, BC+aggregation, terminal-only RL, BC→RL의 paired comparison
+
+## 실패 방지
+
+- **teacher ceiling:** RL과 search improvement가 teacher를 넘어설 경로를 유지한다.
+- **covariate shift:** learner-state aggregation을 필수로 둔다.
+- **약한 teacher 오염:** teacher strength/margin 기반 sampling과 ablation을 사용한다.
+- **style collapse:** 공격·downstack·B2B 유지·안전형 teacher를 분리하고 style별 평가한다.
+- **잘못된 mechanics 대량 증폭:** target conformance gate 전에는 정식 dataset을 만들지 않는다.

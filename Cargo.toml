@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/engine-core", "crates/rules-tetrio"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+repository = "https://github.com/gyu0ne/Tetris_RL"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+all = "warn"

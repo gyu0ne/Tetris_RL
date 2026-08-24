@@ -1,0 +1,6 @@
+.git
+.codebase-memory
+target
+checkpoints
+datasets
+*.html
