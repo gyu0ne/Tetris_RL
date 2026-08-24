@@ -78,6 +78,7 @@
 - 2026-08-24T17:19:31+09:00 [CODE] Added an anonymized BLITZ replay manifest while keeping the raw export Git-ignored; updated RULE, README, Korean plan, architecture, execution, timing and replay documents, and created `PROJECT_Explain_Frame_Session.md` to record the validation-only boundary and settled session design.
 - 2026-08-24T17:19:31+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 48 unit tests, optimized release build and parsing of both TOML records; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:19:31+09:00 [TOOL] Fresh non-persistent code-graph indexing found 828 nodes and 2,241 edges; `FrameSession::step` is indexed as the new engine-core orchestration boundary while external dependency direction remains into the engine-core leaf.
+- 2026-08-24T17:21:03+09:00 [CODE] Created local commit `4ec7026` (`feat: integrate continuous frame session`) containing the verified session transitions, replay-validation-only boundary, anonymized BLITZ manifest and synchronized design documents; no push was performed.
 
 ## [DISCOVERIES]
 
