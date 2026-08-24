@@ -13,6 +13,10 @@ Use: researched design; current rule literals still require pinned replay/config
   Public service API scope; not treated as an engine specification.
 - TETR.IO terms: https://tetr.io/about/terms/
   Confirms the online service boundary. This project does not automate the service.
+- TETR.IO file format specs: https://github.com/tetrio/tetrio-format-specs
+  The official repository currently specifies RSD audio data but no `.ttr`/`.ttrm` replay schema. The project therefore requires a user-owned sample before implementing a version-pinned adapter.
+- TETR.IO issue #608: https://github.com/tetrio/issues/issues/608
+  Historical feature request mentioning raw `.ttrm` replay downloads. It is not a current format/API specification and does not authorize internal API access.
 - TETR.IO Wiki mechanics: https://tetrio.wiki.gg/wiki/Mechanics
   Current SRS+/SRS-X, combo/B2B, spins and attack explanations; secondary/community-maintained even when citing maintainer material.
 - TETRA LEAGUE page: https://tetrio.wiki.gg/wiki/TETRA_LEAGUE

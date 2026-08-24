@@ -10,6 +10,7 @@
 - 2026-08-24T15:53:39+09:00 [USER] Begin engine implementation and research a pre-RL bootstrap that generates many heuristic Tetris records for imitation learning.
 - 2026-08-24T16:05:13+09:00 [USER] Continue engine implementation; configure `https://github.com/gyu0ne/Tetris_RL` as the Git remote, strengthen ignore rules, and create local commits where possible.
 - 2026-08-24T16:28:38+09:00 [USER] Continue implementation and research enough current evidence to fill as many empty mechanics values as possible.
+- 2026-08-24T16:57:14+09:00 [USER] Continue engine work and clarify whether frame-level validation requires obtaining a real TETR.IO replay.
 
 ## [DECISIONS]
 
@@ -34,6 +35,9 @@
 - 2026-08-24T16:28:38+09:00 [CODE] Treat TETRA LEAGUE room handling and effective player handling separately because the extracted profile has `room_handling=false`; inactive room ARR/DAS/SDF metadata must not become mode constants.
 - 2026-08-24T16:28:38+09:00 [CODE] Define ordered-edge/DAS/ARR/DCD/sonic-drop normalization as a deterministic generic contract, not an exact TETR.IO stage-order claim; IRS/IHS and target ordering remain fixture-gated.
 - 2026-08-24T16:28:38+09:00 [CODE] Keep the gravity schedule on one fixed rational denominator across all frames; reducing each frame independently would reinterpret the existing accumulator remainder when gravity changes and corrupt deterministic fall timing.
+- 2026-08-24T16:57:14+09:00 [CODE] Define reference replay input as a user-owned/exported replay plus version-identified reference observations; prohibit internal authenticated API collection and keep raw replay files out of Git.
+- 2026-08-24T16:57:14+09:00 [CODE] Do not guess the undocumented `.ttrm` wire format. Compare an engine-neutral canonical frame trace now and implement a version-pinned upstream adapter only after inspecting an actual sample.
+- 2026-08-24T16:57:14+09:00 [CODE] Implement deterministic generic spawn handling in IHS-then-IRS order while retaining exact TETR.IO sampling/stage order as fixture-gated and UNCONFIRMED.
 
 ## [PROGRESS]
 
@@ -61,6 +65,10 @@
 - 2026-08-24T16:37:31+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, all 38 unit tests, optimized release build, and parsing of the observed TOML profile; `git diff --check` and the repository trailing-whitespace scan also passed.
 - 2026-08-24T16:37:31+09:00 [TOOL] Fresh code-graph indexing found 696 nodes and 1,753 edges; the dependency direction remains one-way from `rules-tetrio` to the `engine-core` leaf mechanics layer.
 - 2026-08-24T16:37:31+09:00 [CODE] Created local commit `b478dbb` (`feat: add observed TL timing and input handling`) containing the researched profile, handling normalizer, tests, source records, and synchronized design documents; no push was performed.
+- 2026-08-24T16:57:14+09:00 [CODE] Added held rotation/hold tracking, `InitialActions`, generic IHS→IRS application, normalized `PlayerHandlingProfile`, and a new `replay-conformance` crate that reports the first frame/component mismatch.
+- 2026-08-24T16:57:14+09:00 [CODE] Added replay privacy/schema guidance, ignored raw `.ttr`/`.ttrm` files, and created `PROJECT_Explain_Replay_Conformance.md`; synchronized architecture, execution, timing, sources, research, rules, README and Korean project plan.
+- 2026-08-24T17:01:23+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, 45 unit tests with 0 failures, and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
+- 2026-08-24T17:01:23+09:00 [TOOL] Fresh code-graph indexing found 793 nodes and 2,071 edges; Cargo manifests preserve `engine-core` as the dependency leaf while both rules and replay conformance consume its typed mechanics API.
 
 ## [DISCOVERIES]
 
@@ -79,6 +87,7 @@
 - 2026-08-24T16:05:13+09:00 [TOOL] The requested repository had no configured remote and every project file was untracked; no persistent `.codebase-memory` artifact existed, so the baseline commit can include all source/docs while generated caches remain excluded.
 - 2026-08-24T16:28:38+09:00 [TOOL] The current client-derived TL timing values are stable across two asset versions and agree with the Wiki's 500 ms lock and move/rotation reset description, but no reference replay proves margin-boundary or same-frame execution order; confidence remains `OBSERVED`.
 - 2026-08-24T16:28:38+09:00 [TOOL] Current TL exposes inactive room handling fallbacks ARR 2/DAS 10/SDF 6 while `room_handling=false`; using those numbers as every player's effective handling would change reachability and be incorrect.
+- 2026-08-24T16:57:14+09:00 [TOOL] The official `tetrio/tetrio-format-specs` repository currently specifies RSD sound data but no replay schema; official issue #608 is only a historical user feature request mentioning raw `.ttrm`, not a current API/format specification.
 
 ## [OUTCOMES]
 
@@ -88,3 +97,4 @@
 - 2026-08-24T15:53:39+09:00 [CODE] Supersede the previous implementation-not-started status: the first deterministic core is implemented and verified. Phase 1 target conformance is not complete; next work is versioned rules/fixtures followed by timing-aware input, lock and spin mechanics before versus and dataset generation.
 - 2026-08-24T16:05:13+09:00 [CODE] The generic frame timing and evidence-bearing rules-profile foundation are implemented and verified. Target TL activation remains intentionally blocked by six unconfirmed timing literals; raw handling normalization, replay fixtures, spin/top-out and versus mechanics remain before heuristic dataset generation.
 - 2026-08-24T16:28:38+09:00 [CODE] Supersede the six-empty-literal status: the observed TL timing profile is complete and locally executable, including gravity progression and generic handling normalization. It is not conformance-certified; player handling serialization, IRS/IHS, replay stage-order fixtures, spin/top-out and versus mechanics remain before demonstration generation.
+- 2026-08-24T17:01:23+09:00 [CODE] Supersede the IRS/IHS-and-first-divergence-not-started status: generic IRS/IHS, normalized player handling and canonical replay differential reporting are implemented and verified. A user-owned version-identified replay sample is now required only to implement the upstream adapter and certify target frame order; spin/top-out, lock/clear integration and versus mechanics still precede demonstration generation.

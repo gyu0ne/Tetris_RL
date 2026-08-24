@@ -1,4 +1,4 @@
-use crate::{FrameInput, HEIGHT, WIDTH};
+use crate::{FrameInput, HEIGHT, RotationDirection, WIDTH};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputButton {
@@ -9,6 +9,7 @@ pub enum InputButton {
     RotateClockwise,
     RotateCounterclockwise,
     RotateHalf,
+    Hold,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,6 +95,10 @@ pub struct HandlingState {
     das_elapsed: u16,
     arr_elapsed: u16,
     dcd_remaining: u16,
+    hold_held: bool,
+    rotation_held: [bool; 3],
+    rotation_pressed_at: [u64; 3],
+    input_sequence: u64,
 }
 
 impl HandlingState {
@@ -106,6 +111,10 @@ impl HandlingState {
             das_elapsed: 0,
             arr_elapsed: 0,
             dcd_remaining: 0,
+            hold_held: false,
+            rotation_held: [false; 3],
+            rotation_pressed_at: [0; 3],
+            input_sequence: 0,
         }
     }
 
@@ -127,6 +136,26 @@ impl Default for HandlingState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NormalizedFrame {
     pub actions: Vec<FrameInput>,
+    pub hold_requested: bool,
+}
+
+/// Held initial actions sampled when a new piece spawns.
+///
+/// The generic contract resolves IHS before IRS. Whether TETR.IO samples these
+/// keys before or after other same-frame stages remains replay-fixture-gated.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InitialActions {
+    pub hold_requested: bool,
+    pub rotation: Option<RotationDirection>,
+}
+
+impl InitialActions {
+    pub const fn new(hold_requested: bool, rotation: Option<RotationDirection>) -> Self {
+        Self {
+            hold_requested,
+            rotation,
+        }
+    }
 }
 
 /// Converts ordered input edges and held state into ordered discrete actions.
@@ -141,6 +170,7 @@ pub fn normalize_frame(
 ) -> NormalizedFrame {
     let mut actions = Vec::new();
     let mut horizontal_pressed = false;
+    let mut hold_requested = false;
 
     for edge in edges {
         match (edge.button, edge.kind) {
@@ -168,37 +198,87 @@ pub fn normalize_frame(
             (InputButton::SoftDrop, InputEdgeKind::Release) => state.soft_drop_held = false,
             (InputButton::HardDrop, InputEdgeKind::Press) => actions.push(FrameInput::HardDrop),
             (InputButton::RotateClockwise, InputEdgeKind::Press) => {
+                press_rotation(state, RotationDirection::Clockwise);
                 actions.push(FrameInput::RotateClockwise);
                 state.dcd_remaining = rules.dcd_frames;
             }
             (InputButton::RotateCounterclockwise, InputEdgeKind::Press) => {
+                press_rotation(state, RotationDirection::Counterclockwise);
                 actions.push(FrameInput::RotateCounterclockwise);
                 state.dcd_remaining = rules.dcd_frames;
             }
             (InputButton::RotateHalf, InputEdgeKind::Press) => {
+                press_rotation(state, RotationDirection::Half);
                 actions.push(FrameInput::RotateHalf);
                 state.dcd_remaining = rules.dcd_frames;
             }
-            (
-                InputButton::HardDrop
-                | InputButton::RotateClockwise
-                | InputButton::RotateCounterclockwise
-                | InputButton::RotateHalf,
-                InputEdgeKind::Release,
-            ) => {}
+            (InputButton::Hold, InputEdgeKind::Press) => {
+                state.hold_held = true;
+                hold_requested = true;
+            }
+            (InputButton::RotateClockwise, InputEdgeKind::Release) => {
+                release_rotation(state, RotationDirection::Clockwise);
+            }
+            (InputButton::RotateCounterclockwise, InputEdgeKind::Release) => {
+                release_rotation(state, RotationDirection::Counterclockwise);
+            }
+            (InputButton::RotateHalf, InputEdgeKind::Release) => {
+                release_rotation(state, RotationDirection::Half);
+            }
+            (InputButton::Hold, InputEdgeKind::Release) => state.hold_held = false,
+            (InputButton::HardDrop, InputEdgeKind::Release) => {}
         }
     }
 
     advance_horizontal(state, rules, horizontal_pressed, &mut actions);
     append_soft_drop(state, rules, &mut actions);
 
-    NormalizedFrame { actions }
+    NormalizedFrame {
+        actions,
+        hold_requested,
+    }
 }
 
 /// Applies the documented DCD spawn pause while retaining held directions and
 /// their accumulated DAS charge.
 pub fn on_piece_spawn(state: &mut HandlingState, rules: HandlingRules) {
     state.dcd_remaining = rules.dcd_frames;
+}
+
+/// Samples held IHS/IRS inputs and applies the documented generic spawn DCD.
+pub fn initial_actions_on_spawn(state: &mut HandlingState, rules: HandlingRules) -> InitialActions {
+    on_piece_spawn(state, rules);
+    InitialActions::new(state.hold_held, active_rotation(state))
+}
+
+fn press_rotation(state: &mut HandlingState, direction: RotationDirection) {
+    state.input_sequence = state.input_sequence.saturating_add(1);
+    let index = rotation_index(direction);
+    state.rotation_held[index] = true;
+    state.rotation_pressed_at[index] = state.input_sequence;
+}
+
+fn release_rotation(state: &mut HandlingState, direction: RotationDirection) {
+    state.rotation_held[rotation_index(direction)] = false;
+}
+
+fn active_rotation(state: &HandlingState) -> Option<RotationDirection> {
+    [
+        RotationDirection::Clockwise,
+        RotationDirection::Counterclockwise,
+        RotationDirection::Half,
+    ]
+    .into_iter()
+    .filter(|direction| state.rotation_held[rotation_index(*direction)])
+    .max_by_key(|direction| state.rotation_pressed_at[rotation_index(*direction)])
+}
+
+const fn rotation_index(direction: RotationDirection) -> usize {
+    match direction {
+        RotationDirection::Clockwise => 0,
+        RotationDirection::Counterclockwise => 1,
+        RotationDirection::Half => 2,
+    }
 }
 
 fn activate_horizontal(state: &mut HandlingState, direction: HorizontalDirection) {
@@ -284,10 +364,10 @@ fn append_soft_drop(state: &HandlingState, rules: HandlingRules, actions: &mut V
 #[cfg(test)]
 mod tests {
     use super::{
-        HandlingRules, HandlingState, InputButton, InputEdge, SoftDropMode, normalize_frame,
-        on_piece_spawn,
+        HandlingRules, HandlingState, InputButton, InputEdge, SoftDropMode,
+        initial_actions_on_spawn, normalize_frame, on_piece_spawn,
     };
-    use crate::{FrameInput, HEIGHT, WIDTH};
+    use crate::{FrameInput, HEIGHT, RotationDirection, WIDTH};
 
     fn rules(das: u16, arr: u16, dcd: u16) -> HandlingRules {
         HandlingRules::new(das, arr, dcd, SoftDropMode::Disabled)
@@ -395,5 +475,50 @@ mod tests {
                 .iter()
                 .all(|action| *action == FrameInput::SoftDropCell)
         );
+    }
+
+    #[test]
+    fn hold_press_is_exposed_to_the_game_layer() {
+        let mut state = HandlingState::new();
+        let result = normalize_frame(
+            &mut state,
+            rules(10, 2, 0),
+            &[InputEdge::press(InputButton::Hold)],
+        );
+
+        assert!(result.hold_requested);
+        assert!(result.actions.is_empty());
+    }
+
+    #[test]
+    fn held_initial_actions_use_the_most_recent_rotation() {
+        let mut state = HandlingState::new();
+        let timing = rules(10, 2, 3);
+        normalize_frame(
+            &mut state,
+            timing,
+            &[
+                InputEdge::press(InputButton::RotateClockwise),
+                InputEdge::press(InputButton::RotateHalf),
+                InputEdge::press(InputButton::Hold),
+            ],
+        );
+
+        let initial = initial_actions_on_spawn(&mut state, timing);
+        assert!(initial.hold_requested);
+        assert_eq!(initial.rotation, Some(RotationDirection::Half));
+        assert_eq!(state.dcd_remaining(), 3);
+
+        normalize_frame(
+            &mut state,
+            timing,
+            &[
+                InputEdge::release(InputButton::RotateHalf),
+                InputEdge::release(InputButton::Hold),
+            ],
+        );
+        let released = initial_actions_on_spawn(&mut state, timing);
+        assert!(!released.hold_requested);
+        assert_eq!(released.rotation, Some(RotationDirection::Clockwise));
     }
 }

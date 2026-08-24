@@ -63,9 +63,8 @@ impl TimingRules {
 /// Discrete actions already normalized into their execution order for one frame.
 ///
 /// Held-key interpretation (DAS/ARR/DCD), IRS/IHS buffering, and same-frame
-/// conflict resolution belong to the versioned rules layer. The timing kernel
-/// consumes the resulting ordered action list without inventing an upstream
-/// order.
+/// conflict resolution occur before this timing kernel. It consumes the
+/// resulting ordered action list without inventing an upstream order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrameInput {
     MoveLeft,

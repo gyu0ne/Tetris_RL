@@ -1,17 +1,17 @@
 # Frame Timing, Handling 및 Rules Profile 설계 설명
 
-상태: client-derived observed profile과 generic handling normalizer 구현 완료
-기준 시각: `2026-08-24T16:28:38+09:00`
+상태: client-derived observed profile, generic handling normalizer 및 IRS/IHS 기반 구현 완료
+기준 시각: `2026-08-24T16:57:14+09:00`
 
 ## 1. 목적과 책임 분리
 
 이번 단계는 기하학적 배치 엔진에 결정론적 frame timing과 raw input normalization을 추가하고, TETR.IO room mechanics와 player-specific handling을 분리한다.
 
 - `engine-core::timing`: 주어진 유리수 gravity와 ordered action을 적용하고 lock timer/reset을 갱신한다.
-- `engine-core::handling`: ordered input edge와 held state를 generic DAS/ARR/DCD/soft-drop action으로 바꾼다.
+- `engine-core::handling`: ordered input edge와 held state를 generic DAS/ARR/DCD/soft-drop action 및 hold request로 바꾸고 spawn 시 held IRS/IHS를 샘플링한다.
 - `rules-tetrio`: target version, mode, 값, 단위, 출처, confidence와 snapshot/fixture ID를 보존한다.
-- 후속 target adapter: player handling, IRS/IHS와 정확한 TETR.IO stage order를 replay fixture에서 공급한다.
-- 후속 replay/conformance 계층: frame별 state와 event를 reference replay에 비교한다.
+- `replay-conformance`: upstream wire format과 독립된 canonical frame snapshot을 비교해 최초 divergence를 반환한다.
+- 후속 target adapter: 실제 player handling의 원본 단위 변환과 정확한 TETR.IO stage order를 replay fixture에서 공급한다.
 
 generic normalizer의 순서는 결정론적 개발 contract다. exact TETR.IO stage order가 입증됐다는 뜻은 아니다.
 
@@ -70,18 +70,20 @@ generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 - ARR 0의 board-width bounded instant shift
 - rotation과 spawn의 DCD pause, 기존 DAS charge 유지
 - finite soft drop과 sonic drop을 hard drop과 분리
+- hold request를 timing action과 분리해 game layer에 전달
+- held rotation/hold을 spawn에서 샘플링하고 generic IHS→IRS 순서로 적용
 
-IRS/IHS, fractional handling, OS event sampling과 target stage order는 아직 fixture-gated다.
+`PlayerHandlingProfile`은 변환이 끝난 DAS/ARR/DCD/SDF를 프레임 단위로 보존한다. 원본 리플레이/UI 값의 단위 변환, fractional handling, OS event sampling과 exact target stage order는 아직 fixture-gated다. 현재 IHS→IRS 순서는 결정론적 generic contract이며 TETR.IO 인증값이 아니다.
 
 ## 6. 검증과 남은 작업
 
-현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, DAS/ARR/DCD 경계, ARR 0 및 sonic drop을 검사한다.
+현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. `replay-conformance`는 동일 trace, 정확한 board row divergence, timing mismatch와 trace 길이 mismatch를 구분한다.
 
 남은 핵심 작업은 다음과 같다.
 
-1. player/replay handling config schema와 serialization
-2. IRS/IHS 및 spawn/hold buffer
-3. timing/handling과 `GameState` lock/clear/replay event 연결
+1. user-owned `.ttrm` sample에 맞춘 version-pinned upstream adapter와 원본 단위 변환
+2. exact target same-frame stage order 검증
+3. timing/handling과 `GameState` lock/clear transition 연결
 4. last-action/kick metadata, spin/top-out
 5. reference replay differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
 

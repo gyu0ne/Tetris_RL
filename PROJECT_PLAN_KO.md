@@ -391,7 +391,7 @@ non-learning baseline은 반드시 유지한다.
 - bitboard field, piece geometry, seedable RNG/7-bag, spawn/hold/queue, SRS+ 및 reachable placement 열거를 구현한다.
 - unit, property, golden, fuzz test와 step/collision/clear/afterstate benchmark를 작성한다.
 
-**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, MINSTD 기반 generic 7-bag, configurable spawn/hold/queue, 공개 자료 기반 SRS+/180 candidate, geometric reachable-lock BFS가 구현되었다. 이어서 유리수 frame gravity, lock delay/reset cap, client-derived gravity schedule과 근거를 가진 `rules-tetrio` profile을 구현했다. 필수 timing literal은 모두 `OBSERVED`로 채워 실행 가능하지만 replay conformance blockers는 유지한다. 현재 전체 38개 unit test가 통과한다. spawn/RNG/kick/timing literal은 reference fixture 전까지 target conformance로 확정하지 않는다.
+**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, MINSTD 기반 generic 7-bag, configurable spawn/hold/queue, 공개 자료 기반 SRS+/180 candidate, geometric reachable-lock BFS가 구현되었다. 이어서 유리수 frame gravity, lock delay/reset cap, client-derived gravity schedule과 근거를 가진 `rules-tetrio` profile을 구현했다. 필수 timing literal은 모두 `OBSERVED`로 채워 실행 가능하지만 replay conformance blockers는 유지한다. spawn/RNG/kick/timing literal은 reference fixture 전까지 target conformance로 확정하지 않는다.
 
 **통과 조건:** debug와 release의 replay/state hash가 같고 C1 geometry/RNG/movement fixture가 통과해야 한다.
 
@@ -403,7 +403,7 @@ non-learning baseline은 반드시 유지한다.
 - line/spin/perfect-clear 및 40 LINES, BLITZ, ZEN/custom 점수 profile을 구현한다.
 - 엔진 state 밖에 진단용 최소 CLI/replay viewer를 만든다.
 
-**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer도 추가했다. TL의 `room_handling=false` 때문에 개인 DAS/ARR/DCD/SDF는 고정 mode 값에서 분리된다. IRS/IHS, exact same-frame stage order, spin/top-out과 replay 연결은 아직 남아 있다.
+**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. TL의 `room_handling=false` 때문에 개인 DAS/ARR/DCD/SDF는 `PlayerHandlingProfile`로 분리된다. `replay-conformance`는 canonical frame trace의 최초 divergence를 component 단위로 보고한다. 현재 전체 45개 unit test가 통과한다. exact same-frame stage order, upstream replay adapter, timing/game lock 연결 및 spin/top-out은 아직 남아 있다.
 
 **통과 조건:** timing 경계 fixture와 solo 전체 replay에서 설명되지 않은 차이가 0개여야 한다.
 
@@ -495,9 +495,9 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. 대표 TETR.IO replay/config export를 확보해 현재 `OBSERVED` timing literal과 exact frame order를 fixture로 승격한다.
-2. generic normalizer에 player/replay handling config serialization, IRS/IHS와 target stage-order adapter를 추가한다.
-3. timing/handling state를 lock/line-clear/replay state transition과 연결하고 최초 divergence를 보고하는 fixture manifest를 만든다.
+1. 사용자가 소유한 대표 TETR.IO replay/config export 1개를 확보하고 exact structure와 client asset을 기록한다.
+2. sample에 고정된 upstream replay→canonical trace adapter와 target stage-order adapter를 추가한다.
+3. timing/handling state를 lock/line-clear transition과 연결하고 구현된 최초 divergence reporter로 fixture를 실행한다.
 4. CPU core, RAM, GPU/VRAM을 조사해 engine throughput과 bot inference budget을 수치로 선언한다.
 5. spin/attack/garbage/round terminal conformance를 통과한 뒤 휴리스틱 기록 생성을 시작한다.
 
@@ -509,6 +509,8 @@ non-learning baseline은 반드시 유지한다.
 
 - [TETR.IO 공식 patch note](https://tetr.io/about/patchnotes/): Season 2, garbage, rotation 및 timing 변경의 우선 근거
 - [TETR.IO FAQ mechanics](https://github.com/tetrio/faq/blob/main/mechanics.html): DAS/ARR/DCD/SDF 등 공개 handling 설명
+- [TETR.IO 공식 file format specs](https://github.com/tetrio/tetrio-format-specs): 현재 공개 명세가 RSD에 한정되고 replay wire format은 없음을 확인
+- [TETR.IO issue #608](https://github.com/tetrio/issues/issues/608): raw `.ttrm` 공개 download endpoint의 역사적 요청. 현재 API/format 명세로 취급하지 않음
 - [TETR.IO API 문서](https://tetr.io/about/api/): 공개 서비스 API 범위 확인용이며 engine specification으로 취급하지 않음
 - [TETR.IO 이용 약관](https://tetr.io/about/terms/): online service와 local project의 경계 확인
 - [TETR.IO Wiki Mechanics](https://tetrio.wiki.gg/wiki/Mechanics): SRS+/SRS-X, combo/B2B, spin과 공격 설명의 2차 자료

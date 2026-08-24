@@ -71,7 +71,7 @@
 - ARR 0은 수평 이동을 즉시 벽까지 적용하고, DAS는 ARR 반복 전의 hold 시간이다. `OBSERVED`
 - DCD는 회전과 spawn 때 이미 충전된 DAS를 설정 frame만큼 멈춘다. `OBSERVED`
 - SDF infinity는 충돌 직전까지 즉시 내리는 sonic drop이며 hard drop처럼 즉시 lock하는 동작과 구별한다. `OBSERVED`
-- IRS/IHS의 buffer 시점, 같은 frame 입력 충돌, spawn→gravity→input→lock의 정확한 순서는 differential fixture가 필요하다. `UNCONFIRMED`
+- held-key IRS/IHS와 generic IHS→IRS spawn 순서는 구현됐지만, 실제 buffer 시점, 같은 frame 입력 충돌, spawn→gravity→input→lock의 정확한 순서는 differential fixture가 필요하다. generic 구현은 `PROVISIONAL`, target 의미는 `UNCONFIRMED`
 
 정책이 배치만 선택하더라도 move generator가 실제 handling/time budget에서 도달 불가능한 배치를 허용하면 학습 문제가 달라진다. 따라서 “기하학적으로 가능한 배치”와 “profile상 도달 가능한 입력 경로”를 분리해 검증한다.
 
@@ -118,7 +118,7 @@ Quick Play에는 height multiplier, targeting, mod, garbage activation과 roundi
 다음은 공개 자료만으로 `BETA 1.7.8 / TL S2`의 exact 실행 의미 또는 conformance를 확정하지 못했다.
 
 - client-derived gravity/ARE/lock literal의 reference replay 승격과 margin 경계의 정확한 적용 frame
-- player handling 값, IRS/IHS buffer와 입력 frame/stage order
+- player handling 원본 값·단위 변환, IRS/IHS buffer와 입력 frame/stage order의 target 승격
 - garbage speed, activation, cap, cap increase/max
 - hole generator, messiness, packet merge/split
 - garbage multiplier/increase/margin과 cancel/block 순서
@@ -137,6 +137,8 @@ Quick Play에는 height multiplier, targeting, mod, garbage activation과 roundi
 - 동일 match의 room/config export와 client/version 식별자
 - input frame, piece sequence, board snapshot, attack/garbage event, KO/round event
 - 가능한 경우 current client가 실제 사용한 table의 hash가 포함된 snapshot
+
+공식 `tetrio-format-specs`에는 현재 replay schema가 없으므로 user-owned sample 없이 `.ttrm` field를 추측하지 않는다. 원본은 Git에서 제외하고 asset/version에 고정된 adapter로 익명화 canonical trace를 만든다.
 
 ### 6.2 최소 fixture 축
 

@@ -1,6 +1,6 @@
 use crate::{
-    BagOrderError, Board, BoardError, ClearedLines, Orientation, PieceKind, PieceState, SevenBag,
-    reachable_locks,
+    BagOrderError, Board, BoardError, ClearedLines, InitialActions, Orientation, PieceKind,
+    PieceState, RotationResult, SevenBag, reachable_locks, try_rotate,
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -147,6 +147,48 @@ impl GameState {
         })
     }
 
+    /// Applies the generic spawn contract in IHS-then-IRS order.
+    ///
+    /// Exact TETR.IO same-frame sampling order is intentionally left to the
+    /// versioned replay-conformance layer.
+    pub fn apply_initial_actions(
+        &mut self,
+        actions: InitialActions,
+    ) -> Result<InitialActionOutcome, GameError> {
+        self.ensure_playable()?;
+
+        let hold_applied = if actions.hold_requested && self.hold_available {
+            self.hold_active()?;
+            true
+        } else {
+            false
+        };
+
+        if self.top_out {
+            return Ok(InitialActionOutcome {
+                active: self.active,
+                hold_applied,
+                rotation: None,
+                top_out: true,
+            });
+        }
+
+        let rotation = actions
+            .rotation
+            .and_then(|direction| try_rotate(&self.board, self.active, direction));
+        if let Some(result) = rotation {
+            self.active = result.state;
+        }
+        self.top_out = self.board.collides(self.active);
+
+        Ok(InitialActionOutcome {
+            active: self.active,
+            hold_applied,
+            rotation,
+            top_out: self.top_out,
+        })
+    }
+
     pub fn lock_placement(&mut self, placement: PieceState) -> Result<PlacementOutcome, GameError> {
         self.ensure_playable()?;
         if placement.kind != self.active.kind {
@@ -202,6 +244,14 @@ impl GameState {
 pub struct HoldOutcome {
     pub held: PieceKind,
     pub active: PieceState,
+    pub top_out: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InitialActionOutcome {
+    pub active: PieceState,
+    pub hold_applied: bool,
+    pub rotation: Option<RotationResult>,
     pub top_out: bool,
 }
 
@@ -262,6 +312,7 @@ impl std::error::Error for GameError {}
 #[cfg(test)]
 mod tests {
     use super::{GameConfig, GameError, GameState};
+    use crate::{InitialActions, Orientation, RotationDirection};
 
     #[test]
     fn queue_has_configured_preview_length() {
@@ -284,6 +335,25 @@ mod tests {
             .expect("reachable placement locks");
         assert!(game.hold_available());
         game.hold_active().expect("hold resets after lock");
+    }
+
+    #[test]
+    fn initial_hold_is_resolved_before_initial_rotation() {
+        let mut game = GameState::new(29, GameConfig::default()).expect("valid game");
+        let outgoing = game.active().kind;
+        let incoming = game.preview()[0];
+        let result = game
+            .apply_initial_actions(InitialActions::new(
+                true,
+                Some(RotationDirection::Clockwise),
+            ))
+            .expect("initial actions apply");
+
+        assert!(result.hold_applied);
+        assert_eq!(game.hold(), Some(outgoing));
+        assert_eq!(result.active.kind, incoming);
+        assert_eq!(result.active.orientation, Orientation::Right);
+        assert!(result.rotation.is_some());
     }
 
     #[test]

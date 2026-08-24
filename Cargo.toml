@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/engine-core", "crates/rules-tetrio"]
+members = [
+    "crates/engine-core",
+    "crates/replay-conformance",
+    "crates/rules-tetrio",
+]
 
 [workspace.package]
 edition = "2024"

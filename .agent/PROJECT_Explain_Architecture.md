@@ -1,7 +1,7 @@
 # Project Architecture
 
-Status: initial major design completed; deterministic core, observed timing profile and generic handling normalizer implemented
-Date: 2026-08-24T16:28:38+09:00
+Status: initial major design completed; deterministic core, observed timing, IRS/IHS and canonical replay differential foundation implemented
+Date: 2026-08-24T16:57:14+09:00
 
 ## Goal boundary
 
@@ -29,7 +29,7 @@ UI / CLI / experiment runner
 
 The authoritative engine is a pure state transition `next_state = step(state, ordered_frame_inputs, rules, seed)`. Rendering, clocks, sockets, and learners cannot mutate engine state except through typed commands.
 
-The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, and generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization. `crates/rules-tetrio` is a one-way adapter layer whose evidence-bearing profile computes observed TL gravity and lock rules while keeping replay conformance status separate. Versus, replay and learning crates remain subsequent layers. Details are in `PROJECT_Explain_Engine_Core_Phase1.md` and `PROJECT_Explain_Timing_and_Rules_Profile.md`.
+The implemented `crates/engine-core` contains row bitboards, piece geometry, a generic seeded bag, configurable spawn/hold/queue, observed SRS+/180 rotations, geometric reachability, a float-free frame timing kernel, generic ordered-edge/DAS/ARR/DCD/sonic-drop normalization, and held-key IRS/IHS with generic IHS-before-IRS spawn resolution. `crates/rules-tetrio` is a one-way adapter whose evidence-bearing profile computes observed TL gravity/lock rules and carries normalized player handling. `crates/replay-conformance` captures canonical frame snapshots and returns the first deterministic mismatch without depending on an undocumented upstream wire format. Versus and learning crates remain subsequent layers. Details are in `PROJECT_Explain_Engine_Core_Phase1.md`, `PROJECT_Explain_Timing_and_Rules_Profile.md`, and `PROJECT_Explain_Replay_Conformance.md`.
 
 ## Core representations
 
@@ -67,7 +67,8 @@ Rust was selected for deterministic low-level control, bit operations, safe para
 ## Non-negotiable interfaces
 
 - `RulesProfile`: immutable/versioned; refuses missing required evidence-backed fields.
-- `FrameNormalizer`: the generic implementation converts ordered edges and held state into discrete DAS/ARR/DCD/soft-drop actions; a later target adapter supplies player handling, IRS/IHS and exact TETR.IO stage ordering from fixtures.
+- `FrameNormalizer`: converts ordered edges and held state into DAS/ARR/DCD/soft-drop actions plus hold requests; generic spawn processing samples held IHS/IRS in an explicitly provisional IHS→IRS order.
+- `ReplayAdapter`: version-pinned converter from a verified user-owned upstream sample into canonical edges, handling and snapshots; it is not implemented by guessing an undocumented `.ttrm` schema.
 - `Engine::step`: deterministic and side-effect free except caller-owned state mutation.
 - `Engine::legal_afterstates`: same reachability logic used by the input planner.
 - `Replay::verify`: detects the first divergent frame and state component.

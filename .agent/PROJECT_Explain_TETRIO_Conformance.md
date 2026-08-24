@@ -1,7 +1,7 @@
 # TETR.IO Conformance Strategy
 
-Status: mechanics scope and test strategy settled; rule constants pending evidence
-Date: 2026-08-24T15:05:44+09:00
+Status: mechanics scope settled; canonical first-divergence harness implemented; upstream replay adapter and target fixtures pending
+Date: 2026-08-24T16:57:14+09:00
 
 ## Meaning of equivalence
 
@@ -30,7 +30,7 @@ Conflicts are resolved upward in this hierarchy. Version/date differences are in
 - Beta 1.3.0 added a flat +1 for difficult clears that clear garbage, not influenced by multipliers.
 - Default rotation is SRS+, not optional SRS-X.
 - Multiplayer piece generation uses a seeded 7-bag; community protocol documentation reports the input order `ZLOSIJT`, which must be confirmed by replay fixtures before becoming `CONFIRMED`.
-- Current exact TL timing, cap, messiness, multiplier, top-out, and mechanics-related round parameters are `UNCONFIRMED` until captured from current fixtures.
+- Current TL timing literals are populated as stable client-derived `OBSERVED` values, while exact frame semantics, garbage cap/messiness/multiplier, top-out, and mechanics-related round parameters remain fixture-gated.
 
 ## Fixture matrix
 
@@ -56,6 +56,8 @@ fixture -> normalize -> local replay -> per-frame state hashes
                          |              |
 reference checkpoints ---+------ diff -+
 ```
+
+`crates/replay-conformance` now implements the engine-neutral snapshot and first-divergence comparison. It compares frame number, exact board rows, active piece, hold, preview, top-out, timing state and trace length. The official public format repository does not specify `.ttrm`, so the upstream replay adapter remains intentionally unimplemented until a version-identified user-owned sample is available.
 
 For state not exposed by the reference, compare the earliest downstream observable and retain `OBSERVED` confidence. Property tests independently enforce conservation and invariants: occupied cells, line-clear compaction, bag permutations, deterministic seed replay, attack/cancellation conservation, and zero-sum results.
 

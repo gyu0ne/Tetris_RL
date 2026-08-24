@@ -22,6 +22,8 @@
 | T12 | [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes) | 독립 extractor commit `712dc10`, client assets 2026-05-04/2026-08-10 | reproducible TL option extraction; 두 snapshot의 31개 field가 모두 동일하며 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE 0, lock 30/15, `room_handling=false`를 관찰 | `OBSERVED`; extractor adoption이 낮고 reference replay differential이 없어 `CONFIRMED` authority는 아님 |
 | T13 | [Season 2 opener double-cancel 논의](https://www.reddit.com/r/Tetris/comments/1hjvuig) | Reddit 경험 기록 | opener 경계 fixture 후보 | 가설 생성용만 사용 |
 | T14 | [Season 2 Surge/downstack 논의](https://www.reddit.com/r/Tetris/comments/1ogo885) | Reddit 경험 기록 | Surge가 전략에 미치는 체감과 adversarial test style | 정량·규칙 확정 근거 아님 |
+| T15 | [공식 TETR.IO file format specs](https://github.com/tetrio/tetrio-format-specs) | 공식 GitHub 저장소, 확인일 2026-08-24 | 공개 형식 명세의 현재 범위 확인 | 현재 RSD sound spritesheet만 명시하며 `.ttr`/`.ttrm` replay schema를 제공하지 않음 |
+| T16 | [공식 issue #608](https://github.com/tetrio/issues/issues/608) | 공식 issue tracker의 2021 feature request | `.ttrm` raw replay와 공개 download endpoint가 역사적으로 요청됐음을 확인 | issue 작성자의 설명이며 현재 API/format authority가 아님; 내부 API 사용 근거로 삼지 않음 |
 
 ## B. 학습·보상·평가
 

@@ -6,10 +6,11 @@
 
 #![forbid(unsafe_code)]
 
-use engine_core::{Gravity, TimingConfigError, TimingRules};
+use engine_core::{Gravity, HandlingRules, SoftDropMode, TimingConfigError, TimingRules};
 
 pub const TARGET_PROFILE_ID: &str = "tetrio-beta-1.7.8-tetra-league-season-2";
 pub const RESEARCH_ACCESS_DATE: &str = "2026-08-24";
+pub const PLAYER_HANDLING_SCHEMA_VERSION: u16 = 1;
 
 const OFFICIAL_PATCH_NOTES: &str = "https://tetr.io/about/patchnotes/";
 const WIKI_MECHANICS: &str = "https://tetrio.wiki.gg/wiki/Mechanics";
@@ -106,6 +107,46 @@ pub struct RoomHandlingProfileDraft {
 impl RoomHandlingProfileDraft {
     pub const fn requires_player_handling(self) -> bool {
         matches!(self.enforced.value, Some(false))
+    }
+}
+
+/// Replay/config-derived effective handling after unit conversion to frames.
+///
+/// TETRA LEAGUE does not enforce room handling in the observed target profile,
+/// so this record must accompany every replay fixture. Raw UI/client values are
+/// converted by a versioned adapter before constructing this type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlayerHandlingProfile {
+    pub schema_version: u16,
+    pub das_frames: u16,
+    pub arr_frames: u16,
+    pub dcd_frames: u16,
+    pub soft_drop: SoftDropMode,
+}
+
+impl PlayerHandlingProfile {
+    pub const fn normalized(
+        das_frames: u16,
+        arr_frames: u16,
+        dcd_frames: u16,
+        soft_drop: SoftDropMode,
+    ) -> Self {
+        Self {
+            schema_version: PLAYER_HANDLING_SCHEMA_VERSION,
+            das_frames,
+            arr_frames,
+            dcd_frames,
+            soft_drop,
+        }
+    }
+
+    pub const fn core_rules(self) -> HandlingRules {
+        HandlingRules::new(
+            self.das_frames,
+            self.arr_frames,
+            self.dcd_frames,
+            self.soft_drop,
+        )
     }
 }
 
@@ -474,7 +515,11 @@ fn required<T>(value: Option<T>) -> Result<T, ProfileActivationError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Confidence, TARGET_PROFILE_ID, TetrioRulesDraft};
+    use super::{
+        Confidence, PLAYER_HANDLING_SCHEMA_VERSION, PlayerHandlingProfile, TARGET_PROFILE_ID,
+        TetrioRulesDraft,
+    };
+    use engine_core::SoftDropMode;
 
     #[test]
     fn observed_target_has_no_missing_timing_literals_and_activates() {
@@ -543,5 +588,17 @@ mod tests {
         assert_eq!(profile.room_handling.inactive_arr_frames.value, Some(2));
         assert_eq!(profile.room_handling.inactive_das_frames.value, Some(10));
         assert_eq!(profile.room_handling.inactive_sdf_value.value, Some(6));
+    }
+
+    #[test]
+    fn normalized_player_handling_maps_without_unit_guessing() {
+        let profile = PlayerHandlingProfile::normalized(8, 0, 1, SoftDropMode::Sonic);
+        let rules = profile.core_rules();
+
+        assert_eq!(profile.schema_version, PLAYER_HANDLING_SCHEMA_VERSION);
+        assert_eq!(rules.das_frames, 8);
+        assert_eq!(rules.arr_frames, 0);
+        assert_eq!(rules.dcd_frames, 1);
+        assert_eq!(rules.soft_drop, SoftDropMode::Sonic);
     }
 }

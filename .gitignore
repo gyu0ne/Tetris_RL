@@ -31,6 +31,12 @@
 *.parquet
 *.arrow
 
+# Raw user-owned replay exports; commit only anonymized normalized fixtures
+*.ttr
+*.ttrm
+/fixtures/replays/raw/*
+!/fixtures/replays/raw/.gitignore
+
 # Local secrets and machine-specific overrides
 .env
 .env.*
