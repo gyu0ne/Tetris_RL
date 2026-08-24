@@ -87,6 +87,7 @@
 - 2026-08-24T17:38:13+09:00 [CODE] Created `PROJECT_Explain_Spin_and_Topout.md` and synchronized RULE, README, architecture, execution, frame-session, timing, replay, conformance and Korean project-plan documents with implemented scope and remaining target boundaries.
 - 2026-08-24T17:38:13+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 61 unit tests and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:38:13+09:00 [TOOL] Fresh non-persistent code-graph indexing found 905 nodes and 2,634 edges; `classify_spin` and `lock_placement_with_action` form new engine-core clusters while rules/replay dependencies still point inward to the core leaf.
+- 2026-08-24T17:39:46+09:00 [CODE] Created local commit `0436545` (`feat: add spin and top-out classification`) containing the verified provenance, spin, perfect-clear and typed top-out mechanics plus synchronized design documents; no push was performed.
 
 ## [DISCOVERIES]
 
