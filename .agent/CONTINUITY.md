@@ -97,6 +97,7 @@
 - 2026-08-24T18:07:05+09:00 [CODE] Extended the evidence-bearing TL profile and TOML record with base attack tables, combo, B2B/Surge and Perfect Clear fields plus the current firepower fixture; created `PROJECT_Explain_Versus_Attack.md` and synchronized scope/architecture/plan/research documents.
 - 2026-08-24T18:09:28+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, all 71 unit tests, optimized release build and Python 3.13 parsing of the versioned TOML record; `git diff --check` passed.
 - 2026-08-24T18:09:28+09:00 [TOOL] Fresh non-persistent code-graph indexing found 1,054 nodes and 3,112 edges; `resolve_attack` is isolated in `versus`, depends inward on score-free core events, and is consumed by the evidence-bearing rules test with no learning or rendering dependency.
+- 2026-08-24T18:10:58+09:00 [CODE] Created local commit `eaf3d95` (`feat: add score-free versus attack mechanics`) containing the verified scope change, current firepower evidence, clear-event boundary, versus attack implementation, tests and synchronized documentation; no push was performed.
 
 ## [DISCOVERIES]
 
