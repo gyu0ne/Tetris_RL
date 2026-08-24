@@ -69,6 +69,7 @@
 - 2026-08-24T16:57:14+09:00 [CODE] Added replay privacy/schema guidance, ignored raw `.ttr`/`.ttrm` files, and created `PROJECT_Explain_Replay_Conformance.md`; synchronized architecture, execution, timing, sources, research, rules, README and Korean project plan.
 - 2026-08-24T17:01:23+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, 45 unit tests with 0 failures, and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:01:23+09:00 [TOOL] Fresh code-graph indexing found 793 nodes and 2,071 edges; Cargo manifests preserve `engine-core` as the dependency leaf while both rules and replay conformance consume its typed mechanics API.
+- 2026-08-24T17:02:34+09:00 [CODE] Created local commit `4076bd1` (`feat: add initial actions and replay conformance`) containing IRS/IHS, normalized player handling, canonical replay differential code, privacy boundaries, tests and synchronized documents; no push was performed.
 
 ## [DISCOVERIES]
 
