@@ -11,6 +11,7 @@ pub enum RotationDirection {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RotationResult {
     pub state: PieceState,
+    pub direction: RotationDirection,
     pub kick_index: u8,
 }
 
@@ -59,6 +60,7 @@ pub fn try_rotate(
             let candidate = rotated.translated(dx, dy);
             (!board.collides(candidate)).then_some(RotationResult {
                 state: candidate,
+                direction,
                 kick_index: index as u8,
             })
         })

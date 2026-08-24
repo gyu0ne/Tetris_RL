@@ -6,7 +6,9 @@
 
 #![forbid(unsafe_code)]
 
-use engine_core::{Gravity, HandlingRules, SoftDropMode, TimingConfigError, TimingRules};
+use engine_core::{
+    Gravity, HandlingRules, SoftDropMode, SpinRules, TimingConfigError, TimingRules,
+};
 
 pub const TARGET_PROFILE_ID: &str = "tetrio-beta-1.7.8-tetra-league-season-2";
 pub const RESEARCH_ACCESS_DATE: &str = "2026-08-24";
@@ -76,6 +78,14 @@ pub enum RotationSystem {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpinSystem {
     AllMiniPlus,
+}
+
+impl SpinSystem {
+    pub const fn core_rules(self) -> SpinRules {
+        match self {
+            Self::AllMiniPlus => SpinRules::all_mini_plus_observed(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -519,7 +529,7 @@ mod tests {
         Confidence, PLAYER_HANDLING_SCHEMA_VERSION, PlayerHandlingProfile, TARGET_PROFILE_ID,
         TetrioRulesDraft,
     };
-    use engine_core::SoftDropMode;
+    use engine_core::{SoftDropMode, SpinMode};
 
     #[test]
     fn observed_target_has_no_missing_timing_literals_and_activates() {
@@ -600,5 +610,18 @@ mod tests {
         assert_eq!(rules.arr_frames, 0);
         assert_eq!(rules.dcd_frames, 1);
         assert_eq!(rules.soft_drop, SoftDropMode::Sonic);
+    }
+
+    #[test]
+    fn observed_spin_profile_maps_to_all_mini_plus_core_rules() {
+        let profile = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2();
+        let spin = profile
+            .spin_system
+            .value
+            .expect("spin system is present")
+            .core_rules();
+
+        assert_eq!(spin.mode, SpinMode::AllMiniPlus);
+        assert_eq!(spin.t_full_kick_upgrade_mask, 0);
     }
 }

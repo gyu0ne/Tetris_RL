@@ -1,7 +1,7 @@
 use crate::{
     Board, FrameOutcome, GameConfig, GameError, GameState, HandlingRules, HandlingState,
-    InitialActionOutcome, InputEdge, NormalizedFrame, PlacementOutcome, TimingRules, TimingState,
-    TimingStepError, initial_actions_on_spawn, normalize_frame, step_frame,
+    InitialActionOutcome, InputEdge, LastAction, NormalizedFrame, PlacementOutcome, TimingRules,
+    TimingState, TimingStepError, initial_actions_on_spawn, normalize_frame, step_frame,
 };
 use std::fmt;
 
@@ -111,7 +111,9 @@ impl FrameSession {
         let mut placement = None;
         let mut spawned_initial = None;
         if timing_outcome.locked {
-            let locked = self.game.lock_placement(timing_outcome.piece)?;
+            let locked = self
+                .game
+                .lock_placement_with_action(timing_outcome.piece, timing_outcome.last_action)?;
             placement = Some(locked);
             self.timing = None;
 
@@ -120,8 +122,18 @@ impl FrameSession {
                 let initial_outcome = self.game.apply_initial_actions(initial)?;
                 spawned_initial = Some(initial_outcome);
                 if !initial_outcome.top_out {
-                    self.timing =
-                        Some(TimingState::new(self.game.board(), initial_outcome.active)?);
+                    let last_action =
+                        initial_outcome
+                            .rotation
+                            .map_or(LastAction::None, |rotation| LastAction::Rotation {
+                                direction: rotation.direction,
+                                kick_index: rotation.kick_index,
+                            });
+                    self.timing = Some(TimingState::with_last_action(
+                        self.game.board(),
+                        initial_outcome.active,
+                        last_action,
+                    )?);
                 }
             }
         }

@@ -30,10 +30,10 @@
 - 40개 board row bitmask
 - active piece kind/orientation/origin
 - hold와 preview
-- top-out
-- 선택적인 gravity accumulator, lock elapsed/reset count/locked state
+- typed top-out reason
+- 선택적인 gravity accumulator, lock elapsed/reset count/locked state와 last successful action/kick
 
-`compare_traces`는 reference와 local trace를 순서대로 비교하고 최초 mismatch만 반환한다. mismatch는 frame number, 정확한 board row bit, active, hold, preview, top-out, timing 또는 trace length로 분류된다. 이 형식은 `.ttrm`에 종속되지 않아 adapter가 바뀌어도 engine comparison은 유지된다.
+`compare_traces`는 reference와 local trace를 순서대로 비교하고 최초 mismatch만 반환한다. mismatch는 frame number, 정확한 board row bit, active, hold, preview, typed top-out, last-action을 포함한 timing 또는 trace length로 분류된다. 이 형식은 `.ttrm`에 종속되지 않아 adapter가 바뀌어도 engine comparison은 유지된다.
 
 ## 4. IRS/IHS 계약
 

@@ -6,7 +6,9 @@
 
 #![forbid(unsafe_code)]
 
-use engine_core::{GameState, HEIGHT, PieceKind, PieceState, TimingState};
+use engine_core::{
+    GameState, HEIGHT, LastAction, PieceKind, PieceState, TimingState, TopOutReason,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimingSnapshot {
@@ -14,6 +16,7 @@ pub struct TimingSnapshot {
     pub lock_elapsed_frames: u16,
     pub lock_resets_used: u16,
     pub locked: bool,
+    pub last_action: LastAction,
 }
 
 impl From<&TimingState> for TimingSnapshot {
@@ -23,6 +26,7 @@ impl From<&TimingState> for TimingSnapshot {
             lock_elapsed_frames: state.lock_elapsed_frames,
             lock_resets_used: state.lock_resets_used,
             locked: state.locked,
+            last_action: state.last_action,
         }
     }
 }
@@ -34,7 +38,7 @@ pub struct FrameSnapshot {
     pub active: PieceState,
     pub hold: Option<PieceKind>,
     pub preview: Vec<PieceKind>,
-    pub top_out: bool,
+    pub top_out: Option<TopOutReason>,
     pub timing: Option<TimingSnapshot>,
 }
 
@@ -46,7 +50,7 @@ impl FrameSnapshot {
             active: game.active(),
             hold: game.hold(),
             preview: game.preview(),
-            top_out: game.is_top_out(),
+            top_out: game.top_out_reason(),
             timing: None,
         }
     }
@@ -58,7 +62,7 @@ impl FrameSnapshot {
             active: timing.piece,
             hold: game.hold(),
             preview: game.preview(),
-            top_out: game.is_top_out(),
+            top_out: game.top_out_reason(),
             timing: Some(timing.into()),
         }
     }
@@ -91,8 +95,8 @@ pub enum SnapshotDifference {
         actual: Vec<PieceKind>,
     },
     TopOut {
-        expected: bool,
-        actual: bool,
+        expected: Option<TopOutReason>,
+        actual: Option<TopOutReason>,
     },
     Timing {
         expected: Option<TimingSnapshot>,
@@ -211,7 +215,7 @@ mod tests {
     use super::{
         ConformanceMismatch, FrameSnapshot, SnapshotDifference, TimingSnapshot, compare_traces,
     };
-    use engine_core::{GameConfig, GameState};
+    use engine_core::{GameConfig, GameState, LastAction};
 
     fn snapshot(frame: u64) -> FrameSnapshot {
         let game = GameState::new(41, GameConfig::default()).expect("valid game");
@@ -252,6 +256,7 @@ mod tests {
             lock_elapsed_frames: 0,
             lock_resets_used: 0,
             locked: false,
+            last_action: LastAction::None,
         });
         assert!(matches!(
             compare_traces(&expected, &timing_actual),

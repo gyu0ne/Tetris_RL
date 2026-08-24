@@ -39,6 +39,10 @@ impl Board {
         &self.rows
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.rows.iter().all(|row| *row == 0)
+    }
+
     pub fn row(&self, y: usize) -> Option<u16> {
         self.rows.get(y).copied()
     }
@@ -77,12 +81,27 @@ impl Board {
             return Err(BoardError::PieceCollision(piece));
         }
 
-        for (x, y) in piece.cells() {
+        let cells = piece.cells();
+        let hidden_cells = cells
+            .iter()
+            .filter(|(_, y)| *y >= VISIBLE_HEIGHT as i16)
+            .count();
+        let visibility = match hidden_cells {
+            0 => LockVisibility::Visible,
+            4 => LockVisibility::FullyHidden,
+            _ => LockVisibility::PartiallyHidden,
+        };
+
+        for (x, y) in cells {
             self.rows[y as usize] |= 1_u16 << x;
         }
 
         let cleared = self.clear_full_lines();
-        Ok(LockResult { cleared })
+        Ok(LockResult {
+            cleared,
+            perfect_clear: self.is_empty(),
+            visibility,
+        })
     }
 
     pub fn stack_height(&self) -> usize {
@@ -151,6 +170,15 @@ impl ClearedLines {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LockResult {
     pub cleared: ClearedLines,
+    pub perfect_clear: bool,
+    pub visibility: LockVisibility,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LockVisibility {
+    Visible,
+    PartiallyHidden,
+    FullyHidden,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -178,7 +206,7 @@ impl std::error::Error for BoardError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Board, BoardError, FULL_ROW, HEIGHT};
+    use super::{Board, BoardError, FULL_ROW, HEIGHT, LockVisibility};
     use crate::{Orientation, PieceKind, PieceState};
 
     #[test]
@@ -198,6 +226,8 @@ mod tests {
         let piece = PieceState::new(PieceKind::O, Orientation::Spawn, 3, -1);
         let result = board.lock(piece).expect("O piece should fit on floor");
         assert_eq!(result.cleared.count(), 0);
+        assert!(!result.perfect_clear);
+        assert_eq!(result.visibility, LockVisibility::Visible);
         assert_eq!(board.occupied_cells(), 4);
         assert_ne!(board.checksum(), before);
     }
@@ -226,5 +256,33 @@ mod tests {
         assert!(board.collides(PieceState::new(PieceKind::T, Orientation::Spawn, -1, -1)));
         assert!(board.collides(PieceState::new(PieceKind::I, Orientation::Spawn, 7, 0)));
         assert!(!board.collides(PieceState::new(PieceKind::I, Orientation::Spawn, 6, 0)));
+    }
+
+    #[test]
+    fn clearing_the_last_cells_reports_perfect_clear() {
+        let mut rows = [0; HEIGHT];
+        rows[0] = FULL_ROW & !0b00_0111_1000;
+        let mut board = Board::from_rows(rows).expect("valid almost-full row");
+        let piece = PieceState::new(PieceKind::I, Orientation::Reverse, 3, -1);
+
+        let result = board.lock(piece).expect("I piece completes the row");
+        assert_eq!(result.cleared.rows(), &[0]);
+        assert!(result.perfect_clear);
+        assert!(board.is_empty());
+    }
+
+    #[test]
+    fn lock_visibility_distinguishes_partial_and_full_hidden_placement() {
+        let mut partial_board = Board::empty();
+        let partial = partial_board
+            .lock(PieceState::new(PieceKind::O, Orientation::Spawn, 3, 18))
+            .expect("partially hidden O fits");
+        assert_eq!(partial.visibility, LockVisibility::PartiallyHidden);
+
+        let mut hidden_board = Board::empty();
+        let hidden = hidden_board
+            .lock(PieceState::new(PieceKind::O, Orientation::Spawn, 3, 19))
+            .expect("fully hidden O fits");
+        assert_eq!(hidden.visibility, LockVisibility::FullyHidden);
     }
 }

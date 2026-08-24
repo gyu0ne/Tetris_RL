@@ -403,7 +403,7 @@ non-learning baseline은 반드시 유지한다.
 - line/spin/perfect-clear 및 40 LINES, BLITZ, ZEN/custom 점수 profile을 구현한다.
 - canonical differential test는 headless로 유지하며 시각적 replay player/viewer는 구현하지 않는다.
 
-**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. `FrameSession`은 이들을 즉시 hold, 이동/회전, gravity/lock, `GameState` line clear와 다음 spawn까지 연속 전이로 연결한다. TL의 `room_handling=false` 때문에 개인 DAS/ARR/DCD/SDF는 `PlayerHandlingProfile`로 분리된다. `replay-conformance`는 canonical frame trace의 최초 divergence를 component 단위로 보고한다. 현재 전체 48개 unit test가 통과한다. exact same-frame stage order와 spin/top-out/solo scoring은 아직 남아 있다. upstream replay adapter는 엔진 기능이 아니라 필요한 경우에만 추가하는 검증 도구다.
+**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. `FrameSession`은 이들을 즉시 hold, 이동/회전, gravity/lock, `GameState` line clear와 다음 spawn까지 연속 전이로 연결한다. 마지막 성공 입력과 회전 방향/kick index를 보존하고, All-Mini+의 T corner·immobility 및 non-T immobility 경로, post-clear perfect clear, lock visibility와 typed block/lock/partial-lock out을 구현했다. TL에서 확인되지 않은 lock-out 변형은 기본 비활성이고 exact T kick upgrade 및 Clutch Clear 우선순위는 `UNCONFIRMED`다. `replay-conformance`는 last action과 top-out reason까지 비교한다. 현재 전체 61개 unit test가 통과한다. exact same-frame stage order와 solo scoring은 아직 남아 있다.
 
 **통과 조건:** timing 경계 fixture와 solo 전체 replay에서 설명되지 않은 차이가 0개여야 한다.
 
@@ -495,10 +495,10 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. continuous session에 last-action/kick metadata, All-Mini+ spin, perfect clear와 exact top-out을 구현한다.
-2. solo clear semantics를 고정한 뒤 attack/garbage/round terminal mechanics를 구현한다.
-3. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
-4. 충분한 기준 상태가 있는 target fixture가 확보될 때만 target stage-order adapter를 추가한다.
+1. line-clear event category와 40 LINES/BLITZ/사용자 모드 scoring을 구현한다.
+2. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위는 충분한 target fixture로만 확정한다.
+3. attack/B2B/combo/Surge 이후 garbage/round terminal mechanics를 versus layer에 구현한다.
+4. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
 5. CPU/RAM/GPU 예산을 수치화하고 관련 mechanics conformance 뒤 휴리스틱 기록 생성을 시작한다.
 
 현재 가장 중요한 작업은 코드를 빠르게 작성하는 것이 아니라 **무엇을 동일하게 만들어야 하는지 증거로 고정하는 것**이다. 규칙이 틀린 빠른 engine이나 잘못된 보상을 최적화한 강한 모델은 프로젝트 목표를 달성하지 못한다.

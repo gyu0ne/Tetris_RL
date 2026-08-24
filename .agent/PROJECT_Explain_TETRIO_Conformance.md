@@ -57,7 +57,7 @@ fixture -> normalize -> local replay -> per-frame state hashes
 reference checkpoints ---+------ diff -+
 ```
 
-`crates/replay-conformance` now implements the engine-neutral snapshot and first-divergence comparison. It compares frame number, exact board rows, active piece, hold, preview, top-out, timing state and trace length. The official public format repository does not specify `.ttrm`, so the upstream replay adapter remains intentionally unimplemented until a version-identified user-owned sample is available.
+`crates/replay-conformance` now implements the engine-neutral snapshot and first-divergence comparison. It compares frame number, exact board rows, active piece, hold, preview, typed top-out reason, timing/last-action state and trace length. The supplied BLITZ sample has no board checkpoints, so a target adapter remains optional validation tooling and cannot be treated as a current TL oracle.
 
 For state not exposed by the reference, compare the earliest downstream observable and retain `OBSERVED` confidence. Property tests independently enforce conservation and invariants: occupied cells, line-clear compaction, bag permutations, deterministic seed replay, attack/cancellation conservation, and zero-sum results.
 

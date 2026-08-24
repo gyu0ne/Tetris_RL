@@ -14,7 +14,7 @@
 `FrameSession`은 다음 상태를 소유한다.
 
 - `GameState`: board, active piece, hold, next queue, bag과 placement count
-- `Option<TimingState>`: 살아 있는 active piece의 gravity accumulator, lock timer와 reset count
+- `Option<TimingState>`: 살아 있는 active piece의 gravity accumulator, lock timer/reset count와 last-action/kick provenance
 - `HandlingState`: held key, DAS/ARR/DCD와 IRS/IHS buffer
 - `frame: u64`: session-local frame index
 
@@ -27,7 +27,7 @@
 1. ordered input edge를 `normalize_frame`으로 정규화한다.
 2. 즉시 hold 요청이 가능하면 현재 piece를 교체하고 timing state를 다시 만든다.
 3. 정규화된 이동·회전·drop action과 gravity/lock을 적용한다.
-4. lock되면 `GameState::lock_placement`가 board 기록과 line clear를 수행하고 다음 piece를 spawn한다.
+4. lock되면 `GameState::lock_placement_with_action`이 spin, board 기록, line clear, perfect clear와 lock visibility를 계산하고 다음 piece를 spawn한다.
 5. 새 piece에 held IHS 후 IRS를 적용하고 다음 `TimingState`를 만든다.
 6. top-out이면 timing을 제거하고 terminal로 종료한다.
 
@@ -45,4 +45,4 @@
 
 ## 5. 남은 conformance 작업
 
-연속 상태 전이 연결은 완료됐지만 전체 mechanics는 아직 완료되지 않았다. 다음 단계는 last-action/kick metadata, All-Mini+ spin, perfect clear, exact top-out과 versus attack/garbage/round terminal이다. 충분한 기준 state가 있는 target fixture가 확보되면 generic stage order를 별도 target adapter로 검증한다.
+연속 상태 전이와 generic last-action/spin/perfect-clear/typed-top-out 기반은 완료됐지만 전체 mechanics는 아직 완료되지 않았다. 다음 단계는 line-clear event/scoring과 versus attack/garbage/round terminal이다. exact T kick upgrade, Clutch Clear/top-out priority와 generic same-frame stage order는 충분한 기준 state가 있는 target fixture로 별도 검증한다.

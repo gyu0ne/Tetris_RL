@@ -1,6 +1,7 @@
 use crate::{
-    BagOrderError, Board, BoardError, ClearedLines, InitialActions, Orientation, PieceKind,
-    PieceState, RotationResult, SevenBag, reachable_locks, try_rotate,
+    BagOrderError, Board, BoardError, ClearedLines, InitialActions, LastAction, LockVisibility,
+    Orientation, PieceKind, PieceState, RotationResult, SevenBag, SpinOutcome, SpinRules,
+    TopOutReason, TopOutRules, classify_spin, reachable_locks, try_rotate,
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -37,6 +38,8 @@ pub struct GameConfig {
     pub preview: usize,
     pub spawn: SpawnRules,
     pub bag_order: [PieceKind; 7],
+    pub spin: SpinRules,
+    pub top_out: TopOutRules,
 }
 
 impl Default for GameConfig {
@@ -45,6 +48,8 @@ impl Default for GameConfig {
             preview: 5,
             spawn: SpawnRules::modern_observed(),
             bag_order: PieceKind::ALL,
+            spin: SpinRules::all_mini_plus_observed(),
+            top_out: TopOutRules::block_out_only(),
         }
     }
 }
@@ -60,7 +65,7 @@ pub struct GameState {
     hold: Option<PieceKind>,
     hold_available: bool,
     pieces_placed: u64,
-    top_out: bool,
+    top_out: Option<TopOutReason>,
     config: GameConfig,
 }
 
@@ -76,7 +81,7 @@ impl GameState {
         while queue.len() < config.preview {
             queue.push_back(bag.next_piece());
         }
-        let top_out = board.collides(active);
+        let top_out = board.collides(active).then_some(TopOutReason::BlockOut);
 
         Ok(Self {
             board,
@@ -112,6 +117,10 @@ impl GameState {
     }
 
     pub const fn is_top_out(&self) -> bool {
+        self.top_out.is_some()
+    }
+
+    pub const fn top_out_reason(&self) -> Option<TopOutReason> {
         self.top_out
     }
 
@@ -120,7 +129,7 @@ impl GameState {
     }
 
     pub fn reachable_placements(&self) -> Vec<crate::GeometricPlacement> {
-        if self.top_out {
+        if self.is_top_out() {
             Vec::new()
         } else {
             reachable_locks(&self.board, self.active)
@@ -138,12 +147,16 @@ impl GameState {
         self.hold = Some(outgoing);
         self.active = self.config.spawn.piece(incoming);
         self.hold_available = false;
-        self.top_out = self.board.collides(self.active);
+        self.top_out = self
+            .board
+            .collides(self.active)
+            .then_some(TopOutReason::BlockOut);
 
         Ok(HoldOutcome {
             held: outgoing,
             active: self.active,
-            top_out: self.top_out,
+            top_out: self.is_top_out(),
+            top_out_reason: self.top_out,
         })
     }
 
@@ -164,12 +177,13 @@ impl GameState {
             false
         };
 
-        if self.top_out {
+        if self.is_top_out() {
             return Ok(InitialActionOutcome {
                 active: self.active,
                 hold_applied,
                 rotation: None,
                 top_out: true,
+                top_out_reason: self.top_out,
             });
         }
 
@@ -179,17 +193,29 @@ impl GameState {
         if let Some(result) = rotation {
             self.active = result.state;
         }
-        self.top_out = self.board.collides(self.active);
+        self.top_out = self
+            .board
+            .collides(self.active)
+            .then_some(TopOutReason::BlockOut);
 
         Ok(InitialActionOutcome {
             active: self.active,
             hold_applied,
             rotation,
-            top_out: self.top_out,
+            top_out: self.is_top_out(),
+            top_out_reason: self.top_out,
         })
     }
 
     pub fn lock_placement(&mut self, placement: PieceState) -> Result<PlacementOutcome, GameError> {
+        self.lock_placement_with_action(placement, LastAction::None)
+    }
+
+    pub fn lock_placement_with_action(
+        &mut self,
+        placement: PieceState,
+        last_action: LastAction,
+    ) -> Result<PlacementOutcome, GameError> {
         self.ensure_playable()?;
         if placement.kind != self.active.kind {
             return Err(GameError::WrongPiece {
@@ -205,16 +231,26 @@ impl GameState {
             return Err(GameError::UnreachablePlacement(placement));
         }
 
+        let spin = classify_spin(&self.board, placement, last_action, self.config.spin);
         let lock = self.board.lock(placement)?;
         self.pieces_placed += 1;
         self.hold_available = true;
         let next = self.take_next_piece();
         self.active = self.config.spawn.piece(next);
-        self.top_out = self.board.collides(self.active);
+        let lock_out = self.config.top_out.lock_reason(lock.visibility);
+        let block_out = self
+            .board
+            .collides(self.active)
+            .then_some(TopOutReason::BlockOut);
+        self.top_out = lock_out.or(block_out);
 
         Ok(PlacementOutcome {
             cleared: lock.cleared,
-            top_out: self.top_out,
+            perfect_clear: lock.perfect_clear,
+            lock_visibility: lock.visibility,
+            spin,
+            top_out: self.is_top_out(),
+            top_out_reason: self.top_out,
             next_active: self.active,
             pieces_placed: self.pieces_placed,
         })
@@ -232,7 +268,7 @@ impl GameState {
     }
 
     fn ensure_playable(&self) -> Result<(), GameError> {
-        if self.top_out {
+        if self.is_top_out() {
             Err(GameError::GameOver)
         } else {
             Ok(())
@@ -245,6 +281,7 @@ pub struct HoldOutcome {
     pub held: PieceKind,
     pub active: PieceState,
     pub top_out: bool,
+    pub top_out_reason: Option<TopOutReason>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -253,12 +290,17 @@ pub struct InitialActionOutcome {
     pub hold_applied: bool,
     pub rotation: Option<RotationResult>,
     pub top_out: bool,
+    pub top_out_reason: Option<TopOutReason>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlacementOutcome {
     pub cleared: ClearedLines,
+    pub perfect_clear: bool,
+    pub lock_visibility: LockVisibility,
+    pub spin: Option<SpinOutcome>,
     pub top_out: bool,
+    pub top_out_reason: Option<TopOutReason>,
     pub next_active: PieceState,
     pub pieces_placed: u64,
 }
@@ -312,7 +354,7 @@ impl std::error::Error for GameError {}
 #[cfg(test)]
 mod tests {
     use super::{GameConfig, GameError, GameState};
-    use crate::{InitialActions, Orientation, RotationDirection};
+    use crate::{Board, HEIGHT, InitialActions, Orientation, RotationDirection, TopOutReason};
 
     #[test]
     fn queue_has_configured_preview_length() {
@@ -385,5 +427,16 @@ mod tests {
             game.lock_placement(placement),
             Err(GameError::WrongPiece { .. })
         ));
+    }
+
+    #[test]
+    fn colliding_initial_spawn_reports_block_out_reason() {
+        let mut rows = [0; HEIGHT];
+        rows[18..23].fill((1_u16 << 10) - 1);
+        let board = Board::from_rows(rows).expect("valid blocked spawn rows");
+        let game = GameState::with_board(5, GameConfig::default(), board).expect("valid game");
+
+        assert!(game.is_top_out());
+        assert_eq!(game.top_out_reason(), Some(TopOutReason::BlockOut));
     }
 }

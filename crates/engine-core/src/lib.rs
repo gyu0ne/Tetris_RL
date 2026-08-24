@@ -14,9 +14,13 @@ mod reachability;
 mod rng;
 mod rotation;
 mod session;
+mod spin;
 mod timing;
+mod topout;
 
-pub use board::{Board, BoardError, ClearedLines, HEIGHT, LockResult, VISIBLE_HEIGHT, WIDTH};
+pub use board::{
+    Board, BoardError, ClearedLines, HEIGHT, LockResult, LockVisibility, VISIBLE_HEIGHT, WIDTH,
+};
 pub use game::{
     GameConfig, GameError, GameState, HoldOutcome, InitialActionOutcome, PlacementOutcome,
     SpawnRules,
@@ -30,7 +34,9 @@ pub use reachability::{GeometricPlacement, Movement, hard_drop, reachable_locks,
 pub use rng::{BagOrderError, MinStd, SevenBag};
 pub use rotation::{RotationDirection, RotationResult, kick_tests, try_rotate};
 pub use session::{FrameSession, SessionFrameOutcome, SessionStepError};
+pub use spin::{SpinClassification, SpinMode, SpinOutcome, SpinRules, classify_spin};
 pub use timing::{
-    FrameInput, FrameOutcome, Gravity, TimingConfigError, TimingRules, TimingState,
+    FrameInput, FrameOutcome, Gravity, LastAction, TimingConfigError, TimingRules, TimingState,
     TimingStepError, step_frame,
 };
+pub use topout::{TopOutReason, TopOutRules};

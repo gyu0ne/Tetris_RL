@@ -78,13 +78,13 @@ generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 
 ## 6. 검증과 남은 작업
 
-현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. 추가된 session test는 hard drop 이후 lock/clear/next spawn 연결, 즉시 hold 순서와 여러 피스에 걸친 clone 결정성을 검사한다. `replay-conformance`는 동일 trace, 정확한 board row divergence, timing mismatch와 trace 길이 mismatch를 구분한다.
+현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. session test는 hard drop 이후 lock/clear/next spawn 연결, 즉시 hold 순서와 여러 피스에 걸친 clone 결정성을 검사한다. timing test는 마지막 성공 회전의 방향/kick 보존, 다음 translation의 덮어쓰기와 zero-distance hard drop의 회전 보존을 검사한다. `replay-conformance`는 last action을 포함한 timing mismatch를 구분한다.
 
 남은 핵심 작업은 다음과 같다.
 
 1. exact target same-frame stage order 검증
-2. last-action/kick metadata, spin/top-out
-3. line/perfect-clear scoring과 solo profile
+2. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위
+3. line-clear event 및 solo scoring profile
 4. 충분한 기준 상태를 제공하는 fixture가 확보될 때 reference differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
 
 이 설계 완료는 timing/handling 기반의 로컬 실행이 가능하다는 뜻이며, 전체 TETR.IO mechanics 동등성 완료를 뜻하지 않는다.

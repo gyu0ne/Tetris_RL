@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T17:12:25+09:00
+Last updated: 2026-08-24T17:34:50+09:00
 
 ## 1. Authority and scope
 
@@ -62,6 +62,8 @@ research/            # experiment manifests and generated reports, not code
 - When `room_handling` is disabled, room ARR/DAS/SDF fields are inactive metadata; effective handling must come from the player or replay profile.
 - Randomness must be explicit and seedable. A replay must reproduce piece sequence, per-frame inputs, locks, clears, attacks, garbage columns, top-out, and round result byte-for-byte.
 - Core state transitions use integer/fixed-point frame units. Floating-point is forbidden in authoritative game-state transitions.
+- Spin classification must use the last successful player action plus rotation direction/kick index. Automatic gravity does not erase rotation provenance; a hard drop erases it only when it actually translates the piece.
+- Perfect clear is evaluated from the board after line compaction. Block-out, lock-out and partial lock-out remain distinct typed outcomes; unconfirmed target variants must stay disabled rather than being guessed.
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
 - Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.

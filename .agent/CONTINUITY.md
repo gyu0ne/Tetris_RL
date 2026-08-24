@@ -12,6 +12,7 @@
 - 2026-08-24T16:28:38+09:00 [USER] Continue implementation and research enough current evidence to fill as many empty mechanics values as possible.
 - 2026-08-24T16:57:14+09:00 [USER] Continue engine work and clarify whether frame-level validation requires obtaining a real TETR.IO replay.
 - 2026-08-24T17:19:31+09:00 [USER] Supplied one raw replay fixture and clarified that replay playback is unnecessary; use replay data only where it validates engine mechanics.
+- 2026-08-24T17:38:13+09:00 [USER] Continue engine implementation and prefer implementation over new web research where the required mechanics are already evidenced.
 
 ## [DECISIONS]
 
@@ -42,6 +43,9 @@
 - 2026-08-24T17:19:31+09:00 [CODE] Exclude visual replay playback/player/viewer from the product and conformance scope. A headless adapter may reapply replay input only when it supplies a meaningful engine differential oracle.
 - 2026-08-24T17:19:31+09:00 [CODE] Treat the supplied BLITZ replay as an input-container/handling/subframe-order fixture only; it cannot confirm TETRA LEAGUE versus rules or frame board transitions because it contains no reference state checkpoints.
 - 2026-08-24T17:19:31+09:00 [CODE] Join handling, timing and game state through `FrameSession` using an explicit provisional order: normalize edges, immediate hold, timed actions/gravity/lock, placement/line clear, next spawn, then generic held IHS→IRS. Exact target order remains fixture-gated.
+- 2026-08-24T17:38:13+09:00 [CODE] Reuse the existing source ledger for this milestone: last-action state, post-clear emptiness and typed top-out are engine invariants, while existing BETA 1.5.0 evidence supports provisional All-Mini+ paths. No new web research was needed.
+- 2026-08-24T17:38:13+09:00 [CODE] Preserve rotation provenance across automatic gravity and zero-distance hard drop; only a successful player translation or a hard drop that changes rows replaces it.
+- 2026-08-24T17:38:13+09:00 [CODE] Externalize T Mini-to-Full kick upgrades as an explicit mask and leave the target provisional mask at zero; keep lock-out/partial-lock-out configurable but disabled by default. Exact kick, Clutch Clear and top-out priority remain UNCONFIRMED rather than guessed.
 
 ## [PROGRESS]
 
@@ -79,6 +83,10 @@
 - 2026-08-24T17:19:31+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 48 unit tests, optimized release build and parsing of both TOML records; `git diff --check` and the repository trailing-whitespace scan passed.
 - 2026-08-24T17:19:31+09:00 [TOOL] Fresh non-persistent code-graph indexing found 828 nodes and 2,241 edges; `FrameSession::step` is indexed as the new engine-core orchestration boundary while external dependency direction remains into the engine-core leaf.
 - 2026-08-24T17:21:03+09:00 [CODE] Created local commit `4ec7026` (`feat: integrate continuous frame session`) containing the verified session transitions, replay-validation-only boundary, anonymized BLITZ manifest and synchronized design documents; no push was performed.
+- 2026-08-24T17:38:13+09:00 [CODE] Added `LastAction` to timing/session/replay snapshots, rotation direction to kick results, `spin` and `topout` core modules, post-clear perfect-clear detection, lock visibility, typed top-out reasons, and `rules-tetrio` All-Mini+ mapping.
+- 2026-08-24T17:38:13+09:00 [CODE] Created `PROJECT_Explain_Spin_and_Topout.md` and synchronized RULE, README, architecture, execution, frame-session, timing, replay, conformance and Korean project-plan documents with implemented scope and remaining target boundaries.
+- 2026-08-24T17:38:13+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, all 61 unit tests and optimized release build; `git diff --check` and the repository trailing-whitespace scan passed.
+- 2026-08-24T17:38:13+09:00 [TOOL] Fresh non-persistent code-graph indexing found 905 nodes and 2,634 edges; `classify_spin` and `lock_placement_with_action` form new engine-core clusters while rules/replay dependencies still point inward to the core leaf.
 
 ## [DISCOVERIES]
 
@@ -100,6 +108,8 @@
 - 2026-08-24T16:57:14+09:00 [TOOL] The official `tetrio/tetrio-format-specs` repository currently specifies RSD sound data but no replay schema; official issue #608 is only a historical user feature request mentioning raw `.ttrm`, not a current API/format specification.
 - 2026-08-24T17:19:31+09:00 [TOOL] The supplied raw fixture is BLITZ format version 1/options version 19 with 7,200 frames and 1,420 ordered events: start 1, keydown 709, keyup 709 and end 1. Its handling serializes ARR 2, DAS 10, DCD 2, SDF 41 and tap IRS/IHS; identifying user fields were not copied into committed metadata.
 - 2026-08-24T17:19:31+09:00 [TOOL] The fixture has monotonic frame/subframe input events but no per-frame board checkpoints. It can regress parser/normalization assumptions or final aggregates, but frame-exact local board conformance needs separate reference observations and TL-specific mechanics need a TL fixture.
+- 2026-08-24T17:38:13+09:00 [TOOL] Tests confirm that moving hard drop replaces rotation provenance while zero-distance hard drop preserves it; this prevents a final-position rotation from being erased solely by the lock command.
+- 2026-08-24T17:38:13+09:00 [CODE] Perfect clear can be determined without a mode constant by checking the compacted board after clear. In contrast, exact T kick upgrade and Clutch Clear/top-out ordering are profile behavior and remain fixture-gated.
 
 ## [OUTCOMES]
 
@@ -111,3 +121,4 @@
 - 2026-08-24T16:28:38+09:00 [CODE] Supersede the six-empty-literal status: the observed TL timing profile is complete and locally executable, including gravity progression and generic handling normalization. It is not conformance-certified; player handling serialization, IRS/IHS, replay stage-order fixtures, spin/top-out and versus mechanics remain before demonstration generation.
 - 2026-08-24T17:01:23+09:00 [CODE] Supersede the IRS/IHS-and-first-divergence-not-started status: generic IRS/IHS, normalized player handling and canonical replay differential reporting are implemented and verified. A user-owned version-identified replay sample is now required only to implement the upstream adapter and certify target frame order; spin/top-out, lock/clear integration and versus mechanics still precede demonstration generation.
 - 2026-08-24T17:19:31+09:00 [CODE] Supersede the lock/clear-integration-not-started and replay-sample-required statuses: a verified continuous generic frame session now advances multiple pieces through lock, line clear and next spawn, and the supplied BLITZ replay is retained only as anonymized validation metadata. No replay player was built. Next engine work is last-action/kick metadata, All-Mini+ spin, perfect clear, exact top-out and versus mechanics before heuristic data generation.
+- 2026-08-24T17:38:13+09:00 [CODE] Supersede the last-action/spin/perfect-clear-not-started status: the continuous engine now emits rotation provenance, All-Mini+ candidate classification, perfect clear, lock visibility and typed top-out. Exact target kick/top-out edges and solo scoring remain before versus attack/garbage and heuristic data generation.

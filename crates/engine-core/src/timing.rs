@@ -76,6 +76,23 @@ pub enum FrameInput {
     HardDrop,
 }
 
+/// Last successful player action that can affect spin classification.
+///
+/// Automatic gravity does not overwrite this value. A hard drop only replaces
+/// it when the piece actually changes rows, so a zero-distance lock preserves
+/// a rotation performed at the final position.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LastAction {
+    None,
+    Translation,
+    SoftDrop,
+    HardDrop,
+    Rotation {
+        direction: RotationDirection,
+        kick_index: u8,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimingState {
     pub piece: PieceState,
@@ -83,6 +100,7 @@ pub struct TimingState {
     pub lock_elapsed_frames: u16,
     pub lock_resets_used: u16,
     pub locked: bool,
+    pub last_action: LastAction,
 }
 
 impl TimingState {
@@ -96,7 +114,18 @@ impl TimingState {
             lock_elapsed_frames: 0,
             lock_resets_used: 0,
             locked: false,
+            last_action: LastAction::None,
         })
+    }
+
+    pub fn with_last_action(
+        board: &Board,
+        piece: PieceState,
+        last_action: LastAction,
+    ) -> Result<Self, TimingStepError> {
+        let mut state = Self::new(board, piece)?;
+        state.last_action = last_action;
+        Ok(state)
     }
 }
 
@@ -109,6 +138,7 @@ pub struct FrameOutcome {
     pub gravity_rows: u16,
     pub lock_elapsed_frames: u16,
     pub lock_resets_used: u16,
+    pub last_action: LastAction,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -134,19 +164,24 @@ pub fn step_frame(
     let mut successful_inputs = 0_u16;
     for input in inputs {
         if *input == FrameInput::HardDrop {
-            state.piece = hard_drop(board, state.piece).ok_or(TimingStepError::CollidingPiece)?;
+            let dropped = hard_drop(board, state.piece).ok_or(TimingStepError::CollidingPiece)?;
+            if dropped != state.piece {
+                state.last_action = LastAction::HardDrop;
+            }
+            state.piece = dropped;
             state.locked = true;
             successful_inputs = successful_inputs.saturating_add(1);
             return Ok(outcome(board, *state, successful_inputs, 0));
         }
 
         let grounded_before = is_grounded(board, state.piece);
-        let candidate = apply_input(board, state.piece, *input);
-        let Some(candidate) = candidate else {
+        let applied = apply_input(board, state.piece, *input);
+        let Some(applied) = applied else {
             continue;
         };
 
-        state.piece = candidate;
+        state.piece = applied.piece;
+        state.last_action = applied.last_action;
         successful_inputs = successful_inputs.saturating_add(1);
         if grounded_before && resets_lock(*input, rules) {
             try_reset_lock(state, rules);
@@ -184,22 +219,53 @@ pub fn step_frame(
     Ok(outcome(board, *state, successful_inputs, gravity_rows))
 }
 
-fn apply_input(board: &Board, piece: PieceState, input: FrameInput) -> Option<PieceState> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AppliedInput {
+    piece: PieceState,
+    last_action: LastAction,
+}
+
+fn apply_input(board: &Board, piece: PieceState, input: FrameInput) -> Option<AppliedInput> {
     match input {
-        FrameInput::MoveLeft => try_movement(board, piece, Movement::Left),
-        FrameInput::MoveRight => try_movement(board, piece, Movement::Right),
-        FrameInput::SoftDropCell => try_movement(board, piece, Movement::Down),
-        FrameInput::RotateClockwise => {
-            try_rotate(board, piece, RotationDirection::Clockwise).map(|result| result.state)
+        FrameInput::MoveLeft => {
+            try_movement(board, piece, Movement::Left).map(|piece| AppliedInput {
+                piece,
+                last_action: LastAction::Translation,
+            })
         }
+        FrameInput::MoveRight => {
+            try_movement(board, piece, Movement::Right).map(|piece| AppliedInput {
+                piece,
+                last_action: LastAction::Translation,
+            })
+        }
+        FrameInput::SoftDropCell => {
+            try_movement(board, piece, Movement::Down).map(|piece| AppliedInput {
+                piece,
+                last_action: LastAction::SoftDrop,
+            })
+        }
+        FrameInput::RotateClockwise => apply_rotation(board, piece, RotationDirection::Clockwise),
         FrameInput::RotateCounterclockwise => {
-            try_rotate(board, piece, RotationDirection::Counterclockwise).map(|result| result.state)
+            apply_rotation(board, piece, RotationDirection::Counterclockwise)
         }
-        FrameInput::RotateHalf => {
-            try_rotate(board, piece, RotationDirection::Half).map(|result| result.state)
-        }
+        FrameInput::RotateHalf => apply_rotation(board, piece, RotationDirection::Half),
         FrameInput::HardDrop => unreachable!("hard drop is handled before discrete movement"),
     }
+}
+
+fn apply_rotation(
+    board: &Board,
+    piece: PieceState,
+    direction: RotationDirection,
+) -> Option<AppliedInput> {
+    try_rotate(board, piece, direction).map(|result| AppliedInput {
+        piece: result.state,
+        last_action: LastAction::Rotation {
+            direction: result.direction,
+            kick_index: result.kick_index,
+        },
+    })
 }
 
 fn resets_lock(input: FrameInput, rules: TimingRules) -> bool {
@@ -238,13 +304,14 @@ fn outcome(
         gravity_rows,
         lock_elapsed_frames: state.lock_elapsed_frames,
         lock_resets_used: state.lock_resets_used,
+        last_action: state.last_action,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameInput, Gravity, TimingRules, TimingState, step_frame};
-    use crate::{Board, Orientation, PieceKind, PieceState};
+    use super::{FrameInput, Gravity, LastAction, TimingRules, TimingState, step_frame};
+    use crate::{Board, Orientation, PieceKind, PieceState, RotationDirection};
 
     fn rules(
         numerator: u32,
@@ -354,6 +421,7 @@ mod tests {
         assert!(result.locked);
         assert!(result.grounded);
         assert_eq!(result.piece.y, -1);
+        assert_eq!(result.last_action, LastAction::HardDrop);
     }
 
     #[test]
@@ -375,5 +443,52 @@ mod tests {
             let b = step_frame(&board, &mut right, timing, &inputs).unwrap();
             assert_eq!(a, b);
         }
+    }
+
+    #[test]
+    fn successful_rotation_preserves_direction_and_kick_until_next_player_move() {
+        let board = Board::empty();
+        let mut state = TimingState::new(
+            &board,
+            PieceState::new(PieceKind::T, Orientation::Spawn, 3, 18),
+        )
+        .expect("spawn is valid");
+        let timing = rules(0, 1, 30, 15);
+
+        let rotated = step_frame(&board, &mut state, timing, &[FrameInput::RotateClockwise])
+            .expect("rotation succeeds");
+        assert_eq!(
+            rotated.last_action,
+            LastAction::Rotation {
+                direction: RotationDirection::Clockwise,
+                kick_index: 0,
+            }
+        );
+
+        let moved = step_frame(&board, &mut state, timing, &[FrameInput::MoveLeft])
+            .expect("translation succeeds");
+        assert_eq!(moved.last_action, LastAction::Translation);
+    }
+
+    #[test]
+    fn zero_distance_hard_drop_preserves_rotation_metadata() {
+        let board = Board::empty();
+        let rotation = LastAction::Rotation {
+            direction: RotationDirection::Counterclockwise,
+            kick_index: 2,
+        };
+        let mut state = TimingState::with_last_action(&board, grounded_o(), rotation)
+            .expect("grounded piece is valid");
+
+        let outcome = step_frame(
+            &board,
+            &mut state,
+            rules(0, 1, 30, 15),
+            &[FrameInput::HardDrop],
+        )
+        .expect("zero-distance hard drop locks");
+
+        assert!(outcome.locked);
+        assert_eq!(outcome.last_action, rotation);
     }
 }
