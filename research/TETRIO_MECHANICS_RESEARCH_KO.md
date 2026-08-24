@@ -64,8 +64,10 @@
 
 ### 3.2 입력·시간
 
-- gravity는 G 단위로 표현되며 최대 20G를 지원한다. `OBSERVED`
-- 일반 문서상 기본 lock delay는 500 ms이며 spawn·이동·회전 시 reset된다. 하지만 현재 TL의 reset cap과 frame order를 포함한 exact profile은 fixture 전까지 `UNCONFIRMED`다.
+- 2026-05-04와 2026-08-10 public client asset을 같은 extractor로 재현 추출했으며 TL option 31개 중 변경된 field는 0개였다. snapshot hash와 extractor revision은 `configs/rules/tetrio-beta-1_7_8-tl-s2.observed.toml`에 고정했다.
+- TL 시작 gravity는 `0.02G = 1/50 cell/frame`, gravity margin은 7200 frames, 이후 증가는 초당 `0.0035G = 7/2000G`, cap은 20G로 관찰됐다. ARE와 line-clear ARE는 모두 0이다. `OBSERVED`
+- lock delay는 30 frames이고 reset cap은 15회다. Wiki의 기본 500 ms 및 이동·회전 reset 설명과 60 Hz에서 일치한다. `OBSERVED`
+- TL의 `room_handling`은 false다. 함께 들어 있는 ARR 2/DAS 10/SDF 6은 강제되지 않는 inactive room fallback이며 실제 DAS/ARR/DCD/SDF는 player config에 의존한다. `OBSERVED`
 - ARR 0은 수평 이동을 즉시 벽까지 적용하고, DAS는 ARR 반복 전의 hold 시간이다. `OBSERVED`
 - DCD는 회전과 spawn 때 이미 충전된 DAS를 설정 frame만큼 멈춘다. `OBSERVED`
 - SDF infinity는 충돌 직전까지 즉시 내리는 sonic drop이며 hard drop처럼 즉시 lock하는 동작과 구별한다. `OBSERVED`
@@ -113,11 +115,10 @@ Quick Play에는 height multiplier, targeting, mod, garbage activation과 roundi
 
 ## 5. 아직 확정하면 안 되는 값
 
-다음은 공개 자료만으로 `BETA 1.7.8 / TL S2`의 exact literal과 실행 순서를 확정하지 못했다.
+다음은 공개 자료만으로 `BETA 1.7.8 / TL S2`의 exact 실행 의미 또는 conformance를 확정하지 못했다.
 
-- gravity, ARE, line-clear ARE
-- lock time, reset 종류와 횟수 제한
-- 현재 room handling override와 입력 frame order
+- client-derived gravity/ARE/lock literal의 reference replay 승격과 margin 경계의 정확한 적용 frame
+- player handling 값, IRS/IHS buffer와 입력 frame/stage order
 - garbage speed, activation, cap, cap increase/max
 - hole generator, messiness, packet merge/split
 - garbage multiplier/increase/margin과 cancel/block 순서

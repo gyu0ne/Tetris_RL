@@ -204,7 +204,7 @@ Rust는 결정론적 저수준 제어, bit 연산, 안전한 병렬 simulation �
 - 기본 회전은 SRS+이며 SRS-X는 별도 선택지다.
 - multiplayer piece 생성은 seed가 있는 7-bag이다.
 - 커뮤니티 protocol 문서가 보고한 입력 순서 `ZLOSIJT`는 replay fixture로 확인하기 전까지 `OBSERVED`다.
-- 현재 TL의 정확한 timing, cap, messiness, multiplier, top-out과 mechanics 관련 round parameter는 fixture 확보 전까지 `UNCONFIRMED`다.
+- current-client 추출에서 TL timing option은 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE/line-clear ARE 0, lock time 30, lock resets 15로 두 asset snapshot에 걸쳐 동일했다. 이 값은 `OBSERVED`이며 reference replay 검증 전에는 `CONFIRMED`가 아니다. garbage cap/messiness, frame order, top-out과 mechanics 관련 round parameter는 여전히 `UNCONFIRMED`다.
 
 ### 8.3 Fixture 행렬
 
@@ -391,7 +391,7 @@ non-learning baseline은 반드시 유지한다.
 - bitboard field, piece geometry, seedable RNG/7-bag, spawn/hold/queue, SRS+ 및 reachable placement 열거를 구현한다.
 - unit, property, golden, fuzz test와 step/collision/clear/afterstate benchmark를 작성한다.
 
-**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, MINSTD 기반 generic 7-bag, configurable spawn/hold/queue, 공개 자료 기반 SRS+/180 candidate, geometric reachable-lock BFS가 구현되었다. 이어서 유리수 frame gravity, ordered discrete input, lock delay/reset cap과 근거를 가진 `rules-tetrio` draft를 구현했다. pinned TL draft는 미확정 필수 timing literal 6개가 있는 동안 활성화를 거부한다. 전체 31개 unit test와 clippy가 통과했다. spawn/RNG/kick/timing literal은 current fixture 전까지 target conformance로 확정하지 않는다.
+**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, MINSTD 기반 generic 7-bag, configurable spawn/hold/queue, 공개 자료 기반 SRS+/180 candidate, geometric reachable-lock BFS가 구현되었다. 이어서 유리수 frame gravity, lock delay/reset cap, client-derived gravity schedule과 근거를 가진 `rules-tetrio` profile을 구현했다. 필수 timing literal은 모두 `OBSERVED`로 채워 실행 가능하지만 replay conformance blockers는 유지한다. 현재 전체 38개 unit test가 통과한다. spawn/RNG/kick/timing literal은 reference fixture 전까지 target conformance로 확정하지 않는다.
 
 **통과 조건:** debug와 release의 replay/state hash가 같고 C1 geometry/RNG/movement fixture가 통과해야 한다.
 
@@ -403,7 +403,7 @@ non-learning baseline은 반드시 유지한다.
 - line/spin/perfect-clear 및 40 LINES, BLITZ, ZEN/custom 점수 profile을 구현한다.
 - 엔진 state 밖에 진단용 최소 CLI/replay viewer를 만든다.
 
-**현재 진척:** float 없는 유리수 gravity accumulator, 한 frame의 정규화된 ordered action 적용, hard drop 즉시 lock, configurable lock delay와 move/rotation reset cap이 구현되었다. DAS/ARR/DCD, IRS/IHS, 동일 frame 충돌 정규화, ARE, spin/top-out 및 target literal은 아직 남아 있다.
+**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer도 추가했다. TL의 `room_handling=false` 때문에 개인 DAS/ARR/DCD/SDF는 고정 mode 값에서 분리된다. IRS/IHS, exact same-frame stage order, spin/top-out과 replay 연결은 아직 남아 있다.
 
 **통과 조건:** timing 경계 fixture와 solo 전체 replay에서 설명되지 않은 차이가 0개여야 한다.
 
@@ -495,9 +495,9 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. 대표 TETR.IO replay/config export를 확보해 `rules-tetrio`의 미확정 timing literal과 frame order를 fixture로 확정한다.
-2. DAS/ARR/DCD, IRS/IHS, sonic drop과 동일 frame 입력 충돌을 별도 normalization 계층으로 구현한다.
-3. timing state를 lock/line-clear/replay state transition과 연결하고 최초 divergence를 보고하는 fixture manifest를 만든다.
+1. 대표 TETR.IO replay/config export를 확보해 현재 `OBSERVED` timing literal과 exact frame order를 fixture로 승격한다.
+2. generic normalizer에 player/replay handling config serialization, IRS/IHS와 target stage-order adapter를 추가한다.
+3. timing/handling state를 lock/line-clear/replay state transition과 연결하고 최초 divergence를 보고하는 fixture manifest를 만든다.
 4. CPU core, RAM, GPU/VRAM을 조사해 engine throughput과 bot inference budget을 수치로 선언한다.
 5. spin/attack/garbage/round terminal conformance를 통과한 뒤 휴리스틱 기록 생성을 시작한다.
 
@@ -520,7 +520,7 @@ non-learning baseline은 반드시 유지한다.
 - [Cold Clear](https://github.com/MinusKelvin/cold-clear): Rust 기반 modern-versus bot의 architecture 기준선
 - [Tetris Bot Protocol](https://github.com/tetris-bot-protocol/tbp-spec): 로컬 frontend와 bot 사이의 공통 interface
 - [TETR.IO bot protocol notes](https://github.com/lemoncove/tetrio-bot-docs): room option과 piece RNG 관찰값. fixture 확인 전까지 `OBSERVED`
-- [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes): current-client table 추출과 freshness-check 구현 후보. 독립 검증 전에는 authority로 사용하지 않음
+- [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes): current-client table 재현 추출과 freshness-check에 사용. 두 asset snapshot의 TL option 31개가 동일했지만 reference replay가 없으므로 `OBSERVED` 근거이며 authority로 승격하지 않음
 - [Fan attack calculator](https://github.com/skysomorphic/tetrio-attack-calculator): 과거 공식과 불확실성을 보여 주는 반례 자료
 - [Reddit garbage discussion, 2024-10-30](https://www.reddit.com/r/Tetris/comments/1gfo4ss/how_does_tetrio_garbage_work/): transit/cancel/passthrough edge case 발견용
 - [Reddit Jstris/TETR.IO comparison, 2021-09-25](https://www.reddit.com/r/Tetris/comments/pv32r6/are_jstris_and_tetrio_different/): version drift 사례

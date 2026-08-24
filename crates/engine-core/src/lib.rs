@@ -8,6 +8,7 @@
 
 mod board;
 mod game;
+mod handling;
 mod piece;
 mod reachability;
 mod rng;
@@ -16,6 +17,10 @@ mod timing;
 
 pub use board::{Board, BoardError, ClearedLines, HEIGHT, LockResult, VISIBLE_HEIGHT, WIDTH};
 pub use game::{GameConfig, GameError, GameState, HoldOutcome, PlacementOutcome, SpawnRules};
+pub use handling::{
+    HandlingRules, HandlingState, InputButton, InputEdge, InputEdgeKind, NormalizedFrame,
+    SoftDropMode, normalize_frame, on_piece_spawn,
+};
 pub use piece::{Orientation, PieceKind, PieceState};
 pub use reachability::{GeometricPlacement, Movement, hard_drop, reachable_locks, try_movement};
 pub use rng::{BagOrderError, MinStd, SevenBag};

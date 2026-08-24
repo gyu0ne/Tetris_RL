@@ -1,71 +1,88 @@
-# Frame Timing 및 Rules Profile 설계 설명
+# Frame Timing, Handling 및 Rules Profile 설계 설명
 
-상태: 기반 설계 및 첫 구현 완료
-기준 시각: `2026-08-24T16:05:13+09:00`
+상태: client-derived observed profile과 generic handling normalizer 구현 완료
+기준 시각: `2026-08-24T16:28:38+09:00`
 
-## 1. 목적과 경계
+## 1. 목적과 책임 분리
 
-이번 단계는 기하학적 배치 엔진 위에 결정론적 frame 전이를 추가하고, 그 전이에 들어갈 TETR.IO 값을 generic core와 분리하는 작업이다. 구현된 코드는 target mechanics를 확정했다고 주장하지 않는다. 현행 replay/config fixture로 확인하지 못한 수치는 실행 가능한 TETR.IO 기본값이 될 수 없다.
+이번 단계는 기하학적 배치 엔진에 결정론적 frame timing과 raw input normalization을 추가하고, TETR.IO room mechanics와 player-specific handling을 분리한다.
 
-책임은 다음처럼 나뉜다.
+- `engine-core::timing`: 주어진 유리수 gravity와 ordered action을 적용하고 lock timer/reset을 갱신한다.
+- `engine-core::handling`: ordered input edge와 held state를 generic DAS/ARR/DCD/soft-drop action으로 바꾼다.
+- `rules-tetrio`: target version, mode, 값, 단위, 출처, confidence와 snapshot/fixture ID를 보존한다.
+- 후속 target adapter: player handling, IRS/IHS와 정확한 TETR.IO stage order를 replay fixture에서 공급한다.
+- 후속 replay/conformance 계층: frame별 state와 event를 reference replay에 비교한다.
 
-- `engine-core::timing`: 주어진 수치와 이미 정렬된 action을 기계적으로 적용한다.
-- `rules-tetrio`: upstream version, mode, 출처, 확인일, confidence와 fixture ID를 field별로 보존한다.
-- 후속 `FrameNormalizer`: raw/held input을 DAS/ARR/DCD, IRS/IHS 및 동일 frame 충돌 규칙에 따라 ordered discrete action으로 바꾼다.
-- 후속 replay/conformance 계층: target fixture와 frame별 state를 비교하고 최초 차이를 보고한다.
+generic normalizer의 순서는 결정론적 개발 contract다. exact TETR.IO stage order가 입증됐다는 뜻은 아니다.
 
-이 분리는 미확정 TETR.IO 입력 순서를 generic engine이 임의로 선택하는 것을 막는다.
+## 2. 2026-08-24 근거 갱신
 
-## 2. 결정론적 시간 표현
+독립 extractor `tetris-analyzes` commit `712dc10be43d5a6c54a35b62608ab9f4a2eaa324`의 freshness check를 container에서 실행했다. 저장돼 있던 2026-05-04 asset은 현재 asset과 달라 stale로 판정됐다. 이어서 현재 public client asset을 다시 추출했다.
 
-중력은 `numerator / denominator` cell/frame의 유리수로 저장한다. 매 frame 분자를 정수 accumulator에 더하고, 분모 이상이 된 몫만큼 아래 이동한 뒤 나머지를 보존한다. 따라서 `0G`, `1/2G`, `1G`, `20G`를 authoritative transition에서 부동소수점 없이 재현할 수 있다.
+| 항목 | 값 |
+|---|---|
+| 현재 asset | `63ab5c7c7.efa161fa8f91.20260810T191705` |
+| 현재 generated snapshot SHA-256 | `7e0f6ba9ce214a9d2af226e35868031406c6553af4a040c9862ee5acec2aa217` |
+| 이전 asset | `7eebfc9cd.987f91854aad.20260504T210001` |
+| 이전 snapshot SHA-256 | `5935fc0e38f04b04bc1995bac9ce8715ea1e2bf3bb36bab0d4a1189a70c4e0fe` |
+| 비교한 TL option | 31개 |
+| 변경된 option | 0개 |
 
-`TimingState`는 다음 최소 상태를 가진다.
+공식 FAQ는 DAS/ARR/DCD/SDF 의미를 설명하고, current Wiki는 500 ms lock과 move/rotation reset을 설명한다. client-derived 값과 서로 모순되지 않는다. 그러나 extractor가 공식 규칙 명세나 reference replay는 아니므로 값은 `OBSERVED`다.
 
-- active `PieceState`
-- 중력 나머지 accumulator
-- 현재 lock 경과 frame
-- 사용한 lock reset 수
-- lock 완료 여부
+## 3. 채운 TL timing 값
 
-`step_frame(board, state, rules, ordered_inputs)`는 입력 적용, 중력, grounded 검사, lock timer 갱신 순서로 한 frame을 처리한다. hard drop은 즉시 floor까지 이동하고 lock한다. lock delay, lateral/rotation reset 허용 여부와 reset cap은 `TimingRules`의 explicit parameter다.
+`configs/rules/tetrio-beta-1_7_8-tl-s2.observed.toml`과 `rules-tetrio`에 다음을 기록했다.
 
-이 순서는 generic kernel contract이며 TETR.IO의 raw input 처리 순서와 동일하다는 주장이 아니다. target normalization과 단계 순서는 fixture를 확보한 뒤 versioned adapter 및 필요 시 kernel stage policy로 고정한다.
+| field | 관찰값 | engine 표현 |
+|---|---:|---:|
+| tick rate | 60 Hz | 정수 frames/second |
+| ARE | 0 frames | `u16` |
+| line-clear ARE | 0 frames | `u16` |
+| initial gravity | 0.02G | `1/50` cell/frame |
+| gravity increase | 0.0035G/s | `7/2000` G/second |
+| gravity margin | 7200 frames | 120 seconds |
+| gravity cap | 20G | `20/1` cell/frame |
+| lock delay | 30 frames | 500 ms at 60 Hz |
+| lock resets | 15 | successful grounded move/rotation |
 
-## 3. Rules profile 활성화 장벽
+`ActiveTimingProfile::gravity_at_frame`은 부동소수점 없이 이 schedule을 계산하고 20G에서 cap한다. 중력이 변해도 accumulator 단위가 바뀌지 않도록 전체 schedule에 공통인 고정 분모를 사용한다. target 값은 `1/50`을 `2400/120000`, 1초 증가 뒤 `47/2000`을 `2820/120000`, 20G를 `2400000/120000`으로 표현한다. margin frame 자체에는 초기 gravity를 유지하고 그 뒤 경과 frame에 따라 증가시키는 현재 generic contract는 replay boundary fixture 전까지 `OBSERVED`다.
 
-`TetrioRulesDraft::tetra_league_beta_1_7_8_season_2()`는 다음 identity를 고정한다.
+## 4. 실행 가능과 conformance-ready의 분리
 
-- profile ID: `tetrio-beta-1.7.8-tetra-league-season-2`
-- upstream: `BETA 1.7.8`
-- mode: `TETRA LEAGUE Season 2`
+과거 문서의 “필수 timing field 6개가 비어 있어 activation 거부” 상태는 이번 조사로 대체됐다. 현재 profile은 모든 필수 timing literal이 있어 로컬 실행 가능하다.
 
-각 field는 값, 단위, source URL, access date, confidence, fixture ID와 제한 note를 가진다. 공식 patch history가 확인한 version과 All-Mini+ 변경은 `CONFIRMED`, community 문서 기반 10×40/SRS+ 등은 `OBSERVED`, exact TL timing literal은 `UNCONFIRMED`다.
+그렇다고 conformance-ready는 아니다. `timing_conformance_blockers()`는 `CONFIRMED`가 아니거나 reference fixture가 없는 field를 계속 반환한다. 따라서 다음 두 명제를 구분한다.
 
-현재 draft에서 다음 6개 필수 timing field는 값이 없다.
+1. `Executable OBSERVED`: client-derived 값으로 로컬 엔진·fixture 개발을 진행할 수 있다.
+2. `CONFIRMED conformance`: pinned replay/config에서 exact state transition과 경계 frame이 일치한다.
 
-1. gravity numerator
-2. gravity denominator
-3. lock delay frame
-4. maximum lock reset 수
-5. lateral move reset 여부
-6. rotation reset 여부
+학습 기록 생성은 관련 mechanics가 2번을 통과한 이후에만 승인한다.
 
-`try_timing_rules()`는 하나라도 비어 있으면 누락 field 목록과 함께 실패한다. 따라서 historical 500 ms나 임의의 reset cap을 target default로 오인한 학습을 시작할 수 없다. unit test용 synthetic fixture profile은 활성화 경로 자체만 검증하며 TETR.IO 주장으로 사용하지 않는다.
+## 5. Player handling 분리
 
-## 4. 검증 결과
+TL option의 `room_handling=false` 때문에 함께 노출된 ARR 2, DAS 10, SDF 6은 effective TL 고정값이 아니다. 실제 reachability에는 각 player/replay의 handling profile이 들어가야 한다.
 
-컨테이너의 Rust 1.89.0 toolchain에서 다음을 통과했다.
+generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 
-- `cargo fmt --all -- --check`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- engine core 28개와 rules profile 3개, 총 31개 unit test
-- `cargo build --workspace --release`
+- edge 순서를 보존하는 left/right/rotation/hard-drop action
+- held direction의 DAS charge와 ARR 반복
+- ARR 0의 board-width bounded instant shift
+- rotation과 spawn의 DCD pause, 기존 DAS charge 유지
+- finite soft drop과 sonic drop을 hard drop과 분리
 
-시험 범위에는 유리수 중력 누산, 20G floor 도달, lock 경계 frame, reset cap, hard-drop immediate lock, ordered input 결정론, 미확정 profile activation 거부와 provenance 보존이 포함된다.
+IRS/IHS, fractional handling, OS event sampling과 target stage order는 아직 fixture-gated다.
 
-## 5. 남은 작업과 통과 조건
+## 6. 검증과 남은 작업
 
-다음 단계는 raw input normalizer, ARE/line-clear timing, last-action 및 kick metadata, spin/top-out, GameState lock 연결과 replay event다. target profile을 활성화하려면 사용자 소유의 pinned-version replay/config에서 exact literal과 frame order를 추출하고 각 field에 fixture ID를 연결해야 한다.
+현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, DAS/ARR/DCD 경계, ARR 0 및 sonic drop을 검사한다.
 
-이 문서 단계의 완료는 “timing foundation이 generic parameter에 대해 결정론적”이라는 뜻이다. `TETR.IO BETA 1.7.8 / TL S2` mechanics conformance 완료를 뜻하지 않는다.
+남은 핵심 작업은 다음과 같다.
+
+1. player/replay handling config schema와 serialization
+2. IRS/IHS 및 spawn/hold buffer
+3. timing/handling과 `GameState` lock/clear/replay event 연결
+4. last-action/kick metadata, spin/top-out
+5. reference replay differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
+
+이 설계 완료는 timing/handling 기반의 로컬 실행이 가능하다는 뜻이며, 전체 TETR.IO mechanics 동등성 완료를 뜻하지 않는다.

@@ -29,6 +29,7 @@ Use: researched design; current rule literals still require pinned replay/config
 - TETR.IO bot protocol notes: https://github.com/lemoncove/tetrio-bot-docs
   Room options and piece RNG observations. Its README pins the documentation to client 6.2.0 (2022-03-16), so it is historical schema evidence only; values remain `OBSERVED` until current fixtures reproduce them.
 - tetris-analyzes: https://github.com/EdamAme-x/tetris-analyzes
+  - 2026-08-24에는 commit `712dc10`의 extractor를 container에서 실행해 2026-08-10 client asset을 재추출했다. 2026-05 snapshot과 TL option 31개가 동일했으나 reference replay가 없으므로 `OBSERVED`로만 사용한다.
   Independent current-client extraction and freshness-check idea. Low-adoption implementation candidate, not rule authority.
 - Fan attack calculator: https://github.com/skysomorphic/tetrio-attack-calculator
   Documents extrapolated older formulas and uncertainty; useful specifically as a warning not to copy formulas across versions.

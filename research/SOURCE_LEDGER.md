@@ -19,7 +19,7 @@
 | T09 | [TETR.IO SRS+ issue #506](https://github.com/tetrio/issues/issues/506) | GitHub issue와 community/maintainer-adjacent 논의 | SRS+ table 차이를 검증할 사례 | 현재 textual specification 아님 |
 | T10 | [Cold Clear](https://github.com/MinusKelvin/cold-clear) | Rust 공개 봇, 2024-01-22 archived | bitboard/battle/search/opening/TBP 구조 참고 | 현재 TL rule authority 아님 |
 | T11 | [Tetris Bot Protocol](https://github.com/tetris-bot-protocol/tbp-spec) | 공개 protocol specification | local engine-bot adapter 경계 | live service 연결 허가가 아님 |
-| T12 | [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes) | 최근 독립 extractor, 낮은 adoption | client-derived kick/spin/firepower snapshot과 freshness-check 아이디어 | 구현 후보; 독립 검증 전 authority 아님 |
+| T12 | [tetris-analyzes](https://github.com/EdamAme-x/tetris-analyzes) | 독립 extractor commit `712dc10`, client assets 2026-05-04/2026-08-10 | reproducible TL option extraction; 두 snapshot의 31개 field가 모두 동일하며 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE 0, lock 30/15, `room_handling=false`를 관찰 | `OBSERVED`; extractor adoption이 낮고 reference replay differential이 없어 `CONFIRMED` authority는 아님 |
 | T13 | [Season 2 opener double-cancel 논의](https://www.reddit.com/r/Tetris/comments/1hjvuig) | Reddit 경험 기록 | opener 경계 fixture 후보 | 가설 생성용만 사용 |
 | T14 | [Season 2 Surge/downstack 논의](https://www.reddit.com/r/Tetris/comments/1ogo885) | Reddit 경험 기록 | Surge가 전략에 미치는 체감과 adversarial test style | 정량·규칙 확정 근거 아님 |
 

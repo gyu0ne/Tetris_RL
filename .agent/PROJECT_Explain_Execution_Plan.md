@@ -20,7 +20,7 @@ Exit gate: no required TETRA LEAGUE rule literal is silently guessed; unknowns a
 - Implement bitboard field, tetromino geometry, seedable RNG/7-bag, spawn/hold/queue, SRS+ rotations and reachable placement enumeration.
 - Add unit, property, golden and fuzz tests; benchmark empty stepping, collision, clear and afterstate enumeration.
 
-Progress: workspace/container, bitboard, geometry, generic MINSTD 7-bag, configurable spawn/hold/queue, observed SRS+/180 tables and geometric reachable-lock BFS are implemented. Rational frame gravity, ordered discrete actions, configurable lock/reset timing, and an evidence-bearing target profile draft are also present. The pinned draft refuses activation while six required timing literals remain unknown. The workspace has 31 passing tests. Current spawn/RNG/kick/timing literals are not yet target-confirmed.
+Progress: workspace/container, bitboard, geometry, generic MINSTD 7-bag, configurable spawn/hold/queue, observed SRS+/180 tables and geometric reachable-lock BFS are implemented. Rational frame gravity, configurable lock/reset timing, and an evidence-bearing target profile are present. Two public-client snapshots exposed identical values for all 31 extracted TL options, so all required timing literals are populated as OBSERVED and locally executable while replay conformance blockers remain. The workspace has 38 passing tests. Current spawn/RNG/kick/timing literals are not yet target-confirmed.
 
 Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/movement conformance C1 passes.
 
@@ -30,7 +30,7 @@ Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/
 - Add line/spin/perfect-clear detection and scoring profiles for 40 LINES, BLITZ and ZEN/custom.
 - Create a minimal local CLI/replay viewer for diagnosis, kept outside engine state.
 
-Progress: fixed-point/rational gravity, ordered normalized discrete actions, hard drop, and configurable lock/reset-cap transitions are implemented. Raw held-key normalization, exact target frame ordering, ARE, spin/top-out, and solo scoring remain.
+Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, and configurable lock/reset-cap transitions are implemented. TETRA LEAGUE does not enforce room handling, so player handling is a separate input profile. IRS/IHS, exact target stage ordering, spin/top-out, replay integration, and solo scoring remain.
 
 Exit gate: timing boundary fixtures and solo full replays have zero unexplained divergence.
 
@@ -95,9 +95,9 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Obtain a representative pinned-version TETR.IO replay/config export and resolve the target draft's missing timing literals and frame order with fixtures.
-2. Implement DAS/ARR/DCD, IRS/IHS, sonic drop, and same-frame conflict normalization above the ordered timing kernel.
-3. Connect timing to lock/clear/replay transitions and add an executable first-divergence fixture manifest.
+1. Obtain a representative pinned-version TETR.IO replay/config export and promote the observed timing values plus frame order with differential fixtures.
+2. Add player/replay handling serialization, IRS/IHS, and a target-specific stage-order adapter above the generic normalizer.
+3. Connect timing/handling to lock/clear/replay transitions and add an executable first-divergence fixture manifest.
 4. Inventory CPU cores, RAM and GPU/VRAM so throughput/latency budgets are numerical.
 5. Do not generate heuristic training records until the relevant mechanics profile passes conformance.
 

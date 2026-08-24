@@ -12,9 +12,10 @@ TETR.IO의 학습 관련 mechanics를 독립적으로 재현하고 1 대 1 bot�
 - 실제 translation/rotation 성공 여부를 이용한 geometric reachable-lock 열거
 - 유리수 누산 방식의 float 없는 frame gravity와 ordered input 처리
 - configurable lock delay, lateral/rotation reset 및 reset cap
-- field별 출처·확신도를 가진 버전 고정 `rules-tetrio` draft와 미확정 profile 활성화 차단
+- ordered input edge, DAS/ARR/DCD 및 sonic drop을 discrete action으로 바꾸는 generic handling normalizer
+- field별 출처·확신도를 가진 버전 고정 `rules-tetrio` profile과 실행 가능/동등성 인증 상태 분리
 
-현재 구현은 target profile의 기반이지 아직 `TETR.IO BETA 1.7.8 / TL S2` conformance 완료본이 아니다. spawn/RNG/kick literal과 timing은 current fixture로 검증되기 전까지 `OBSERVED` 또는 `UNCONFIRMED`다. 현재 pinned draft는 필수 timing literal 6개가 비어 있으므로 의도적으로 실행 profile로 변환되지 않는다.
+현재 구현은 target profile의 기반이지 아직 `TETR.IO BETA 1.7.8 / TL S2` conformance 완료본이 아니다. 두 client asset snapshot에서 31개 TL option이 동일함을 확인해 `0.02G`, 30-frame lock, 15 resets, ARE 0 등의 빈 timing 값은 `OBSERVED`로 채웠다. profile은 로컬 실행 가능하지만 reference replay fixture와 exact frame order가 없으므로 conformance-ready가 아니다. 또한 TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 별도 공급해야 한다.
 
 ## 컨테이너 검증
 

@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T16:05:13+09:00
+Last updated: 2026-08-24T16:28:38+09:00
 
 ## 1. Authority and scope
 
@@ -57,6 +57,8 @@ research/            # experiment manifests and generated reports, not code
 - GitHub and Reddit claims are hypotheses until corroborated by a higher-priority source or a reproducible differential test.
 - Every rules profile must contain its source URL, access date, upstream version, confidence (`CONFIRMED`, `OBSERVED`, `UNCONFIRMED`), and fixture IDs.
 - A named TETR.IO profile must refuse executable activation while any transition-critical required field is missing; historical or provisional literals may run only under an explicitly non-conformant test profile.
+- A complete `OBSERVED` client-derived profile may run local mechanics tests, but it remains distinct from `CONFIRMED` conformance. Promotion requires reference replay/config fixtures and zero unexplained differential divergence.
+- When `room_handling` is disabled, room ARR/DAS/SDF fields are inactive metadata; effective handling must come from the player or replay profile.
 - Randomness must be explicit and seedable. A replay must reproduce piece sequence, per-frame inputs, locks, clears, attacks, garbage columns, top-out, and round result byte-for-byte.
 - Core state transitions use integer/fixed-point frame units. Floating-point is forbidden in authoritative game-state transitions.
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.

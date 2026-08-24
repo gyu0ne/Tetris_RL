@@ -9,6 +9,7 @@
 - 2026-08-24T15:22:13+09:00 [USER] Research and organize the mechanics and RL evidence; interpret “exactly same” as engine mechanics equality, excluding game-service systems when they do not affect learning.
 - 2026-08-24T15:53:39+09:00 [USER] Begin engine implementation and research a pre-RL bootstrap that generates many heuristic Tetris records for imitation learning.
 - 2026-08-24T16:05:13+09:00 [USER] Continue engine implementation; configure `https://github.com/gyu0ne/Tetris_RL` as the Git remote, strengthen ignore rules, and create local commits where possible.
+- 2026-08-24T16:28:38+09:00 [USER] Continue implementation and research enough current evidence to fill as many empty mechanics values as possible.
 
 ## [DECISIONS]
 
@@ -29,6 +30,10 @@
 - 2026-08-24T16:05:13+09:00 [CODE] Represent gravity as an integer rational accumulator and accept already ordered per-frame discrete actions; held-key interpretation and same-frame conflict resolution remain a versioned normalization layer pending fixtures.
 - 2026-08-24T16:05:13+09:00 [ASSUMPTION] Configure the requested remote and create a local baseline commit, but do not push because the user requested remote setup and commits without explicitly requesting publication.
 - 2026-08-24T16:09:06+09:00 [CODE] Normalize repository text to LF with `.gitattributes` while preserving CRLF for Windows batch files; this removes platform-dependent line-ending churn without changing source semantics.
+- 2026-08-24T16:28:38+09:00 [CODE] Replace the binary incomplete/active profile state with two gates: complete client-derived `OBSERVED` profiles may execute local mechanics, while conformance remains blocked until fields are `CONFIRMED` by reference replay/config differential fixtures.
+- 2026-08-24T16:28:38+09:00 [CODE] Treat TETRA LEAGUE room handling and effective player handling separately because the extracted profile has `room_handling=false`; inactive room ARR/DAS/SDF metadata must not become mode constants.
+- 2026-08-24T16:28:38+09:00 [CODE] Define ordered-edge/DAS/ARR/DCD/sonic-drop normalization as a deterministic generic contract, not an exact TETR.IO stage-order claim; IRS/IHS and target ordering remain fixture-gated.
+- 2026-08-24T16:28:38+09:00 [CODE] Keep the gravity schedule on one fixed rational denominator across all frames; reducing each frame independently would reinterpret the existing accumulator remainder when gravity changes and corrupt deterministic fall timing.
 
 ## [PROGRESS]
 
@@ -48,6 +53,11 @@
 - 2026-08-24T16:09:06+09:00 [CODE] Added repository-wide `.gitattributes` after initial staging exposed host-dependent LF-to-CRLF warnings; `.gitignore` continues to exclude generated Rust/Python/ML/profiling/secret/editor artifacts.
 - 2026-08-24T16:10:33+09:00 [TOOL] Read-only `git ls-remote --symref` returned no refs for the requested GitHub URL; configured it as `origin`, renamed the local branch from `master` to `main`, and verified both fetch/push URLs without publishing data.
 - 2026-08-24T16:10:33+09:00 [CODE] Created local root commit `f324bdc` (`feat: bootstrap deterministic Tetris engine`) containing 38 verified source, research, governance and container files; the working tree was clean and no push was performed.
+- 2026-08-24T16:28:38+09:00 [TOOL] Ran the public `tetris-analyzes` freshness check in `oven/bun:1.3.10`; the stored 2026-05 asset was stale against current asset `63ab5c7c7.efa161fa8f91.20260810T191705`, then a fresh read-only research snapshot was generated.
+- 2026-08-24T16:28:38+09:00 [TOOL] Compared all 31 extracted TL option fields between the 2026-05-04 and 2026-08-10 client assets: 0 fields changed. Recorded both asset IDs, extractor revision and snapshot SHA-256 values in the versioned observed TOML record.
+- 2026-08-24T16:28:38+09:00 [CODE] Filled timing literals as `OBSERVED`: 60 Hz, ARE 0, line-clear ARE 0, initial gravity `1/50G`, increase `7/2000G/s` after 7200 frames, 20G cap, 30-frame lock, 15 resets, and move/rotation reset behavior.
+- 2026-08-24T16:28:38+09:00 [CODE] Added `engine-core::handling`, exact-rational TL gravity scheduling, handling/profile tests, `configs/rules/` provenance records, and synchronized README, project plan, research, architecture, execution, rules and timing-design documents.
+- 2026-08-24T16:28:38+09:00 [TOOL] The first expanded test run found one DCD boundary expectation off by one after applying both rotation and spawn pauses; the test was corrected to the documented generic pause contract and the rerun passed 33 engine-core plus 5 rules-tetrio tests.
 
 ## [DISCOVERIES]
 
@@ -64,6 +74,8 @@
 - 2026-08-24T15:53:39+09:00 [TOOL] Tetris imitation, DAgger, DQfD, mixed-expertise imitation and Expert Iteration support demonstration bootstrap, but also show that chosen-only offline cloning can copy teacher weaknesses and fail on learner-induced states.
 - 2026-08-24T16:05:13+09:00 [TOOL] Fresh non-persistent code-graph indexing found 548 nodes and 1,361 edges; it identifies `engine-core` as the leaf mechanics layer and `rules-tetrio` as a one-way entry/adapter dependency with no reverse coupling.
 - 2026-08-24T16:05:13+09:00 [TOOL] The requested repository had no configured remote and every project file was untracked; no persistent `.codebase-memory` artifact existed, so the baseline commit can include all source/docs while generated caches remain excluded.
+- 2026-08-24T16:28:38+09:00 [TOOL] The current client-derived TL timing values are stable across two asset versions and agree with the Wiki's 500 ms lock and move/rotation reset description, but no reference replay proves margin-boundary or same-frame execution order; confidence remains `OBSERVED`.
+- 2026-08-24T16:28:38+09:00 [TOOL] Current TL exposes inactive room handling fallbacks ARR 2/DAS 10/SDF 6 while `room_handling=false`; using those numbers as every player's effective handling would change reachability and be incorrect.
 
 ## [OUTCOMES]
 
@@ -72,3 +84,4 @@
 - 2026-08-24T15:22:13+09:00 [CODE] Initial evidence research and mechanics-scope consolidation are complete. Implementation remains gated on current replay/config capture, exact rules records, hardware budget declaration, and executable fixture manifests.
 - 2026-08-24T15:53:39+09:00 [CODE] Supersede the previous implementation-not-started status: the first deterministic core is implemented and verified. Phase 1 target conformance is not complete; next work is versioned rules/fixtures followed by timing-aware input, lock and spin mechanics before versus and dataset generation.
 - 2026-08-24T16:05:13+09:00 [CODE] The generic frame timing and evidence-bearing rules-profile foundation are implemented and verified. Target TL activation remains intentionally blocked by six unconfirmed timing literals; raw handling normalization, replay fixtures, spin/top-out and versus mechanics remain before heuristic dataset generation.
+- 2026-08-24T16:28:38+09:00 [CODE] Supersede the six-empty-literal status: the observed TL timing profile is complete and locally executable, including gravity progression and generic handling normalization. It is not conformance-certified; player handling serialization, IRS/IHS, replay stage-order fixtures, spin/top-out and versus mechanics remain before demonstration generation.
