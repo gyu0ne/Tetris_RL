@@ -4,10 +4,11 @@ use std::fmt;
 const MINSTD_MODULUS: u64 = 2_147_483_647;
 const MINSTD_MULTIPLIER: u64 = 16_807;
 
-/// Park-Miller MINSTD with explicit non-zero seed normalization.
+/// Park-Miller MINSTD matching the observed current TETR.IO client.
 ///
-/// The algorithm is available for versioned profiles, but using it here does
-/// not assert that it is the current TETR.IO RNG.
+/// The seed normalization, `nextFloat()` numerator/denominator, and shuffle
+/// index calculation intentionally mirror the JavaScript implementation. In
+/// particular, seed zero normalizes to `2_147_483_646`, not one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MinStd {
     state: u32,
@@ -15,7 +16,10 @@ pub struct MinStd {
 
 impl MinStd {
     pub fn new(seed: u64) -> Self {
-        let state = (seed % (MINSTD_MODULUS - 1) + 1) as u32;
+        let mut state = (seed % MINSTD_MODULUS) as u32;
+        if state == 0 {
+            state = (MINSTD_MODULUS - 1) as u32;
+        }
         Self { state }
     }
 
@@ -28,10 +32,21 @@ impl MinStd {
         self.state
     }
 
-    fn index(&mut self, upper_exclusive: usize) -> usize {
+    /// Equivalent to `Math.floor(nextFloat() * upperExclusive)`.
+    pub fn index(&mut self, upper_exclusive: usize) -> usize {
         debug_assert!(upper_exclusive > 0);
-        let scaled = u64::from(self.next_u31()) * upper_exclusive as u64;
-        (scaled / MINSTD_MODULUS) as usize
+        let sample = u64::from(self.next_u31() - 1);
+        let scaled = sample * upper_exclusive as u64;
+        (scaled / (MINSTD_MODULUS - 1)) as usize
+    }
+
+    /// Consumes one sample and compares it with an exact rational chance.
+    /// This still consumes a sample for zero and one, matching an unconditional
+    /// JavaScript `nextFloat() < chance` expression.
+    pub fn chance(&mut self, numerator: u32, denominator: u32) -> bool {
+        debug_assert!(denominator > 0);
+        let sample = u64::from(self.next_u31() - 1);
+        sample * u64::from(denominator) < u64::from(numerator) * (MINSTD_MODULUS - 1)
     }
 }
 
@@ -135,6 +150,23 @@ mod tests {
     }
 
     #[test]
+    fn seed_zero_and_float_index_match_current_client_semantics() {
+        let mut rng = MinStd::new(0);
+        assert_eq!(rng.state(), 2_147_483_646);
+        assert_eq!(rng.index(10), 9);
+        assert_eq!(rng.state(), 2_147_466_840);
+    }
+
+    #[test]
+    fn rational_chance_always_consumes_one_client_sample() {
+        let mut zero = MinStd::new(41);
+        let mut one = zero;
+        assert!(!zero.chance(0, 1));
+        assert!(one.chance(1, 1));
+        assert_eq!(zero.state(), one.state());
+    }
+
+    #[test]
     fn each_chunk_is_a_permutation() {
         let mut bag = SevenBag::new(42);
         for _ in 0..32 {
@@ -150,6 +182,25 @@ mod tests {
         let left = (0..100).map(|_| first.next_piece()).collect::<Vec<_>>();
         let right = (0..100).map(|_| second.next_piece()).collect::<Vec<_>>();
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn observed_tetrio_order_and_seed_one_match_client_shuffle() {
+        let mut bag = SevenBag::with_order(1, crate::TETRIO_7_BAG_ORDER).expect("valid order");
+        let first = (0..7).map(|_| bag.next_piece()).collect::<Vec<_>>();
+        assert_eq!(
+            first,
+            [
+                PieceKind::O,
+                PieceKind::J,
+                PieceKind::I,
+                PieceKind::L,
+                PieceKind::S,
+                PieceKind::T,
+                PieceKind::Z,
+            ]
+        );
+        assert_eq!(bag.rng_state(), 470_211_272);
     }
 
     #[test]

@@ -48,7 +48,7 @@ round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다.
 
 - 잠정 target은 `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`다.
 - 현재 multiplayer 기본은 `All-Mini+`다. Season 2 시작 당시의 `All-Mini`를 현재 규칙으로 사용하지 않는다.
-- 정확한 TL timing·garbage·top-out literal은 replay/config fixture 전까지 `UNCONFIRMED`다.
+- TL timing·garbage·top-out literal과 제어 흐름은 current client에서 직접 추출한 `OBSERVED` 실행값이다. 외부 기준 board checkpoint를 통과하기 전에는 `CONFIRMED`가 아니다.
 - Quick Play는 mechanics가 다르므로 별도 profile이며 core 1 대 1 학습 범위에 포함하지 않는다.
 
 ## 설계 영향

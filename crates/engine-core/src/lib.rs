@@ -25,8 +25,8 @@ pub use board::{
 };
 pub use clear::ClearEvent;
 pub use game::{
-    GameConfig, GameError, GameState, HoldOutcome, InitialActionOutcome, PlacementOutcome,
-    SpawnRules,
+    GameConfig, GameError, GameState, HoldOutcome, InitialActionOutcome, LockedPlacement,
+    PlacementOutcome, SpawnRules, TETRIO_7_BAG_ORDER, TETRIO_SPAWN_FALL_FRACTION_MICROS,
 };
 pub use handling::{
     HandlingRules, HandlingState, InitialActions, InputButton, InputEdge, InputEdgeKind,
@@ -36,10 +36,14 @@ pub use piece::{Orientation, PieceKind, PieceState};
 pub use reachability::{GeometricPlacement, Movement, hard_drop, reachable_locks, try_movement};
 pub use rng::{BagOrderError, MinStd, SevenBag};
 pub use rotation::{RotationDirection, RotationResult, kick_tests, try_rotate};
-pub use session::{FrameSession, SessionFrameOutcome, SessionStepError};
+pub use session::{
+    FrameSession, SessionFrameOutcome, SessionLockFrameOutcome, SessionSpawnOutcome,
+    SessionStepError,
+};
 pub use spin::{SpinClassification, SpinMode, SpinOutcome, SpinRules, classify_spin};
 pub use timing::{
-    FrameInput, FrameOutcome, Gravity, LastAction, TimingConfigError, TimingRules, TimingState,
-    TimingStepError, step_frame,
+    FALL_MICROS_PER_CELL, FrameInput, FrameOutcome, Gravity, LastAction, LinearGravityTiming,
+    TETRIO_KICK_FALL_FRACTION_MICROS, TimingConfigError, TimingRules, TimingSchedule,
+    TimingScheduleError, TimingState, TimingStepError, step_frame,
 };
 pub use topout::{TopOutReason, TopOutRules};

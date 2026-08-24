@@ -78,15 +78,12 @@ q = round(s / 3) = (s + 1) / 3  # s는 양의 정수
 
 후속 garbage pipeline에서 `Board`의 occupancy와 garbage provenance layer가 함께 구현됐다. lock/line compaction이 계산한 `PlacementOutcome::cleared_garbage`는 `AttackContext`로 직접 변환할 수 있으므로 이 boolean을 더 이상 추측하지 않는다. 자세한 queue·상쇄·삽입 경계는 `PROJECT_Explain_Garbage_Pipeline.md`를 따른다.
 
-## 6. 검증과 미완료 범위
+## 6. 검증과 conformance 경계
 
 현재 test는 base clear/spin table, 14-double combo, 5회 T-spin-double B2B sequence, no-clear combo/B2B 경계, B2B break packet order, `s=5` Surge 분할, separate Perfect Clear와 post-rounding special +1을 검사한다. `rules-tetrio` test는 current fixture ID를 가진 observed profile이 실행되는지 확인한다.
 
 이 문서 작성 뒤 완료된 부분은 incoming ordered queue, packet cancellation conservation, 14-piece opener double-cancel, 20-frame transit gate, combo blocking, 8-line cap과 board provenance다. 아직 완료되지 않은 부분은 다음과 같다.
 
-1. change-on-attack messiness/hole RNG와 packet 소진 시 RNG 소비
-2. garbage margin multiplier 증가
-3. 결정론적 두 player frame scheduling과 simultaneous terminal
-4. reference fixture를 사용한 `OBSERVED`에서 `CONFIRMED` 승격
+change-on-attack hole RNG, packet 소진 시 RNG 소비, garbage margin multiplier, 결정론적 두 player scheduling과 simultaneous terminal까지 구현했다. 공격·garbage·battle 계층 unit test는 27개이며 전체 workspace 검증에 포함된다. 남은 항목은 reference fixture를 사용한 `OBSERVED`에서 `CONFIRMED` 승격이다.
 
 따라서 이 단계는 TL 공격 상태 전이의 실행 가능한 observed 구현이지, 전체 1 대 1 mechanics conformance 완료가 아니다.

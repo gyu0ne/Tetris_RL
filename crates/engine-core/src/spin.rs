@@ -28,7 +28,9 @@ impl SpinRules {
     pub const fn all_mini_plus_observed() -> Self {
         Self {
             mode: SpinMode::AllMiniPlus,
-            t_full_kick_upgrade_mask: 0,
+            // Current client `IsTSpin` upgrades a three-corner T Mini when
+            // `falling.kick === 3`; stored kick numbering mirrors that value.
+            t_full_kick_upgrade_mask: 1 << 3,
         }
     }
 }

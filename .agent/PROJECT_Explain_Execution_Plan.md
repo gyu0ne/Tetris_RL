@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: score-free solo mechanics and observed TL attack/B2B/combo/Surge implemented; garbage, round terminal and exact conformance edges remain
+Current state: declared learning-relevant solo/1v1 mechanics implemented as an observed profile; external differential conformance certification remains
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -20,7 +20,7 @@ Exit gate: no required TETRA LEAGUE rule literal is silently guessed; unknowns a
 - Implement bitboard field, tetromino geometry, seedable RNG/7-bag, spawn/hold/queue, SRS+ rotations and reachable placement enumeration.
 - Add unit, property, golden and fuzz tests; benchmark empty stepping, collision, clear and afterstate enumeration.
 
-Progress: workspace/container, bitboard, geometry, generic MINSTD 7-bag, configurable spawn/hold/queue, observed SRS+/180 tables and geometric reachable-lock BFS are implemented. Rational frame gravity, configurable lock/reset timing, and an evidence-bearing target profile are present. Two public-client snapshots exposed identical values for all 31 extracted TL options, so all required timing literals are populated as OBSERVED and locally executable while replay conformance blockers remain. Current spawn/RNG/kick/timing literals are not yet target-confirmed.
+Progress: workspace/container, bitboard, geometry, observed Park–Miller MINSTD `ZLOSIJT` 7-bag, configurable spawn/hold/queue, SRS+/180 tables and geometric reachable-lock BFS are implemented. Integer microcell fall phase, lock/reset timing and an evidence-bearing target profile are present. Current-client literals are populated as `OBSERVED` and locally executable while external differential conformance blockers remain.
 
 Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/movement conformance C1 passes.
 
@@ -30,7 +30,7 @@ Exit gate: deterministic replay/state hashes across debug/release; geometry/RNG/
 - Emit score-free line/spin/perfect-clear events and expose a single-board survival/test sandbox. Do not implement 40 LINES, BLITZ or ZEN/custom scoring/goal profiles.
 - Keep canonical differential tests headless; a visual replay player/viewer is not required for engine conformance.
 
-Progress: rational gravity plus the observed TL gravity schedule, ordered input edges, held DAS/ARR, rotation/spawn DCD pause, sonic drop, hard drop, configurable lock/reset-cap transitions, held-key IRS/IHS and generic IHS→IRS spawn application are implemented. `FrameSession` connects normalization, immediate hold, timing, gravity/lock, `GameState` placement/line clear and next spawn across multiple pieces. Timing preserves last successful action and rotation kick provenance. The lock path classifies observed All-Mini+ T/non-T cases, detects post-clear perfect clear, emits score-free `ClearEvent`, distinguishes lock visibility and reports typed block/lock/partial-lock out. Unconfirmed lock-out variants are configurable but disabled by default. TETRA LEAGUE does not enforce room handling, so `PlayerHandlingProfile` is a separate normalized input record. `replay-conformance` compares canonical state including last action and top-out reason. Exact target stage ordering, T kick-index upgrade and Clutch Clear/top-out priority remain.
+Progress: the observed TL gravity schedule, integer microcell fall phase, spawn/kick fractional phases, exact lock/reset boundaries, upstream kick numbering, ordered frame-aligned hold actions, IRS/IHS, All-Mini+, Clutch, perfect clear and typed top-out are implemented. `FrameSession` connects normalization through next spawn across multiple pieces. TETRA LEAGUE does not enforce room handling, so the generic `PlayerHandlingProfile` remains a sandbox/input-adapter concern; primary afterstate learning does not depend on raw OS-event repetition. `replay-conformance` compares fall phase, last action and top-out reason.
 
 Exit gate: timing boundary fixtures and solo full replays have zero unexplained divergence.
 
@@ -42,7 +42,7 @@ Exit gate: timing boundary fixtures and solo full replays have zero unexplained 
 
 Exit gate: conformance C2–C5 pass for the declared corpus. Publish coverage and remaining `UNCONFIRMED` cases.
 
-Progress: `crates/versus` now implements integer-only observed TL base attacks, multiplier combo, flat B2B, B2B Charging/Surge with current-client three-packet ordering, separate perfect-clear packets and post-rounding garbage-clear +1. Ordered incoming packets, attack-first/opener-second cancellation, the 14-piece boundary, 20-frame transit gate, combo blocking, 8-line insertion cap and board garbage provenance are also executable as `OBSERVED`. Change-on-attack hole RNG, margin scaling, two-player scheduling and terminal rules remain; the profile is not conformance-certified.
+Progress: `crates/versus` implements observed TL attacks, B2B/Surge packet ordering, perfect-clear and garbage-clear bonuses, ordered incoming packets, cancellation, opener 14, transit 20, combo blocking, cap 8, provenance, change-on-attack hole RNG, packet-depletion sample consumption and margin scaling. `BattleSession` performs simultaneous two-player lock/attack/tank/terminal resolution. The profile is executable but not externally conformance-certified.
 
 ## Phase 4 — Bot arena and strong baselines
 
@@ -97,11 +97,11 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Implement change-on-attack hole RNG including packet cancellation/depletion RNG consumption.
-2. Add garbage margin scaling and deterministic two-player scheduling, then round terminal.
-3. Resolve exact T kick-index upgrade and Clutch Clear/top-out priority only from a suitable target fixture; keep current provisional boundaries labeled.
+1. Finish format/lint/test/release-build verification, documentation and the mechanics milestone commit.
+2. Inventory CPU/RAM/GPU resources and implement Phase 4 afterstate heuristic arena plus record schema.
+3. Keep raw 0.1-subframe and personal handling replay support as an optional validation adapter.
 4. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
-5. Inventory CPU cores, RAM and GPU/VRAM before performance work, and do not generate heuristic training records until relevant mechanics pass conformance.
+5. Promote `OBSERVED` mechanics only after external board checkpoints pass differential tests.
 
 ## Key risks
 

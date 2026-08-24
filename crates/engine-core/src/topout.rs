@@ -5,6 +5,7 @@ pub enum TopOutReason {
     BlockOut,
     LockOut,
     PartialLockOut,
+    GarbageOut,
 }
 
 /// Profile-controlled lock-out variants. Block-out is always authoritative

@@ -12,7 +12,7 @@ use engine_core::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimingSnapshot {
-    pub gravity_accumulator: u64,
+    pub fall_fraction_micros: u32,
     pub lock_elapsed_frames: u16,
     pub lock_resets_used: u16,
     pub locked: bool,
@@ -22,7 +22,7 @@ pub struct TimingSnapshot {
 impl From<&TimingState> for TimingSnapshot {
     fn from(state: &TimingState) -> Self {
         Self {
-            gravity_accumulator: state.gravity_accumulator,
+            fall_fraction_micros: state.fall_fraction_micros,
             lock_elapsed_frames: state.lock_elapsed_frames,
             lock_resets_used: state.lock_resets_used,
             locked: state.locked,
@@ -293,7 +293,7 @@ mod tests {
         let expected = vec![snapshot(0), snapshot(1)];
         let mut timing_actual = expected.clone();
         timing_actual[0].timing = Some(TimingSnapshot {
-            gravity_accumulator: 1,
+            fall_fraction_micros: 1,
             lock_elapsed_frames: 0,
             lock_resets_used: 0,
             locked: false,

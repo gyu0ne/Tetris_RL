@@ -6,7 +6,16 @@
 
 #![forbid(unsafe_code)]
 
-use engine_core::{Board, BoardError, ClearEvent, PlacementOutcome, SpinClassification, WIDTH};
+mod battle;
+
+pub use battle::{
+    BattleError, BattleFrameOutcome, BattlePlayerFrameOutcome, BattlePlayerState, BattleResult,
+    BattleRules, BattleSession, PlayerId,
+};
+
+use engine_core::{
+    Board, BoardError, ClearEvent, MinStd, PlacementOutcome, SpinClassification, WIDTH,
+};
 use std::{collections::VecDeque, fmt};
 
 const MAX_ATTACK_PACKETS: usize = 5;
@@ -70,17 +79,68 @@ pub struct AttackState {
     pub back_to_back: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AttackContext {
     /// True when at least one cleared row contained garbage cells.
     pub cleared_garbage: bool,
+    /// Effective garbage multiplier before this frame's end-of-frame increase.
+    pub multiplier: AttackMultiplier,
+}
+
+impl Default for AttackContext {
+    fn default() -> Self {
+        Self {
+            cleared_garbage: false,
+            multiplier: AttackMultiplier::one(),
+        }
+    }
 }
 
 impl From<PlacementOutcome> for AttackContext {
     fn from(outcome: PlacementOutcome) -> Self {
         Self {
             cleared_garbage: outcome.cleared_garbage,
+            multiplier: AttackMultiplier::one(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AttackMultiplier {
+    /// Exact IEEE-754 payload used by the pinned JavaScript client.
+    value_bits: u64,
+}
+
+impl AttackMultiplier {
+    pub const fn one() -> Self {
+        Self {
+            value_bits: 0x3ff0_0000_0000_0000,
+        }
+    }
+
+    pub fn new(numerator: u64, denominator: u64) -> Result<Self, AttackConfigError> {
+        if denominator == 0 {
+            return Err(AttackConfigError::ZeroGarbageMultiplierDenominator);
+        }
+        let value = numerator as f64 / denominator as f64;
+        if !value.is_finite() {
+            return Err(AttackConfigError::NonFiniteGarbageMultiplier);
+        }
+        Ok(Self::from_f64(value))
+    }
+
+    pub fn value(self) -> f64 {
+        f64::from_bits(self.value_bits)
+    }
+
+    const fn from_f64(value: f64) -> Self {
+        Self {
+            value_bits: value.to_bits(),
+        }
+    }
+
+    fn scale_floor(self, value: u32) -> Result<u32, AttackError> {
+        floor_js_attack(f64::from(value) * self.value())
     }
 }
 
@@ -188,6 +248,10 @@ pub struct GarbageRules {
     pub opener_phase_pieces: u64,
     /// When true, any line clear blocks garbage insertion for that placement.
     pub combo_blocking: bool,
+    /// Hole-change behavior and its exact RNG-consumption contract.
+    pub messiness: GarbageMessinessRules,
+    /// Frame-derived attack scaling used after the TL garbage margin.
+    pub multiplier: GarbageMultiplierSchedule,
 }
 
 impl GarbageRules {
@@ -195,14 +259,229 @@ impl GarbageRules {
         if self.garbage_cap == 0 {
             return Err(GarbageConfigError::ZeroGarbageCap);
         }
+        self.messiness.validate()?;
+        self.multiplier.validate()?;
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbageMultiplierSchedule {
+    pub initial_numerator: u64,
+    pub initial_denominator: u64,
+    pub increase_numerator_per_second: u64,
+    pub increase_denominator_per_second: u64,
+    pub margin_frames: u64,
+    pub tick_rate_hz: u32,
+}
+
+impl GarbageMultiplierSchedule {
+    pub const fn tetra_league_observed() -> Self {
+        Self {
+            initial_numerator: 1,
+            initial_denominator: 1,
+            increase_numerator_per_second: 1,
+            increase_denominator_per_second: 125,
+            margin_frames: 10_800,
+            tick_rate_hz: 60,
+        }
+    }
+
+    fn validate(self) -> Result<(), GarbageConfigError> {
+        if self.initial_denominator == 0 {
+            return Err(GarbageConfigError::ZeroInitialMultiplierDenominator);
+        }
+        if self.increase_denominator_per_second == 0 {
+            return Err(GarbageConfigError::ZeroMultiplierIncreaseDenominator);
+        }
+        if self.tick_rate_hz == 0 {
+            return Err(GarbageConfigError::ZeroTickRate);
+        }
+        Ok(())
+    }
+}
+
+/// Stateful because repeated JavaScript `+=` rounding is observably different
+/// from an exact rational or from one multiplication by elapsed frames.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbageMultiplierState {
+    current: AttackMultiplier,
+}
+
+impl GarbageMultiplierState {
+    pub fn new(schedule: GarbageMultiplierSchedule) -> Result<Self, GarbageError> {
+        schedule.validate()?;
+        let value = schedule.initial_numerator as f64 / schedule.initial_denominator as f64;
+        if !value.is_finite() {
+            return Err(GarbageError::CounterOverflow);
+        }
+        Ok(Self {
+            current: AttackMultiplier::from_f64(value),
+        })
+    }
+
+    pub const fn current(self) -> AttackMultiplier {
+        self.current
+    }
+
+    /// The client applies attacks before incrementing the multiplier at the
+    /// end of a frame, and only when `frame > margin`.
+    pub fn advance_end_of_frame(
+        &mut self,
+        frame: u64,
+        schedule: GarbageMultiplierSchedule,
+    ) -> Result<(), GarbageError> {
+        schedule.validate()?;
+        if frame <= schedule.margin_frames {
+            return Ok(());
+        }
+        let increase = schedule.increase_numerator_per_second as f64
+            / schedule.increase_denominator_per_second as f64
+            / f64::from(schedule.tick_rate_hz);
+        let next = self.current.value() + increase;
+        if !next.is_finite() || next < 0.0 {
+            return Err(GarbageError::CounterOverflow);
+        }
+        self.current = AttackMultiplier::from_f64(next);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbageMessinessRules {
+    pub change_numerator: u32,
+    pub change_denominator: u32,
+    pub inner_numerator: u32,
+    pub inner_denominator: u32,
+    pub no_same: bool,
+    pub center: bool,
+}
+
+impl GarbageMessinessRules {
+    /// Current TETRA LEAGUE change-on-attack behavior: a packet keeps one hole,
+    /// then always rerolls when that packet is depleted or fully cancelled.
+    pub const fn tetra_league_observed() -> Self {
+        Self {
+            change_numerator: 1,
+            change_denominator: 1,
+            inner_numerator: 0,
+            inner_denominator: 1,
+            no_same: false,
+            center: false,
+        }
+    }
+
+    fn validate(self) -> Result<(), GarbageConfigError> {
+        if self.change_denominator == 0 {
+            return Err(GarbageConfigError::ZeroMessinessChangeDenominator);
+        }
+        if self.inner_denominator == 0 {
+            return Err(GarbageConfigError::ZeroMessinessInnerDenominator);
+        }
+        let edge_exclusion = usize::from(self.center) * ((WIDTH + 2) / 5);
+        let available = WIDTH.saturating_sub(2 * edge_exclusion);
+        if available == 0 || (self.no_same && available < 2) {
+            return Err(GarbageConfigError::NoAvailableGarbageHole);
+        }
+        Ok(())
+    }
+}
+
+/// Receiver-side hole state. TETR.IO initializes a second MINSTD stream with
+/// the game seed; it is independent from the piece bag stream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GarbageHoleGenerator {
+    rng: MinStd,
+    last_column: Option<u8>,
+    has_changed_column: bool,
+}
+
+impl GarbageHoleGenerator {
+    pub fn new(seed: u64) -> Self {
+        Self {
+            rng: MinStd::new(seed),
+            last_column: None,
+            has_changed_column: false,
+        }
+    }
+
+    pub const fn rng_state(self) -> u32 {
+        self.rng.state()
+    }
+
+    pub const fn last_column(self) -> Option<u8> {
+        self.last_column
+    }
+
+    pub const fn has_changed_column(self) -> bool {
+        self.has_changed_column
+    }
+
+    fn line_column(
+        &mut self,
+        explicit: Option<u8>,
+        rules: GarbageMessinessRules,
+    ) -> Result<u8, GarbageError> {
+        let column = if let Some(column) = explicit {
+            column
+        } else {
+            let should_change = match self.last_column {
+                None => true,
+                Some(_) => self
+                    .rng
+                    .chance(rules.inner_numerator, rules.inner_denominator),
+            };
+            if should_change && !self.has_changed_column {
+                self.reroll(rules)?;
+                self.has_changed_column = true;
+            }
+            self.last_column.ok_or(GarbageError::MissingGeneratedHole)?
+        };
+        // TakeAllDamage resets this flag after every inserted line, including
+        // packets carrying an explicit column.
+        self.has_changed_column = false;
+        Ok(column)
+    }
+
+    fn packet_finished(&mut self, rules: GarbageMessinessRules) -> Result<(), GarbageError> {
+        if self
+            .rng
+            .chance(rules.change_numerator, rules.change_denominator)
+        {
+            self.reroll(rules)?;
+            self.has_changed_column = true;
+        }
+        Ok(())
+    }
+
+    fn reroll(&mut self, rules: GarbageMessinessRules) -> Result<u8, GarbageError> {
+        rules.validate()?;
+        let edge_exclusion = usize::from(rules.center) * ((WIDTH + 2) / 5);
+        let available = WIDTH - 2 * edge_exclusion;
+        let mut column = if rules.no_same && self.last_column.is_some() {
+            let mut candidate = edge_exclusion + self.rng.index(available - 1);
+            if candidate >= usize::from(self.last_column.expect("checked above")) {
+                candidate += 1;
+            }
+            candidate
+        } else {
+            edge_exclusion + self.rng.index(available)
+        };
+        // The no-same branch skips the previous absolute column. With centered
+        // ranges the previous value is guaranteed to be inside that range.
+        column = column.min(WIDTH - 1);
+        let column = u8::try_from(column).map_err(|_| GarbageError::CounterOverflow)?;
+        self.last_column = Some(column);
+        Ok(column)
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IncomingGarbagePacket {
     pub lines: u32,
-    pub hole_column: u8,
+    /// Some packets (maps/tests/custom modes) carry a fixed column. Normal TL
+    /// attacks use `None` and consume the receiver's hole RNG on tank/cancel.
+    pub hole_column: Option<u8>,
     pub ready_at_frame: u64,
     /// Hardened lines stay in queue and are skipped during cancellation.
     pub hardened: bool,
@@ -228,22 +507,45 @@ impl IncomingGarbagePacket {
             .ok_or(GarbageError::CounterOverflow)?;
         Ok(Self {
             lines,
-            hole_column,
+            hole_column: Some(hole_column),
+            ready_at_frame,
+            hardened,
+        })
+    }
+
+    pub fn after_travel_generated(
+        lines: u32,
+        sent_at_frame: u64,
+        hardened: bool,
+        rules: GarbageRules,
+    ) -> Result<Self, GarbageError> {
+        rules.validate()?;
+        if lines == 0 {
+            return Err(GarbageError::ZeroLinePacket);
+        }
+        let ready_at_frame = sent_at_frame
+            .checked_add(u64::from(rules.travel_frames))
+            .ok_or(GarbageError::CounterOverflow)?;
+        Ok(Self {
+            lines,
+            hole_column: None,
             ready_at_frame,
             hardened,
         })
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IncomingGarbageQueue {
     packets: VecDeque<IncomingGarbagePacket>,
+    holes: GarbageHoleGenerator,
 }
 
 impl IncomingGarbageQueue {
-    pub const fn new() -> Self {
+    pub fn new(seed: u64) -> Self {
         Self {
             packets: VecDeque::new(),
+            holes: GarbageHoleGenerator::new(seed),
         }
     }
 
@@ -251,8 +553,10 @@ impl IncomingGarbageQueue {
         if packet.lines == 0 {
             return Err(GarbageError::ZeroLinePacket);
         }
-        if usize::from(packet.hole_column) >= WIDTH {
-            return Err(GarbageError::HoleOutOfBounds(packet.hole_column));
+        if let Some(column) = packet.hole_column
+            && usize::from(column) >= WIDTH
+        {
+            return Err(GarbageError::HoleOutOfBounds(column));
         }
         self.packets.push_back(packet);
         Ok(())
@@ -270,6 +574,10 @@ impl IncomingGarbageQueue {
         self.packets.is_empty()
     }
 
+    pub const fn hole_generator(&self) -> &GarbageHoleGenerator {
+        &self.holes
+    }
+
     pub fn pending_lines(&self) -> u64 {
         self.packets
             .iter()
@@ -285,7 +593,7 @@ impl IncomingGarbageQueue {
             .sum()
     }
 
-    fn cancel(&mut self, amount: u32) -> u32 {
+    fn cancel(&mut self, amount: u32, rules: GarbageRules) -> Result<u32, GarbageError> {
         let mut remaining = amount;
         for packet in &mut self.packets {
             if remaining == 0 {
@@ -297,23 +605,39 @@ impl IncomingGarbageQueue {
             let cancelled = packet.lines.min(remaining);
             packet.lines -= cancelled;
             remaining -= cancelled;
+            if packet.lines == 0 {
+                self.holes.packet_finished(rules.messiness)?;
+            }
         }
         self.packets.retain(|packet| packet.lines > 0);
-        amount - remaining
+        Ok(amount - remaining)
     }
 
-    fn take_ready_line(&mut self, frame: u64) -> Option<u8> {
+    fn take_ready_line(
+        &mut self,
+        frame: u64,
+        rules: GarbageRules,
+    ) -> Result<Option<u8>, GarbageError> {
         let index = self
             .packets
             .iter()
-            .position(|packet| packet.ready_at_frame <= frame)?;
-        let packet = self.packets.get_mut(index)?;
-        let hole_column = packet.hole_column;
+            .position(|packet| packet.ready_at_frame <= frame);
+        let Some(index) = index else {
+            return Ok(None);
+        };
+        let packet = self
+            .packets
+            .get_mut(index)
+            .ok_or(GarbageError::CounterOverflow)?;
+        let hole_column = self
+            .holes
+            .line_column(packet.hole_column, rules.messiness)?;
         packet.lines -= 1;
         if packet.lines == 0 {
             self.packets.remove(index);
+            self.holes.packet_finished(rules.messiness)?;
         }
-        Some(hole_column)
+        Ok(Some(hole_column))
     }
 }
 
@@ -344,14 +668,14 @@ pub fn cancel_attack_packets(
     for packet in packets.as_slice() {
         let opener_bonus = pieces_placed <= rules.opener_phase_pieces
             && incoming.pending_lines() >= sent_lines_after;
-        let cancelled = incoming.cancel(packet.lines);
+        let cancelled = incoming.cancel(packet.lines, rules)?;
         attack_cancelled = attack_cancelled
             .checked_add(cancelled)
             .ok_or(GarbageError::CounterOverflow)?;
         let remaining = packet.lines - cancelled;
 
         if opener_bonus {
-            let bonus_cancelled = incoming.cancel(packet.lines);
+            let bonus_cancelled = incoming.cancel(packet.lines, rules)?;
             opener_bonus_cancelled = opener_bonus_cancelled
                 .checked_add(bonus_cancelled)
                 .ok_or(GarbageError::CounterOverflow)?;
@@ -399,7 +723,7 @@ pub fn insert_ready_garbage(
     let mut inserted = 0_u8;
     let mut overflowed_buffer = false;
     while inserted < rules.garbage_cap {
-        let Some(hole_column) = incoming.take_ready_line(frame) else {
+        let Some(hole_column) = incoming.take_ready_line(frame, rules)? else {
             break;
         };
         let pushed = board.push_garbage_line(usize::from(hole_column))?;
@@ -470,7 +794,7 @@ pub fn resolve_attack(
     };
     let back_to_back = back_to_back_increment > 0 && next_back_to_back > 1;
 
-    let surge_attack = if cleared
+    let raw_surge_attack = if cleared
         && back_to_back_increment == 0
         && rules.back_to_back_charging
         && previous.back_to_back > rules.back_to_back_charge_at
@@ -483,6 +807,7 @@ pub fn resolve_attack(
     } else {
         0
     };
+    let surge_attack = context.multiplier.scale_floor(raw_surge_attack)?;
 
     let mut packets = AttackPackets::empty();
     push_surge_packets(&mut packets, surge_attack)?;
@@ -498,7 +823,12 @@ pub fn resolve_attack(
     let attack_before_combo = base_attack
         .checked_add(back_to_back_bonus)
         .ok_or(AttackError::CounterOverflow)?;
-    let combo_attack = apply_combo(attack_before_combo, combo, rules.combo)?;
+    let combo_attack = apply_combo_and_multiplier_floor(
+        attack_before_combo,
+        combo,
+        rules.combo,
+        context.multiplier,
+    )?;
     let special_bonus = if context.cleared_garbage && difficult {
         u32::from(rules.garbage_clear_special_bonus)
     } else {
@@ -510,7 +840,9 @@ pub fn resolve_attack(
     packets.push(AttackPacketKind::Clear, clear_attack)?;
 
     let perfect_clear_attack = if clear.perfect_clear {
-        u32::from(rules.perfect_clear_attack)
+        context
+            .multiplier
+            .scale_floor(u32::from(rules.perfect_clear_attack))?
     } else {
         0
     };
@@ -547,12 +879,17 @@ fn base_attack(clear: ClearEvent, rules: AttackRules) -> Result<u32, AttackError
         .ok_or(AttackError::UnsupportedClearLines(clear.lines))
 }
 
-fn apply_combo(attack: u32, combo: u32, rule: ComboRule) -> Result<u32, AttackError> {
+fn apply_combo_and_multiplier_floor(
+    attack: u32,
+    combo: u32,
+    rule: ComboRule,
+    multiplier: AttackMultiplier,
+) -> Result<u32, AttackError> {
     if combo <= 1 {
-        return Ok(attack);
+        return multiplier.scale_floor(attack);
     }
     match rule {
-        ComboRule::None => Ok(attack),
+        ComboRule::None => multiplier.scale_floor(attack),
         ComboRule::Multiplier {
             increment_numerator,
             increment_denominator,
@@ -563,29 +900,40 @@ fn apply_combo(attack: u32, combo: u32, rule: ComboRule) -> Result<u32, AttackEr
             }
             let combo_index = combo - 1;
             if attack == 0 {
-                return u32::try_from(
-                    zero_base_min_combo_index
-                        .iter()
-                        .take_while(|threshold| combo_index >= **threshold)
-                        .count(),
-                )
-                .map_err(|_| AttackError::CounterOverflow);
+                if multiplier == AttackMultiplier::one() {
+                    return u32::try_from(
+                        zero_base_min_combo_index
+                            .iter()
+                            .take_while(|threshold| combo_index >= **threshold)
+                            .count(),
+                    )
+                    .map_err(|_| AttackError::CounterOverflow);
+                }
+                // The zero-base minifier is logarithmic in the client. Once
+                // the time-varying multiplier is not one, integer thresholds
+                // alone lose the fractional part needed before final floor.
+                let value = (1.25_f64 * f64::from(combo_index)).ln_1p() * multiplier.value();
+                return floor_js_attack(value);
             }
 
-            let factor = u64::from(increment_denominator)
-                .checked_add(
-                    u64::from(increment_numerator)
-                        .checked_mul(u64::from(combo_index))
-                        .ok_or(AttackError::CounterOverflow)?,
-                )
-                .ok_or(AttackError::CounterOverflow)?;
-            let scaled = u64::from(attack)
-                .checked_mul(factor)
-                .ok_or(AttackError::CounterOverflow)?
-                / u64::from(increment_denominator);
-            u32::try_from(scaled).map_err(|_| AttackError::CounterOverflow)
+            let factor = 1.0
+                + (f64::from(increment_numerator) / f64::from(increment_denominator))
+                    * f64::from(combo_index);
+            let combo_scaled = f64::from(attack) * factor;
+            floor_js_attack(combo_scaled * multiplier.value())
         }
     }
+}
+
+fn floor_js_attack(value: f64) -> Result<u32, AttackError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(AttackError::CounterOverflow);
+    }
+    let floored = value.floor();
+    if floored > f64::from(u32::MAX) {
+        return Err(AttackError::CounterOverflow);
+    }
+    Ok(floored as u32)
 }
 
 fn push_surge_packets(packets: &mut AttackPackets, surge_attack: u32) -> Result<(), AttackError> {
@@ -614,11 +962,19 @@ fn push_surge_packets(packets: &mut AttackPackets, surge_attack: u32) -> Result<
 pub enum AttackConfigError {
     ZeroComboDenominator,
     NonIncreasingComboThresholds,
+    ZeroGarbageMultiplierDenominator,
+    NonFiniteGarbageMultiplier,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GarbageConfigError {
     ZeroGarbageCap,
+    ZeroMessinessChangeDenominator,
+    ZeroMessinessInnerDenominator,
+    NoAvailableGarbageHole,
+    ZeroInitialMultiplierDenominator,
+    ZeroMultiplierIncreaseDenominator,
+    ZeroTickRate,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -669,6 +1025,7 @@ pub enum GarbageError {
     Board(BoardError),
     ZeroLinePacket,
     HoleOutOfBounds(u8),
+    MissingGeneratedHole,
     CounterOverflow,
 }
 
@@ -705,6 +1062,9 @@ impl fmt::Display for GarbageError {
                     "incoming garbage hole {column} is outside the board"
                 )
             }
+            Self::MissingGeneratedHole => {
+                write!(formatter, "garbage RNG did not produce a hole column")
+            }
             Self::CounterOverflow => write!(formatter, "garbage-state counter overflow"),
         }
     }
@@ -715,8 +1075,9 @@ impl std::error::Error for GarbageError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        AttackContext, AttackPacket, AttackPacketKind, AttackPackets, AttackRules, AttackState,
-        ComboRule, GarbageRules, IncomingGarbagePacket, IncomingGarbageQueue,
+        AttackContext, AttackMultiplier, AttackPacket, AttackPacketKind, AttackPackets,
+        AttackRules, AttackState, ComboRule, GarbageMessinessRules, GarbageMultiplierSchedule,
+        GarbageMultiplierState, GarbageRules, IncomingGarbagePacket, IncomingGarbageQueue,
         cancel_attack_packets, insert_ready_garbage, resolve_attack,
     };
     use engine_core::{
@@ -777,6 +1138,8 @@ mod tests {
             garbage_cap: 8,
             opener_phase_pieces: 14,
             combo_blocking: true,
+            messiness: GarbageMessinessRules::tetra_league_observed(),
+            multiplier: GarbageMultiplierSchedule::tetra_league_observed(),
         }
     }
 
@@ -1005,6 +1368,7 @@ mod tests {
             clear(4),
             AttackContext {
                 cleared_garbage: true,
+                ..AttackContext::default()
             },
             rules(),
         )
@@ -1016,8 +1380,117 @@ mod tests {
     }
 
     #[test]
+    fn margin_multiplier_scales_each_client_packet_before_special_bonus() {
+        let multiplier = AttackMultiplier::new(3, 2).expect("valid multiplier");
+        let context = AttackContext {
+            cleared_garbage: true,
+            multiplier,
+        };
+
+        let difficult = resolve_attack(AttackState::default(), clear(4), context, rules())
+            .expect("scaled difficult clear");
+        assert_eq!(difficult.base_attack, 4);
+        assert_eq!(difficult.special_bonus, 1);
+        assert_eq!(difficult.clear_attack, 7);
+
+        let mut all_clear = clear(4);
+        all_clear.perfect_clear = true;
+        let perfect = resolve_attack(AttackState::default(), all_clear, context, rules())
+            .expect("scaled perfect clear");
+        assert_eq!(perfect.clear_attack, 8);
+        assert_eq!(perfect.perfect_clear_attack, 7);
+    }
+
+    #[test]
+    fn margin_schedule_observes_end_of_frame_ieee_addition() {
+        let schedule = GarbageMultiplierSchedule::tetra_league_observed();
+        let mut state = GarbageMultiplierState::new(schedule).expect("valid schedule");
+        for frame in 0..=10_800 {
+            assert_eq!(state.current(), AttackMultiplier::one());
+            state
+                .advance_end_of_frame(frame, schedule)
+                .expect("valid update");
+        }
+
+        state
+            .advance_end_of_frame(10_801, schedule)
+            .expect("first end-of-frame update");
+        assert_eq!(
+            state.current().value().to_bits(),
+            (1.0_f64 + 0.008_f64 / 60.0).to_bits()
+        );
+
+        for frame in 10_802..=18_300 {
+            state
+                .advance_end_of_frame(frame, schedule)
+                .expect("valid update");
+        }
+        assert_eq!(state.current().value_bits, 0x3fff_ffff_ffff_fe10);
+        assert_eq!(state.current().value().floor(), 1.0);
+        assert!(state.current().value() < 2.0);
+    }
+
+    #[test]
+    fn margin_attack_floor_matches_bun_ieee_fixture() {
+        let multiplier = AttackMultiplier {
+            value_bits: 0x3fff_ffff_ffff_fe10,
+        };
+
+        let nonzero = resolve_attack(
+            AttackState {
+                combo: 9,
+                back_to_back: 0,
+            },
+            clear(2),
+            AttackContext {
+                cleared_garbage: false,
+                multiplier,
+            },
+            rules(),
+        )
+        .expect("margin combo");
+        assert_eq!(nonzero.clear_attack, 6);
+
+        let zero_base = resolve_attack(
+            AttackState {
+                combo: 100,
+                back_to_back: 0,
+            },
+            clear(1),
+            AttackContext {
+                cleared_garbage: false,
+                multiplier,
+            },
+            rules(),
+        )
+        .expect("margin zero-base combo");
+        assert_eq!(zero_base.clear_attack, 9);
+    }
+
+    #[test]
+    fn late_zero_base_combo_keeps_fraction_until_final_floor() {
+        let outcome = resolve_attack(
+            AttackState {
+                combo: 3,
+                back_to_back: 0,
+            },
+            clear(1),
+            AttackContext {
+                cleared_garbage: false,
+                multiplier: AttackMultiplier::new(3, 2).expect("valid multiplier"),
+            },
+            rules(),
+        )
+        .expect("late combo");
+
+        // combo index 3: floor(ln(1 + 1.25*3) * 1.5) = 2.
+        assert_eq!(outcome.state.combo, 4);
+        assert_eq!(outcome.clear_attack, 2);
+    }
+
+    #[test]
     fn opener_cancellation_is_applied_per_ordered_attack_packet() {
-        let mut queue = IncomingGarbageQueue::new();
+        let mut queue = IncomingGarbageQueue::new(0);
         queue.enqueue(incoming(10, 3, 0)).expect("valid queue");
         let attack = packets(&[(AttackPacketKind::Surge, 4), (AttackPacketKind::Clear, 4)]);
 
@@ -1039,7 +1512,7 @@ mod tests {
 
     #[test]
     fn opener_condition_uses_round_sent_total_and_piece_boundary() {
-        let mut active = IncomingGarbageQueue::new();
+        let mut active = IncomingGarbageQueue::new(0);
         active.enqueue(incoming(4, 2, 0)).expect("valid queue");
         let attack = packets(&[(AttackPacketKind::Clear, 2)]);
 
@@ -1049,7 +1522,7 @@ mod tests {
         assert_eq!(at_boundary.opener_bonus_cancelled, 2);
         assert_eq!(at_boundary.sent_lines_after, 4);
 
-        let mut expired = IncomingGarbageQueue::new();
+        let mut expired = IncomingGarbageQueue::new(0);
         expired.enqueue(incoming(4, 2, 0)).expect("valid queue");
         let after_boundary = cancel_attack_packets(&mut expired, attack, 15, 4, garbage_rules())
             .expect("post-opener cancellation");
@@ -1065,7 +1538,7 @@ mod tests {
                 for first in 1..=5 {
                     for second in 1..=5 {
                         for sent_before in [0, 3, 9] {
-                            let mut queue = IncomingGarbageQueue::new();
+                            let mut queue = IncomingGarbageQueue::new(0);
                             queue.enqueue(incoming(pending, 4, 0)).expect("valid queue");
                             let attack = packets(&[
                                 (AttackPacketKind::Surge, first),
@@ -1106,7 +1579,7 @@ mod tests {
 
     #[test]
     fn zero_passthrough_cancels_packets_before_travel_finishes() {
-        let mut queue = IncomingGarbageQueue::new();
+        let mut queue = IncomingGarbageQueue::new(0);
         queue
             .enqueue(incoming(3, 1, 100))
             .expect("in-transit packet");
@@ -1127,7 +1600,7 @@ mod tests {
 
     #[test]
     fn hardened_packets_are_skipped_without_blocking_later_cancellation() {
-        let mut queue = IncomingGarbageQueue::new();
+        let mut queue = IncomingGarbageQueue::new(0);
         queue
             .enqueue(IncomingGarbagePacket {
                 hardened: true,
@@ -1156,7 +1629,7 @@ mod tests {
 
     #[test]
     fn travel_combo_blocking_and_cap_gate_board_insertion() {
-        let mut queue = IncomingGarbageQueue::new();
+        let mut queue = IncomingGarbageQueue::new(0);
         queue.enqueue(incoming(10, 3, 0)).expect("valid queue");
         let mut board = Board::empty();
 
@@ -1183,7 +1656,7 @@ mod tests {
 
     #[test]
     fn ready_packets_insert_in_queue_order() {
-        let mut queue = IncomingGarbageQueue::new();
+        let mut queue = IncomingGarbageQueue::new(0);
         queue.enqueue(incoming(1, 1, 0)).expect("first packet");
         queue.enqueue(incoming(1, 8, 0)).expect("second packet");
         let mut board = Board::empty();
@@ -1196,5 +1669,57 @@ mod tests {
         assert_eq!(board.row(0), Some(full & !(1 << 8)));
         assert_eq!(board.row(1), Some(full & !(1 << 1)));
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn generated_packet_matches_client_hole_and_rng_consumption() {
+        let mut queue = IncomingGarbageQueue::new(0);
+        queue
+            .enqueue(
+                IncomingGarbagePacket::after_travel_generated(3, 0, false, garbage_rules())
+                    .expect("generated packet"),
+            )
+            .expect("valid queue");
+        let mut board = Board::empty();
+
+        let outcome = insert_ready_garbage(&mut queue, &mut board, 20, 0, garbage_rules())
+            .expect("generated insertion");
+
+        assert_eq!(outcome.inserted, 3);
+        let hole_nine = ((1_u16 << 10) - 1) & !(1 << 9);
+        assert_eq!(&board.rows()[..3], &[hole_nine; 3]);
+        // draw 1 chooses the first hole; draws 2-3 perform the unconditional
+        // inner=0 checks; draw 4 checks change=1; draw 5 picks the next hole.
+        assert_eq!(queue.hole_generator().rng_state(), 1_003_374_717);
+        assert_eq!(queue.hole_generator().last_column(), Some(4));
+        assert!(queue.hole_generator().has_changed_column());
+    }
+
+    #[test]
+    fn complete_cancellation_consumes_packet_boundary_rng() {
+        let mut queue = IncomingGarbageQueue::new(0);
+        queue
+            .enqueue(
+                IncomingGarbagePacket::after_travel_generated(3, 0, false, garbage_rules())
+                    .expect("generated packet"),
+            )
+            .expect("valid queue");
+
+        let outcome = cancel_attack_packets(
+            &mut queue,
+            packets(&[(AttackPacketKind::Clear, 3)]),
+            15,
+            0,
+            garbage_rules(),
+        )
+        .expect("full cancellation");
+
+        assert_eq!(outcome.attack_cancelled, 3);
+        assert!(queue.is_empty());
+        // Even without a rise, packet depletion consumes the change test and
+        // the next-hole selection exactly as current FightLines does.
+        assert_eq!(queue.hole_generator().rng_state(), 1_865_008_398);
+        assert_eq!(queue.hole_generator().last_column(), Some(8));
+        assert!(queue.hole_generator().has_changed_column());
     }
 }

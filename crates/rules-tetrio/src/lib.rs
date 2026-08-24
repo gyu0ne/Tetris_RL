@@ -7,9 +7,13 @@
 #![forbid(unsafe_code)]
 
 use engine_core::{
-    Gravity, HandlingRules, SoftDropMode, SpinRules, TimingConfigError, TimingRules,
+    GameConfig, Gravity, HandlingRules, LinearGravityTiming, SoftDropMode, SpinRules,
+    TimingConfigError, TimingRules, TimingSchedule, TimingScheduleError,
 };
-use versus::{AttackConfigError, AttackRules, ComboRule, GarbageConfigError, GarbageRules};
+use versus::{
+    AttackConfigError, AttackRules, BattleRules, ComboRule, GarbageConfigError,
+    GarbageMessinessRules, GarbageMultiplierSchedule, GarbageRules,
+};
 
 pub const TARGET_PROFILE_ID: &str = "tetrio-beta-1.7.8-tetra-league-season-2";
 pub const RESEARCH_ACCESS_DATE: &str = "2026-08-24";
@@ -158,6 +162,7 @@ pub struct GarbageProfileDraft {
     pub garbage_cap: Sourced<u8>,
     pub opener_phase_pieces: Sourced<u64>,
     pub combo_blocking: Sourced<bool>,
+    pub multiplier: Sourced<GarbageMultiplierSchedule>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -246,28 +251,36 @@ pub struct ActiveTimingProfile {
 }
 
 impl ActiveTimingProfile {
-    pub fn core_rules_at_frame(
-        self,
-        elapsed_frames: u64,
-    ) -> Result<TimingRules, ProfileActivationError> {
-        Ok(TimingRules::new(
-            self.gravity_at_frame(elapsed_frames)?,
+    pub fn core_schedule(self) -> Result<TimingSchedule, ProfileActivationError> {
+        let base_rules = TimingRules::new(
+            self.initial_gravity,
             self.lock_delay_frames,
             self.max_lock_resets,
             self.reset_on_lateral_move,
             self.reset_on_rotation,
-        ))
+        );
+        LinearGravityTiming::new(
+            base_rules,
+            self.gravity_increase_per_second,
+            u64::from(self.gravity_margin_frames),
+            u32::from(self.tick_rate_hz),
+            self.gravity_cap,
+        )
+        .map(TimingSchedule::linear_gravity)
+        .map_err(map_timing_schedule_error)
+    }
+
+    pub fn core_rules_at_frame(
+        self,
+        elapsed_frames: u64,
+    ) -> Result<TimingRules, ProfileActivationError> {
+        self.core_schedule()?
+            .rules_at_frame(elapsed_frames)
+            .map_err(map_timing_schedule_error)
     }
 
     pub fn gravity_at_frame(self, elapsed_frames: u64) -> Result<Gravity, ProfileActivationError> {
-        let increase_frames = elapsed_frames.saturating_sub(u64::from(self.gravity_margin_frames));
-        add_scaled_per_second(
-            self.initial_gravity,
-            self.gravity_increase_per_second,
-            increase_frames,
-            self.tick_rate_hz,
-            self.gravity_cap,
-        )
+        Ok(self.core_rules_at_frame(elapsed_frames)?.gravity)
     }
 }
 
@@ -408,6 +421,11 @@ impl TetrioRulesDraft {
                 garbage_cap: Sourced::new(Some(8), "lines per tank", client_garbage),
                 opener_phase_pieces: Sourced::new(Some(14), "placed pieces", client_garbage),
                 combo_blocking: Sourced::new(Some(true), "boolean", client_garbage),
+                multiplier: Sourced::new(
+                    Some(GarbageMultiplierSchedule::tetra_league_observed()),
+                    "exact frame schedule",
+                    client_garbage,
+                ),
             },
             room_handling: RoomHandlingProfileDraft {
                 enforced: Sourced::new(Some(false), "boolean", client_options),
@@ -549,11 +567,32 @@ impl TetrioRulesDraft {
             garbage_cap: required(self.garbage.garbage_cap.value)?,
             opener_phase_pieces: required(self.garbage.opener_phase_pieces.value)?,
             combo_blocking: required(self.garbage.combo_blocking.value)?,
+            messiness: GarbageMessinessRules::tetra_league_observed(),
+            multiplier: required(self.garbage.multiplier.value)?,
         };
         rules
             .validate()
             .map_err(ProfileActivationError::InvalidGarbageConfiguration)?;
         Ok(rules)
+    }
+
+    /// Activates the complete score-free local 1v1 rules. TL does not enforce
+    /// room handling, so callers must pass both participants' effective
+    /// serialized profiles explicitly.
+    pub fn try_battle_rules(
+        self,
+        player_handling: [PlayerHandlingProfile; 2],
+    ) -> Result<BattleRules, ProfileActivationError> {
+        Ok(BattleRules {
+            game: GameConfig::default(),
+            timing: self.try_timing_profile()?.core_schedule()?,
+            handling: [
+                player_handling[0].core_rules(),
+                player_handling[1].core_rules(),
+            ],
+            attack: self.try_attack_rules()?,
+            garbage: self.try_garbage_rules()?,
+        })
     }
 }
 
@@ -721,7 +760,7 @@ fn required_attack_fields(attack: AttackProfileDraft) -> [(&'static str, bool, E
     ]
 }
 
-fn required_garbage_fields(garbage: GarbageProfileDraft) -> [(&'static str, bool, Evidence); 4] {
+fn required_garbage_fields(garbage: GarbageProfileDraft) -> [(&'static str, bool, Evidence); 5] {
     [
         (
             "garbage.travel_frames",
@@ -743,80 +782,22 @@ fn required_garbage_fields(garbage: GarbageProfileDraft) -> [(&'static str, bool
             garbage.combo_blocking.value.is_some(),
             garbage.combo_blocking.evidence,
         ),
+        (
+            "garbage.multiplier",
+            garbage.multiplier.value.is_some(),
+            garbage.multiplier.evidence,
+        ),
     ]
 }
 
-fn add_scaled_per_second(
-    base: Gravity,
-    increase_per_second: Gravity,
-    elapsed_frames: u64,
-    tick_rate_hz: u16,
-    cap: Gravity,
-) -> Result<Gravity, ProfileActivationError> {
-    if tick_rate_hz == 0 {
-        return Err(ProfileActivationError::ZeroTickRate);
+const fn map_timing_schedule_error(error: TimingScheduleError) -> ProfileActivationError {
+    match error {
+        TimingScheduleError::ZeroTickRate => ProfileActivationError::ZeroTickRate,
+        TimingScheduleError::ArithmeticOverflow => ProfileActivationError::TimingArithmeticOverflow,
+        TimingScheduleError::InvalidGravity(error) => {
+            ProfileActivationError::InvalidTimingConfiguration(error)
+        }
     }
-
-    let base_numerator = u128::from(base.numerator());
-    let base_denominator = u128::from(base.denominator());
-    let increase_numerator = u128::from(increase_per_second.numerator());
-    let increase_denominator = u128::from(increase_per_second.denominator());
-    let ticks = u128::from(tick_rate_hz);
-    let elapsed = u128::from(elapsed_frames);
-
-    let common_denominator = base_denominator
-        .checked_mul(increase_denominator)
-        .and_then(|value| value.checked_mul(ticks))
-        .and_then(|value| value.checked_mul(u128::from(cap.denominator())))
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?;
-    let base_scaled = base_numerator
-        .checked_mul(increase_denominator)
-        .and_then(|value| value.checked_mul(ticks))
-        .and_then(|value| value.checked_mul(u128::from(cap.denominator())))
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?;
-    let increase_per_frame_scaled = increase_numerator
-        .checked_mul(base_denominator)
-        .and_then(|value| value.checked_mul(u128::from(cap.denominator())))
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?;
-    let cap_scaled = u128::from(cap.numerator())
-        .checked_mul(base_denominator)
-        .and_then(|value| value.checked_mul(increase_denominator))
-        .and_then(|value| value.checked_mul(ticks))
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?;
-
-    // Reduce by one schedule-wide factor. Per-frame reduction would change the
-    // accumulator's unit while gravity rises and corrupt the carried remainder.
-    let schedule_divisor = gcd(
-        gcd(base_scaled, increase_per_frame_scaled),
-        gcd(common_denominator, cap_scaled),
-    );
-    let denominator = common_denominator / schedule_divisor;
-    let base_scaled = base_scaled / schedule_divisor;
-    let increase_per_frame_scaled = increase_per_frame_scaled / schedule_divisor;
-    let cap_scaled = cap_scaled / schedule_divisor;
-    let increase_scaled = increase_per_frame_scaled
-        .checked_mul(elapsed)
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?;
-    let numerator = base_scaled
-        .checked_add(increase_scaled)
-        .ok_or(ProfileActivationError::TimingArithmeticOverflow)?
-        .min(cap_scaled);
-
-    let fixed_numerator =
-        u32::try_from(numerator).map_err(|_| ProfileActivationError::TimingArithmeticOverflow)?;
-    let fixed_denominator =
-        u32::try_from(denominator).map_err(|_| ProfileActivationError::TimingArithmeticOverflow)?;
-    Gravity::new(fixed_numerator, fixed_denominator)
-        .map_err(ProfileActivationError::InvalidTimingConfiguration)
-}
-
-const fn gcd(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
 }
 
 fn required<T>(value: Option<T>) -> Result<T, ProfileActivationError> {
@@ -860,7 +841,9 @@ mod tests {
         assert_eq!(initial.numerator(), 2400);
         assert_eq!(initial.denominator(), 120_000);
         assert_eq!(at_margin, initial);
-        let after_one_second = timing.gravity_at_frame(7260).unwrap();
+        let first_increased_fall_frame = timing.gravity_at_frame(7202).unwrap();
+        assert_eq!(first_increased_fall_frame.numerator(), 2407);
+        let after_one_second = timing.gravity_at_frame(7261).unwrap();
         assert_eq!(after_one_second.numerator(), 2820);
         assert_eq!(after_one_second.denominator(), initial.denominator());
         let capped = timing.gravity_at_frame(10_000_000).unwrap();
@@ -923,7 +906,31 @@ mod tests {
             .core_rules();
 
         assert_eq!(spin.mode, SpinMode::AllMiniPlus);
-        assert_eq!(spin.t_full_kick_upgrade_mask, 0);
+        assert_eq!(spin.t_full_kick_upgrade_mask, 1 << 3);
+    }
+
+    #[test]
+    fn observed_profile_builds_frame_dynamic_two_player_rules() {
+        let profile = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2();
+        let rules = profile
+            .try_battle_rules([
+                PlayerHandlingProfile::normalized(8, 0, 1, SoftDropMode::Sonic),
+                PlayerHandlingProfile::normalized(10, 2, 2, SoftDropMode::CellsPerFrame(6)),
+            ])
+            .expect("battle profile activates");
+
+        assert_eq!(rules.handling[0].das_frames, 8);
+        assert_eq!(rules.handling[1].das_frames, 10);
+        assert_eq!(
+            rules
+                .timing
+                .rules_at_frame(7_261)
+                .unwrap()
+                .gravity
+                .numerator(),
+            2_820
+        );
+        assert_eq!(rules.garbage.travel_frames, 20);
     }
 
     #[test]

@@ -190,6 +190,12 @@ impl Board {
             .map_or(0, |y| y + 1)
     }
 
+    /// Current-client `AreWeToppedYet` checks whether the 40-row buffer's
+    /// ceiling row is completely filled before an instant garbage rise.
+    pub const fn buffer_ceiling_full(&self) -> bool {
+        self.rows[HEIGHT - 1] == FULL_ROW
+    }
+
     pub fn occupied_cells(&self) -> u32 {
         self.rows.iter().map(|row| row.count_ones()).sum()
     }
@@ -416,6 +422,18 @@ mod tests {
         assert_eq!(board.garbage_rows()[1], 0);
         assert_eq!(board.is_garbage(4, 0), Some(false));
         assert_eq!(board.is_garbage(3, 0), Some(true));
+    }
+
+    #[test]
+    fn garbage_push_reports_a_filled_buffer_ceiling() {
+        let mut rows = [0; HEIGHT];
+        rows[HEIGHT - 1] = FULL_ROW;
+        let mut board = Board::from_rows(rows).expect("valid full ceiling");
+
+        let pushed = board.push_garbage_line(4).expect("valid hole");
+
+        assert!(pushed.overflowed_buffer);
+        assert!(!board.buffer_ceiling_full());
     }
 
     #[test]

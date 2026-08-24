@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T19:17:00+09:00
+Last updated: 2026-08-24T20:29:16+09:00
 
 ## 1. Authority and scope
 
@@ -62,11 +62,11 @@ research/            # experiment manifests and generated reports, not code
 - A complete `OBSERVED` client-derived profile may run local mechanics tests, but it remains distinct from `CONFIRMED` conformance. Promotion requires reference replay/config fixtures and zero unexplained differential divergence.
 - When `room_handling` is disabled, room ARR/DAS/SDF fields are inactive metadata; effective handling must come from the player or replay profile.
 - Randomness must be explicit and seedable. A replay must reproduce piece sequence, per-frame inputs, locks, clears, attacks, garbage columns, top-out, and round result byte-for-byte.
-- Core state transitions use integer/fixed-point frame units. Floating-point is forbidden in authoritative game-state transitions.
+- Core geometry, timers and random state use integer/fixed-point units. A pinned upstream JavaScript floating expression or repeated update may use audited IEEE-754 `f64` only when its rounding is the compatibility behavior itself, with finite/range guards and boundary fixtures.
 - Spin classification must use the last successful player action plus rotation direction/kick index. Automatic gravity does not erase rotation provenance; a hard drop erases it only when it actually translates the piece.
 - Perfect clear is evaluated from the board after line compaction. Block-out, lock-out and partial lock-out remain distinct typed outcomes; unconfirmed target variants must stay disabled rather than being guessed.
 - `engine-core::ClearEvent` contains only transition facts. Attack/B2B/combo/Surge and ordered attack packets belong to `versus`; solo score points must not leak into either layer.
-- Authoritative attack transitions use integers only. Any upstream floating-point formula must be converted to reviewed integer thresholds or exact rationals and checked against generated fixtures.
+- Authoritative attack transitions use checked integers/fixed-capacity packets except for pinned JavaScript floating compatibility paths covered by boundary fixtures; no platform-dependent fast-math optimization is allowed.
 - Garbage is represented as ordered packets. Cancellation must preserve attack packet order, consume attack budget before opener-only budget, and update round sent totals between packets.
 - Board occupancy and garbage provenance are separate aligned bit layers. Garbage clear bonuses must come from compacted lock provenance, never from stack-shape inference.
 - Transit eligibility, cancellation eligibility and insertion eligibility are distinct states. Under the observed TL zero-passthrough profile an in-transit packet may cancel, but it may not rise before its ready frame.

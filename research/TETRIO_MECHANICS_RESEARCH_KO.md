@@ -101,7 +101,7 @@
 
 - current TL preset은 `passthrough=zero`, `garbagespeed=20`, `garbagecap=8`, `garbageblocking=combo blocking`, `openerphase=14`다. 이동 중 packet은 상쇄할 수 있지만 20-frame 준비 전에는 삽입하지 않고, line clear가 없는 placement에서만 최대 8줄이 오른다. `OBSERVED`
 - historical bot 문서에는 `garbagespeed`, `garbagecap`, `garbagecapincrease`, `garbagecapmax`, `garbagemultiplier`, `garbagemargin`, `garbageincrease`, `passthrough`, `clutch` 등의 room field가 기록되어 있다. 이 문서는 2022년 client를 대상으로 하므로 현재 기본값을 제공하는 근거로 사용하지 않는다.
-- current client control flow에서 cancellation order와 transit/cap/insertion은 구현했다. 기본 change-on-attack option은 `messiness_change=1`, `messiness_inner=0`, `messiness_nosame=false`로 관찰됐지만 packet 소진·완전 상쇄 때의 RNG 소비까지 포함한 hole generator와 180초 이후 multiplier margin은 아직 구현하지 않는다. `OBSERVED` 값, 전이 구현은 `UNCONFIRMED`
+- current client control flow에서 cancellation order, transit/cap/insertion, `messiness_change=1`, `messiness_inner=0`, `messiness_nosame=false`, packet 소진·완전 상쇄 때의 RNG 소비와 180초 이후 multiplier margin을 구현했다. 값과 전이는 `OBSERVED`이며 외부 differential 전에는 `CONFIRMED`가 아니다.
 - Clutch Clear는 BETA 1.5.0 이후 현재 mechanics에 포함한다. top-out 판정과 next-piece upward displacement의 정확한 경계는 fixture가 필요하다.
 - round 승패, draw/동시 사망과 terminal state는 학습 보상을 결정하므로 포함한다. 반면 rating 계산과 matchmaking은 제외한다.
 

@@ -12,6 +12,10 @@ pub enum RotationDirection {
 pub struct RotationResult {
     pub state: PieceState,
     pub direction: RotationDirection,
+    /// Whether the direct rotated position failed and a kick-table offset was used.
+    pub used_kick: bool,
+    /// TETR.IO-compatible kick-table index. The direct candidate and the first
+    /// fallback both serialize as zero; later fallbacks retain their table index.
     pub kick_index: u8,
 }
 
@@ -56,12 +60,13 @@ pub fn try_rotate(
         .iter()
         .copied()
         .enumerate()
-        .find_map(|(index, (dx, dy))| {
+        .find_map(|(candidate_index, (dx, dy))| {
             let candidate = rotated.translated(dx, dy);
             (!board.collides(candidate)).then_some(RotationResult {
                 state: candidate,
                 direction,
-                kick_index: index as u8,
+                used_kick: candidate_index != 0,
+                kick_index: candidate_index.saturating_sub(1) as u8,
             })
         })
 }
@@ -158,6 +163,7 @@ mod tests {
         assert_eq!(result.state.orientation, Orientation::Right);
         assert_eq!(result.state.x, piece.x);
         assert_eq!(result.state.y, piece.y);
+        assert!(!result.used_kick);
         assert_eq!(result.kick_index, 0);
     }
 
@@ -169,7 +175,8 @@ mod tests {
         let result = try_rotate(&board, piece, RotationDirection::Counterclockwise)
             .expect("R to spawn should kick right");
         assert_eq!(result.state.x, 0);
-        assert_eq!(result.kick_index, 1);
+        assert!(result.used_kick);
+        assert_eq!(result.kick_index, 0);
     }
 
     #[test]

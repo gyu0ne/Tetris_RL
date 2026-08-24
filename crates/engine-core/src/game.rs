@@ -1,10 +1,26 @@
 use crate::{
-    BagOrderError, Board, BoardError, ClearEvent, ClearedLines, InitialActions, LastAction,
-    LockVisibility, Orientation, PieceKind, PieceState, RotationResult, SevenBag, SpinRules,
-    TopOutReason, TopOutRules, classify_spin, reachable_locks, try_rotate,
+    BagOrderError, Board, BoardError, ClearEvent, ClearedLines, GarbagePushResult, HEIGHT,
+    InitialActions, LastAction, LockVisibility, Orientation, PieceKind, PieceState, RotationResult,
+    SevenBag, SpinRules, TopOutReason, TopOutRules, VISIBLE_HEIGHT, classify_spin, reachable_locks,
+    try_rotate,
 };
 use std::collections::VecDeque;
 use std::fmt;
+
+/// Observed current-client pre-shuffle order (`z,l,o,s,i,j,t`).
+pub const TETRIO_7_BAG_ORDER: [PieceKind; 7] = [
+    PieceKind::Z,
+    PieceKind::L,
+    PieceKind::O,
+    PieceKind::S,
+    PieceKind::I,
+    PieceKind::J,
+    PieceKind::T,
+];
+
+/// Current client spawn y is `board_buffer - 2.04`; the integer board view
+/// therefore starts with a 0.96-cell downward phase.
+pub const TETRIO_SPAWN_FALL_FRACTION_MICROS: u32 = 960_000;
 
 /// Profile-supplied spawn origins and orientations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,6 +56,8 @@ pub struct GameConfig {
     pub bag_order: [PieceKind; 7],
     pub spin: SpinRules,
     pub top_out: TopOutRules,
+    pub clutch_clear: bool,
+    pub spawn_fall_fraction_micros: u32,
 }
 
 impl Default for GameConfig {
@@ -47,9 +65,11 @@ impl Default for GameConfig {
         Self {
             preview: 5,
             spawn: SpawnRules::modern_observed(),
-            bag_order: PieceKind::ALL,
+            bag_order: TETRIO_7_BAG_ORDER,
             spin: SpinRules::all_mini_plus_observed(),
             top_out: TopOutRules::block_out_only(),
+            clutch_clear: true,
+            spawn_fall_fraction_micros: TETRIO_SPAWN_FALL_FRACTION_MICROS,
         }
     }
 }
@@ -66,6 +86,7 @@ pub struct GameState {
     hold_available: bool,
     pieces_placed: u64,
     top_out: Option<TopOutReason>,
+    pending_lock: Option<LockedPlacement>,
     config: GameConfig,
 }
 
@@ -92,12 +113,17 @@ impl GameState {
             hold_available: true,
             pieces_placed: 0,
             top_out,
+            pending_lock: None,
             config,
         })
     }
 
     pub const fn board(&self) -> &Board {
         &self.board
+    }
+
+    pub const fn spawn_fall_fraction_micros(&self) -> u32 {
+        self.config.spawn_fall_fraction_micros
     }
 
     pub const fn active(&self) -> PieceState {
@@ -124,12 +150,16 @@ impl GameState {
         self.top_out
     }
 
+    pub const fn pending_lock(&self) -> Option<LockedPlacement> {
+        self.pending_lock
+    }
+
     pub fn preview(&self) -> Vec<PieceKind> {
         self.queue.iter().copied().collect()
     }
 
     pub fn reachable_placements(&self) -> Vec<crate::GeometricPlacement> {
-        if self.is_top_out() {
+        if self.is_top_out() || self.pending_lock.is_some() {
             Vec::new()
         } else {
             reachable_locks(&self.board, self.active)
@@ -168,7 +198,19 @@ impl GameState {
         &mut self,
         actions: InitialActions,
     ) -> Result<InitialActionOutcome, GameError> {
+        self.apply_initial_actions_with_clutch(actions, false)
+    }
+
+    /// Applies initial hold/rotation after a lock. `clutch_available` lets an
+    /// IHS replacement receive the same post-clear Clutch Clear rescue as the
+    /// normally spawned queue piece.
+    pub fn apply_initial_actions_with_clutch(
+        &mut self,
+        actions: InitialActions,
+        clutch_available: bool,
+    ) -> Result<InitialActionOutcome, GameError> {
         self.ensure_playable()?;
+        let clutch_available = self.config.clutch_clear && clutch_available;
 
         let hold_applied = if actions.hold_requested && self.hold_available {
             self.hold_active()?;
@@ -177,11 +219,21 @@ impl GameState {
             false
         };
 
+        let clutch =
+            hold_applied && self.top_out == Some(TopOutReason::BlockOut) && clutch_available && {
+                self.top_out = None;
+                self.raise_spawn_until_legal()
+            };
+        if hold_applied && self.board.collides(self.active) {
+            self.top_out = Some(TopOutReason::BlockOut);
+        }
+
         if self.is_top_out() {
             return Ok(InitialActionOutcome {
                 active: self.active,
                 hold_applied,
                 rotation: None,
+                clutch,
                 top_out: true,
                 top_out_reason: self.top_out,
             });
@@ -202,6 +254,7 @@ impl GameState {
             active: self.active,
             hold_applied,
             rotation,
+            clutch,
             top_out: self.is_top_out(),
             top_out_reason: self.top_out,
         })
@@ -216,6 +269,18 @@ impl GameState {
         placement: PieceState,
         last_action: LastAction,
     ) -> Result<PlacementOutcome, GameError> {
+        self.lock_placement_deferred(placement, last_action)?;
+        self.finish_lock()
+    }
+
+    /// Locks and clears the active piece without consuming the next bag item.
+    /// Versus code uses this boundary to resolve attack/cancel/garbage before
+    /// the next spawn and its Clutch Clear block-out check.
+    pub fn lock_placement_deferred(
+        &mut self,
+        placement: PieceState,
+        last_action: LastAction,
+    ) -> Result<LockedPlacement, GameError> {
         self.ensure_playable()?;
         if placement.kind != self.active.kind {
             return Err(GameError::WrongPiece {
@@ -235,9 +300,35 @@ impl GameState {
         let lock = self.board.lock(placement)?;
         self.pieces_placed += 1;
         self.hold_available = true;
+        let locked = LockedPlacement {
+            cleared: lock.cleared,
+            clear: ClearEvent::from_lock(placement.kind, lock.cleared, spin, lock.perfect_clear),
+            cleared_garbage: lock.cleared_garbage,
+            lock_visibility: lock.visibility,
+            pieces_placed: self.pieces_placed,
+        };
+        self.pending_lock = Some(locked);
+        Ok(locked)
+    }
+
+    /// Completes a deferred lock after versus garbage processing.
+    pub fn finish_lock(&mut self) -> Result<PlacementOutcome, GameError> {
+        if self.is_top_out() {
+            return Err(GameError::GameOver);
+        }
+        let locked = self.pending_lock.take().ok_or(GameError::NoPendingLock)?;
         let next = self.take_next_piece();
         self.active = self.config.spawn.piece(next);
-        let lock_out = self.config.top_out.lock_reason(lock.visibility);
+        let clutch_available = self.config.clutch_clear && locked.cleared.count() > 0;
+        let lock_out = self
+            .config
+            .top_out
+            .lock_reason(locked.lock_visibility)
+            .filter(|_| !clutch_available);
+        let clutch = lock_out.is_none()
+            && self.board.collides(self.active)
+            && clutch_available
+            && self.raise_spawn_until_legal();
         let block_out = self
             .board
             .collides(self.active)
@@ -245,15 +336,51 @@ impl GameState {
         self.top_out = lock_out.or(block_out);
 
         Ok(PlacementOutcome {
-            cleared: lock.cleared,
-            clear: ClearEvent::from_lock(placement.kind, lock.cleared, spin, lock.perfect_clear),
-            cleared_garbage: lock.cleared_garbage,
-            lock_visibility: lock.visibility,
+            cleared: locked.cleared,
+            clear: locked.clear,
+            cleared_garbage: locked.cleared_garbage,
+            lock_visibility: locked.lock_visibility,
             top_out: self.is_top_out(),
             top_out_reason: self.top_out,
             next_active: self.active,
             pieces_placed: self.pieces_placed,
+            clutch,
         })
+    }
+
+    /// Inserts one instant garbage row at the lock/spawn boundary. A completely
+    /// filled buffer ceiling is terminal before the push, matching
+    /// `AreWeToppedYet`; a partially occupied ceiling may be discarded.
+    pub fn push_garbage_before_spawn(
+        &mut self,
+        hole_column: usize,
+    ) -> Result<GarbagePushResult, GameError> {
+        if self.pending_lock.is_none() {
+            return Err(GameError::NoPendingLock);
+        }
+        if self.board.buffer_ceiling_full() {
+            self.top_out = Some(TopOutReason::GarbageOut);
+            return Ok(GarbagePushResult {
+                overflowed_buffer: true,
+            });
+        }
+        self.board
+            .push_garbage_line(hole_column)
+            .map_err(GameError::Board)
+    }
+
+    fn raise_spawn_until_legal(&mut self) -> bool {
+        let initial_y = self.active.y;
+        let max_y = initial_y.saturating_add(VISIBLE_HEIGHT as i16);
+        while self.board.collides(self.active) && self.active.y < max_y {
+            self.active.y += 1;
+        }
+        !self.board.collides(self.active)
+            && self
+                .active
+                .cells()
+                .into_iter()
+                .all(|(_, y)| y >= 0 && y < HEIGHT as i16)
     }
 
     fn take_next_piece(&mut self) -> PieceKind {
@@ -270,10 +397,21 @@ impl GameState {
     fn ensure_playable(&self) -> Result<(), GameError> {
         if self.is_top_out() {
             Err(GameError::GameOver)
+        } else if self.pending_lock.is_some() {
+            Err(GameError::AwaitingSpawn)
         } else {
             Ok(())
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LockedPlacement {
+    pub cleared: ClearedLines,
+    pub clear: ClearEvent,
+    pub cleared_garbage: bool,
+    pub lock_visibility: LockVisibility,
+    pub pieces_placed: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -289,6 +427,7 @@ pub struct InitialActionOutcome {
     pub active: PieceState,
     pub hold_applied: bool,
     pub rotation: Option<RotationResult>,
+    pub clutch: bool,
     pub top_out: bool,
     pub top_out_reason: Option<TopOutReason>,
 }
@@ -303,6 +442,7 @@ pub struct PlacementOutcome {
     pub top_out_reason: Option<TopOutReason>,
     pub next_active: PieceState,
     pub pieces_placed: u64,
+    pub clutch: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -310,6 +450,8 @@ pub enum GameError {
     BagOrder(BagOrderError),
     Board(BoardError),
     GameOver,
+    AwaitingSpawn,
+    NoPendingLock,
     HoldAlreadyUsed,
     WrongPiece {
         active: PieceKind,
@@ -336,6 +478,8 @@ impl fmt::Display for GameError {
             Self::BagOrder(error) => error.fmt(formatter),
             Self::Board(error) => error.fmt(formatter),
             Self::GameOver => write!(formatter, "the game is already top-out terminal"),
+            Self::AwaitingSpawn => write!(formatter, "the locked piece is awaiting next spawn"),
+            Self::NoPendingLock => write!(formatter, "there is no deferred lock to finish"),
             Self::HoldAlreadyUsed => {
                 write!(formatter, "hold was already used for the active piece")
             }
@@ -353,8 +497,30 @@ impl std::error::Error for GameError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{GameConfig, GameError, GameState};
-    use crate::{Board, HEIGHT, InitialActions, Orientation, RotationDirection, TopOutReason};
+    use super::{GameConfig, GameError, GameState, LockedPlacement};
+    use crate::{
+        Board, ClearEvent, HEIGHT, InitialActions, LockVisibility, Orientation, PieceKind,
+        PieceState, RotationDirection, TETRIO_7_BAG_ORDER, TopOutReason, WIDTH,
+    };
+
+    fn inject_pending_single_clear(game: &mut GameState) {
+        let mut rows = [0_u16; HEIGHT];
+        rows[0] = (1_u16 << WIDTH) - 1;
+        let mut source = Board::from_rows(rows).expect("valid source board");
+        let cleared = source
+            .lock(PieceState::new(PieceKind::O, Orientation::Spawn, 3, 5))
+            .expect("dummy lock")
+            .cleared;
+        game.pending_lock = Some(LockedPlacement {
+            cleared,
+            clear: ClearEvent::from_lock(PieceKind::O, cleared, None, false),
+            cleared_garbage: false,
+            lock_visibility: LockVisibility::Visible,
+            pieces_placed: 1,
+        });
+        game.pieces_placed = 1;
+        game.hold_available = true;
+    }
 
     #[test]
     fn queue_has_configured_preview_length() {
@@ -438,5 +604,65 @@ mod tests {
 
         assert!(game.is_top_out());
         assert_eq!(game.top_out_reason(), Some(TopOutReason::BlockOut));
+    }
+
+    #[test]
+    fn post_clear_clutch_raises_a_colliding_queue_spawn() {
+        let mut game = GameState::new(101, GameConfig::default()).expect("valid game");
+        let next_spawn = game.config.spawn.piece(game.preview()[0]);
+        let shifted_cells = next_spawn.translated(0, 1).cells();
+        let blocker = next_spawn
+            .cells()
+            .into_iter()
+            .find(|cell| !shifted_cells.contains(cell))
+            .expect("one-row rescue cell");
+        let mut board = Board::empty();
+        board
+            .set_cell(blocker.0 as usize, blocker.1 as usize, true)
+            .expect("valid blocker");
+        game.board = board;
+        inject_pending_single_clear(&mut game);
+
+        let outcome = game.finish_lock().expect("finish lock");
+
+        assert!(outcome.clutch);
+        assert!(!outcome.top_out);
+        assert_eq!(outcome.next_active.y, next_spawn.y + 1);
+    }
+
+    #[test]
+    fn post_clear_clutch_also_rescues_an_ihs_replacement() {
+        let mut game = GameState::new(103, GameConfig::default()).expect("valid game");
+        let next_spawn = game.config.spawn.piece(game.preview()[0]);
+        let next_cells = next_spawn.cells();
+        let (held_kind, blocker) = TETRIO_7_BAG_ORDER
+            .into_iter()
+            .find_map(|kind| {
+                let held = game.config.spawn.piece(kind);
+                let shifted = held.translated(0, 1).cells();
+                held.cells()
+                    .into_iter()
+                    .find(|cell| !shifted.contains(cell) && !next_cells.contains(cell))
+                    .map(|cell| (kind, cell))
+            })
+            .expect("held-only one-row rescue cell");
+        let mut board = Board::empty();
+        board
+            .set_cell(blocker.0 as usize, blocker.1 as usize, true)
+            .expect("valid blocker");
+        game.board = board;
+        game.hold = Some(held_kind);
+        inject_pending_single_clear(&mut game);
+
+        let placement = game.finish_lock().expect("normal spawn");
+        assert!(!placement.clutch);
+        let initial = game
+            .apply_initial_actions_with_clutch(InitialActions::new(true, None), true)
+            .expect("IHS with clutch");
+
+        assert!(initial.hold_applied);
+        assert!(initial.clutch);
+        assert!(!initial.top_out);
+        assert_eq!(initial.active.kind, held_kind);
     }
 }

@@ -62,11 +62,11 @@ sent after = sent before + outgoing attack
 
 ## 4. Transit·combo blocking·cap
 
-`IncomingGarbagePacket`은 line 수, 명시적 hole column, `ready_at_frame`, hardened flag를 가진다. `after_travel`은 송신 frame에 20을 checked-add해 준비 frame을 만든다.
+`IncomingGarbagePacket`은 line 수, 선택적 명시 hole column, `ready_at_frame`, hardened flag를 가진다. `after_travel`은 송신 frame에 20을 checked-add해 준비 frame을 만든다. 수신 queue의 `GarbageHoleGenerator`는 piece stream과 분리된 MINSTD stream으로 change-on-attack hole을 만들고 packet 소진 경계의 표본 소비를 고정한다.
 
 현재 TL의 combo blocking에서는 한 줄이라도 clear한 placement가 garbage rise를 전부 막는다. line clear가 없을 때만 준비된 packet을 queue 순서로 꺼내며, 한 placement에서 최대 8줄을 삽입한다. 20-frame gate 이전 packet은 queue에는 존재해 상쇄될 수 있지만 삽입되지 않는다.
 
-hole 생성 자체는 아직 외부의 결정론적 scheduler가 공급한다. current client의 change-on-attack `messiness_change=1`, `messiness_inner=0`, 동일 column 재추첨 가능성과 packet이 완전히 상쇄됐을 때의 RNG 소비까지 고정한 generator는 후속 범위다. 이를 임의 RNG로 채우지 않는다.
+current client의 change-on-attack `messiness_change=1`, `messiness_inner=0`을 반영한다. `messiness_inner=0`이므로 packet 내부 줄은 같은 hole을 공유한다. packet이 삽입 또는 상쇄로 소진되면 수신측 generator가 change 검사와 다음 hole 재추첨 표본을 소비하므로, 완전 상쇄도 이후 hole sequence를 진행시킨다.
 
 ## 5. Board provenance
 
@@ -89,12 +89,12 @@ lock 결과의 `cleared_garbage`는 지워진 full row 중 garbage bit가 하나
 
 검증은 opener 14/15 boundary, ordered multi-packet 상쇄, transit 전 zero-passthrough 상쇄, hardened skip, 20-frame 준비 경계, line-clear blocking, 8-line cap, packet hole 순서, provenance compaction을 포함한다.
 
-## 7. 남은 1 대 1 mechanics
+## 7. 1 대 1 통합 상태
 
-1. change-on-attack hole RNG와 packet 소진/상쇄 시 RNG 소비
-2. 180초 garbage margin 이후 multiplier 증가 `0.008/s`
-3. 두 player frame scheduler에서 attack 전달·lock·tank 순서 통합
-4. garbage rise 이후 Clutch Clear, block-out/garbage-out와 simultaneous terminal
-5. reference fixture differential을 통한 `OBSERVED`에서 `CONFIRMED` 승격
+1. change-on-attack hole RNG와 packet 소진 시 RNG 소비: 구현 완료
+2. 180초 garbage margin 이후 multiplier 증가 `0.008/s`: 구현 완료
+3. 양쪽 lock 계산 뒤 같은 tick 공격을 동시에 전달하는 scheduler: 구현 완료
+4. garbage rise, Clutch, block/garbage out과 simultaneous terminal: 구현 완료
+5. reference fixture differential을 통한 `OBSERVED`에서 `CONFIRMED` 승격: 외부 기준 checkpoint가 필요해 미완료
 
 현재 구현은 queue·상쇄·기본 삽입 전이를 실행할 수 있지만, 위 항목이 끝나기 전에는 전체 TL 1 대 1 mechanics 완료본이 아니다.

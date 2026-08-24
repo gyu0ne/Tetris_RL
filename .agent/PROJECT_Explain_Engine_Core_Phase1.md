@@ -4,6 +4,8 @@
 
 구현일: `2026-08-24`
 
+> 이 문서는 최초 Phase 1 milestone의 당시 상태를 보존한 기록이다. 아래의 “아직 구현하지 않았다” 항목은 이후 milestone에서 완료됐으며, 현재 상태는 `PROJECT_Explain_Battle_Scheduler_and_Client_Mechanics.md`를 따른다.
+
 ## 구현한 경계
 
 `crates/engine-core`에 rendering, network, wall clock과 학습 코드를 포함하지 않는 mechanics kernel을 만들었다.

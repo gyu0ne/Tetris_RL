@@ -1,7 +1,7 @@
 # TETR.IO 동등 엔진 및 강화학습 1 대 1 봇 통합 개발 계획서
 
 > 기준일: 2026-08-24
-> 현재 상태: deterministic core, score-free solo session과 observed TL 공격 전이 구현, target conformance 미완료
+> 현재 상태: 학습에 영향을 주는 선언 범위의 deterministic solo/1대1 mechanics 구현 완료, 외부 기준 상태를 이용한 target conformance 인증은 미완료
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 
@@ -12,7 +12,7 @@
 1. 공개적으로 검증 가능한 범위에서 특정 버전의 TETR.IO와 동일한 상태 전이와 타이밍을 재현하는 로컬 테트리스 엔진을 만든다.
 2. 이 엔진 위에서 제한된 연산 자원을 효율적으로 사용해 강한 테트리스 1 대 1 강화학습 봇을 학습하고 평가한다.
 
-초기 기준 프로필은 잠정적으로 `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`로 고정한다. 다만 실제 replay와 설정 export를 확보하기 전까지 정확한 TETRA LEAGUE 상수는 확정하지 않는다. 이후 TETR.IO가 업데이트되더라도 이 프로젝트의 기준 버전은 자동으로 바뀌지 않는다.
+기준 프로필은 `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`로 고정한다. 현재 client bundle에서 직접 추출한 상수와 제어 흐름은 `OBSERVED`로 실행하며, 외부 기준 board checkpoint와 differential fixture를 통과하기 전에는 `CONFIRMED`로 승격하지 않는다. 이후 TETR.IO가 업데이트되더라도 이 프로젝트의 기준 버전은 자동으로 바뀌지 않는다.
 
 ## 2. “TETR.IO와 완벽히 같음”의 정의
 
@@ -203,9 +203,9 @@ Rust는 결정론적 저수준 제어, bit 연산, 안전한 병렬 simulation �
 - Beta 1.5.0에서 multiplayer 기본이 All-Mini+로 바뀌었고, 3-corner를 충족하지 못하지만 immobile인 T-spin의 Mini 판정과 reworked Clutch Clear가 추가되었다. 현재 target은 All-Mini+다.
 - Beta 1.3.0은 multiplier 영향을 받지 않는 garbage clear difficult-clear flat `+1`을 추가했다.
 - 기본 회전은 SRS+이며 SRS-X는 별도 선택지다.
-- multiplayer piece 생성은 seed가 있는 7-bag이다.
-- 커뮤니티 protocol 문서가 보고한 입력 순서 `ZLOSIJT`는 replay fixture로 확인하기 전까지 `OBSERVED`다.
-- current-client 추출에서 TL timing option은 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE/line-clear ARE 0, lock time 30, lock resets 15로 두 asset snapshot에 걸쳐 동일했다. 이 값은 `OBSERVED`이며 reference replay 검증 전에는 `CONFIRMED`가 아니다. garbage cap/messiness, frame order, top-out과 mechanics 관련 round parameter는 여전히 `UNCONFIRMED`다.
+- multiplayer piece 생성은 Park–Miller MINSTD와 입력 순서 `ZLOSIJT`를 사용하는 seeded 7-bag이며, current bundle에서 직접 대조한 `OBSERVED` 값이다.
+- current-client 추출에서 TL timing option은 `g=0.02`, `gincrease=0.0035`, `gmargin=7200`, ARE/line-clear ARE 0, lock time 30, lock resets 15다. occupancy는 fractional `y`의 ceiling을 사용하며 spawn/fallback-kick phase는 각각 `0.96`/`0.1`, lock 경계는 `locking > locktime`이다.
+- current client의 TL garbage option과 제어 흐름에서 speed 20, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack, `messiness_change=1`, `messiness_inner=0`, margin 10800과 `0.008/s`, Clutch 및 top-out 순서를 `OBSERVED`로 채웠다.
 - current client의 53개 firepower case에서 normal/Mini/Full attack table, multiplier combo, B2B +1, Surge 3분할, Perfect Clear 5와 garbage-clear +1의 값·순서를 `OBSERVED`로 채웠다. reference differential 전에는 `CONFIRMED`가 아니다.
 
 ### 8.3 Fixture 행렬
@@ -393,7 +393,7 @@ non-learning baseline은 반드시 유지한다.
 - bitboard field, piece geometry, seedable RNG/7-bag, spawn/hold/queue, SRS+ 및 reachable placement 열거를 구현한다.
 - unit, property, golden, fuzz test와 step/collision/clear/afterstate benchmark를 작성한다.
 
-**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, MINSTD 기반 generic 7-bag, configurable spawn/hold/queue, 공개 자료 기반 SRS+/180 candidate, geometric reachable-lock BFS가 구현되었다. 이어서 유리수 frame gravity, lock delay/reset cap, client-derived gravity schedule과 근거를 가진 `rules-tetrio` profile을 구현했다. 필수 timing literal은 모두 `OBSERVED`로 채워 실행 가능하지만 replay conformance blockers는 유지한다. spawn/RNG/kick/timing literal은 reference fixture 전까지 target conformance로 확정하지 않는다.
+**현재 진척:** Rust workspace와 container workflow, 10×40 bitboard, piece geometry, current client와 동일한 Park–Miller MINSTD stream 및 `ZLOSIJT` 7-bag, configurable spawn/hold/queue, SRS+/180, geometric reachable-lock BFS가 구현되었다. piece와 garbage는 같은 seed에서 시작하는 분리 stream을 사용한다. spawn·RNG·kick·timing literal은 current bundle에서 직접 대조한 `OBSERVED` 실행값이며, reference fixture 전까지 target conformance로 확정하지 않는다.
 
 **통과 조건:** debug와 release의 replay/state hash가 같고 C1 geometry/RNG/movement fixture가 통과해야 한다.
 
@@ -405,7 +405,7 @@ non-learning baseline은 반드시 유지한다.
 - line/spin/perfect-clear를 score-free `ClearEvent`로 내보내고 single-board 생존·전이 시험 sandbox를 제공한다. 40 LINES, BLITZ, ZEN/custom 점수 profile은 구현하지 않는다.
 - canonical differential test는 headless로 유지하며 시각적 replay player/viewer는 구현하지 않는다.
 
-**현재 진척:** float 없는 유리수 gravity accumulator, client option 기반 초기 `0.02G`와 120초 뒤 초당 `0.0035G` 증가 및 20G cap 계산, hard drop 즉시 lock, 30-frame lock과 15회 move/rotation reset이 구현되었다. ordered edge와 held state를 DAS/ARR/DCD/sonic-drop action으로 바꾸는 generic normalizer, held-key IRS/IHS와 generic IHS→IRS spawn 적용도 추가했다. `FrameSession`은 이들을 즉시 hold, 이동/회전, gravity/lock, `GameState` line clear와 다음 spawn까지 연속 전이로 연결한다. 마지막 성공 입력과 회전 방향/kick index를 보존하고, All-Mini+의 T corner·immobility 및 non-T immobility 경로, post-clear perfect clear, score-free `ClearEvent`, lock visibility와 typed block/lock/partial-lock out을 구현했다. TL에서 확인되지 않은 lock-out 변형은 기본 비활성이고 exact T kick upgrade 및 Clutch Clear 우선순위는 `UNCONFIRMED`다. `replay-conformance`는 last action과 top-out reason까지 비교한다. exact same-frame stage order는 아직 남아 있다.
+**현재 진척:** client의 1e-6 quantization을 정수 microcell로 옮긴 fall phase, spawn `0.96`과 fallback kick `0.1` phase, 초기 `0.02G`, 120초 뒤 초당 `0.0035G` 증가와 20G cap, hard drop 즉시 lock을 구현했다. lock은 client와 같이 `locking > 30`에서 발생하고, 성공 입력이 15번째 reset에 도달하면 timer를 더 이상 초기화하지 않는다. 회전 kick 번호는 direct와 첫 fallback을 모두 `0`, 이후 fallback을 `1..3`으로 직렬화하며 `kick == 3` T-spin full upgrade를 반영한다. `FrameSession`은 frame-aligned edge의 실제 순서를 보존해 rotate→hold와 hold→rotate를 구분하고, hold/IRS/IHS, gravity/lock, clear, Clutch 이동, 다음 spawn까지 연결한다. All-Mini+, perfect clear, score-free `ClearEvent`, typed top-out도 구현했다. raw 브라우저의 0.1 subframe OS event와 개인 handling 반복은 replay 검증 adapter 범위이며, reachable locked-afterstate를 action으로 쓰는 주 학습 전이의 인증 gate가 아니다.
 
 **통과 조건:** timing 경계 fixture와 solo 전체 replay에서 설명되지 않은 차이가 0개여야 한다.
 
@@ -418,7 +418,7 @@ non-learning baseline은 반드시 유지한다.
 - 결정론적 2인 scheduling과 명시적인 latency model을 추가한다.
 - 최소화한 사례에 이어 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
 
-**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 부동소수점 없이 계산한다. 이어 direct client control flow에서 TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough와 opener 14를 추출해 ordered incoming queue, packet별 attack-first/opener-second 상쇄, transit gate 및 non-clear insertion을 구현했다. `Board`는 garbage provenance layer를 함께 압축해 special +1 context를 실제 lock에서 공급한다. profile은 `OBSERVED`로 실행 가능하지만 reference conformance 인증은 아니다. change-on-attack hole RNG, margin multiplier, 두 player scheduling과 terminal은 남아 있다.
+**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 계산한다. TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack hole RNG, packet별 RNG 소비, messiness, 180초 margin 이후 `0.008/s` 증가를 구현했다. `BattleSession`은 양쪽 lock 결과를 먼저 계산한 뒤 같은 tick의 공격을 동시에 전달하고, 상쇄·tank·Clutch·block/garbage out과 동시 terminal을 결정론적으로 처리한다. `Board`의 garbage provenance가 special +1 context를 공급한다. 선언된 mechanics는 실행 가능하지만 profile은 외부 reference conformance 인증 상태가 아니다.
 
 **통과 조건:** 선언된 corpus에 대해 C2~C5가 통과하고 남은 `UNCONFIRMED` 항목과 coverage가 공개되어야 한다.
 
@@ -499,11 +499,11 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. change-on-attack hole RNG와 packet 소진·상쇄 때의 RNG 소비를 구현한다.
-2. 180초 garbage margin multiplier, 두 player scheduling과 round terminal을 구현한다.
-3. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위는 충분한 target fixture로만 확정한다.
+1. 전체 workspace format/lint/test/release build와 문서·연속성 기록을 완료하고 mechanics milestone을 commit한다.
+2. CPU/RAM/GPU 예산을 수치화하고 Phase 4의 afterstate heuristic arena 및 기록 schema를 구현한다.
+3. 주 학습 action은 reachable locked-afterstate로 유지하고, raw 0.1-subframe/개인 handling adapter는 필요할 때만 별도 검증한다.
 4. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
-5. CPU/RAM/GPU 예산을 수치화하고 관련 mechanics conformance 뒤 휴리스틱 기록 생성을 시작한다.
+5. 외부 기준 board checkpoint가 확보되면 `OBSERVED` mechanics를 differential 검증해 `CONFIRMED`로 승격한다.
 
 현재 가장 중요한 작업은 코드를 빠르게 작성하는 것이 아니라 **무엇을 동일하게 만들어야 하는지 증거로 고정하는 것**이다. 규칙이 틀린 빠른 engine이나 잘못된 보상을 최적화한 강한 모델은 프로젝트 목표를 달성하지 못한다.
 

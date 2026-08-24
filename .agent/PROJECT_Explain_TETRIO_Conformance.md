@@ -29,8 +29,8 @@ Conflicts are resolved upward in this hierarchy. Version/date differences are in
 - Beta 1.5.0 replaced the multiplayer default with All-Mini+, made immobile T spins that fail the full three-corner test Mini, and restored reworked Clutch Clears. Therefore the current target is All-Mini+, not the launch-era All-Mini profile.
 - Beta 1.3.0 added a flat +1 for difficult clears that clear garbage, not influenced by multipliers.
 - Default rotation is SRS+, not optional SRS-X.
-- Multiplayer piece generation uses a seeded 7-bag; community protocol documentation reports the input order `ZLOSIJT`, which must be confirmed by replay fixtures before becoming `CONFIRMED`.
-- Current TL timing literals are populated as stable client-derived `OBSERVED` values, while exact frame semantics, garbage cap/messiness/multiplier, top-out, and mechanics-related round parameters remain fixture-gated.
+- Multiplayer piece generation uses separate piece/garbage Park–Miller MINSTD streams initialized from the same seed; the observed bag input order is `ZLOSIJT`.
+- Current TL timing, fractional fall phase, kick numbering, garbage cap/messiness/margin, Clutch/top-out and round scheduling are executable client-derived `OBSERVED` mechanics. They remain fixture-gated for promotion to `CONFIRMED`.
 - Current TL firepower literals and ordering are populated from 53 regenerated client-derived cases: base clear/spin tables, multiplier combo, flat B2B, B2B Charging/Surge splitting, separate All Clear 5 and garbage-clear +1. They remain `OBSERVED` until reference differential fixtures pass.
 
 ## Fixture matrix

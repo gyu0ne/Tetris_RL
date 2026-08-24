@@ -137,6 +137,8 @@ impl Default for HandlingState {
 pub struct NormalizedFrame {
     pub actions: Vec<FrameInput>,
     pub hold_requested: bool,
+    /// Number of piece actions that appeared before the first hold press.
+    pub hold_action_index: Option<usize>,
 }
 
 /// Held initial actions sampled when a new piece spawns.
@@ -171,6 +173,7 @@ pub fn normalize_frame(
     let mut actions = Vec::new();
     let mut horizontal_pressed = false;
     let mut hold_requested = false;
+    let mut hold_action_index = None;
 
     for edge in edges {
         match (edge.button, edge.kind) {
@@ -215,6 +218,7 @@ pub fn normalize_frame(
             (InputButton::Hold, InputEdgeKind::Press) => {
                 state.hold_held = true;
                 hold_requested = true;
+                hold_action_index.get_or_insert(actions.len());
             }
             (InputButton::RotateClockwise, InputEdgeKind::Release) => {
                 release_rotation(state, RotationDirection::Clockwise);
@@ -236,6 +240,7 @@ pub fn normalize_frame(
     NormalizedFrame {
         actions,
         hold_requested,
+        hold_action_index,
     }
 }
 
@@ -488,6 +493,27 @@ mod tests {
 
         assert!(result.hold_requested);
         assert!(result.actions.is_empty());
+        assert_eq!(result.hold_action_index, Some(0));
+    }
+
+    #[test]
+    fn hold_position_preserves_same_frame_event_order() {
+        let mut state = HandlingState::new();
+        let result = normalize_frame(
+            &mut state,
+            rules(10, 2, 0),
+            &[
+                InputEdge::press(InputButton::RotateClockwise),
+                InputEdge::press(InputButton::Hold),
+                InputEdge::press(InputButton::Right),
+            ],
+        );
+
+        assert_eq!(result.hold_action_index, Some(1));
+        assert_eq!(
+            result.actions,
+            vec![FrameInput::RotateClockwise, FrameInput::MoveRight]
+        );
     }
 
     #[test]

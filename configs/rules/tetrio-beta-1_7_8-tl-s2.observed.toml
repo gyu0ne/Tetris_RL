@@ -32,6 +32,13 @@ extractor_revision = "712dc10be43d5a6c54a35b62608ab9f4a2eaa324"
 fixture_id = "client-garbage-hv-63ab5c7c7-20260824"
 confidence = "OBSERVED"
 
+[provenance.current_mechanics]
+asset = "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705"
+extracted_at = "2026-08-24T20:29:16+09:00"
+client_bundle_sha256 = "aab6d586aaaef57f84553cbd60237604832be420fa2b27773b6e697f66b84d66"
+fixture_id = "client-mechanics-hv-63ab5c7c7-20260824"
+confidence = "OBSERVED"
+
 [provenance.previous_client]
 asset = "https://tetr.io/js/tetrio.js?hv=7eebfc9cd.987f91854aad.20260504T210001"
 extracted_at = "2026-05-15T14:42:44+09:00"
@@ -43,10 +50,18 @@ changed_option_fields = 0
 board_width = 10
 board_height = 40
 bag_type = "7-bag"
+bag_source_order = ["z", "l", "o", "s", "i", "j", "t"]
+piece_rng = "MINSTD Park-Miller 16807/2147483647"
+garbage_rng_stream = "separate stream initialized from the same seed"
 allow_180 = true
 kickset = "SRS+"
 spin_bonuses = "all-mini+"
 combo_table = "multiplier"
+spawn_origin = [3, 18]
+spawn_fall_fraction_micros = 960000
+kick_fall_fraction_micros = 100000
+clutch_clear = true
+nolockout = true
 
 [timing]
 tick_rate_hz = 60
@@ -98,7 +113,7 @@ round_mode = "down"
 confidence = "OBSERVED"
 
 [attack.note]
-text = "Solo score points are intentionally absent. The multiplier logarithm is represented by reviewed integer thresholds, and Surge packet order is preserved before the current clear packet."
+text = "Solo score points are intentionally absent. Combo and garbage-multiplier scaling emulate the pinned client's JavaScript IEEE-754 evaluation and floor with finite/range guards and boundary tests; board, RNG, counters and packets remain checked integer state. Surge packet order is preserved before the current clear packet."
 
 [garbage]
 travel_frames = 20
@@ -115,10 +130,17 @@ garbage_phase = 0
 messiness_change = 1.0
 messiness_inner = 0.0
 messiness_no_same = false
+messiness_center = false
+multiplier_initial_numerator = 1
+multiplier_initial_denominator = 1
+multiplier_margin_frames = 10800
+multiplier_increase_numerator_per_second = 1
+multiplier_increase_denominator_per_second = 125
+multiplier_tick_rate_hz = 60
 confidence = "OBSERVED"
 
 [garbage.note]
-text = "FightLines cancels each ordered attack packet against incoming garbage before sending its remainder. During pieces 1-14, if pending garbage is at least the round sent total, a second attack-sized cancellation budget is consumed after the attack budget. TakeAllDamage inserts at most eight ready lines after a non-clear placement; any line clear blocks insertion. Hole RNG/messiness generation and margin-time attack scaling remain separate follow-up mechanics."
+text = "FightLines cancels each ordered attack packet against incoming garbage before sending its remainder. During pieces 1-14, if pending garbage is at least the round sent total, a second attack-sized cancellation budget is consumed after the attack budget. TakeAllDamage inserts at most eight ready lines after a non-clear placement; any line clear blocks insertion. Hole generation uses the separate current-client MINSTD stream, keeps one hole within a packet when messiness_inner=0, and consumes the packet-depletion change/reroll samples even after complete cancellation. Margin scaling starts after frame 10800 and repeats the client end-of-frame IEEE-754 += update."
 
 [conformance]
 timing_values_present = true

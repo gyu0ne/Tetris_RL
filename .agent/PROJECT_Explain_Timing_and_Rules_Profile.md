@@ -1,20 +1,20 @@
 # Frame Timing, Handling 및 Rules Profile 설계 설명
 
-상태: client-derived observed profile, generic handling normalizer 및 IRS/IHS 기반 구현 완료
-기준 시각: `2026-08-24T16:57:14+09:00`
+상태: client-derived observed timing mechanics 구현 완료, 외부 differential 인증 미완료
+기준 시각: `2026-08-24T20:29:16+09:00`
 
 ## 1. 목적과 책임 분리
 
 이번 단계는 기하학적 배치 엔진에 결정론적 frame timing과 raw input normalization을 추가하고, TETR.IO room mechanics와 player-specific handling을 분리한다.
 
-- `engine-core::timing`: 주어진 유리수 gravity와 ordered action을 적용하고 lock timer/reset을 갱신한다.
+- `engine-core::timing`: 주어진 gravity schedule을 client와 같은 1e-6 정수 microcell phase로 적용하고 lock timer/reset을 갱신한다.
 - `engine-core::handling`: ordered input edge와 held state를 generic DAS/ARR/DCD/soft-drop action 및 hold request로 바꾸고 spawn 시 held IRS/IHS를 샘플링한다.
 - `rules-tetrio`: target version, mode, 값, 단위, 출처, confidence와 snapshot/fixture ID를 보존한다.
 - `replay-conformance`: upstream wire format과 독립된 canonical frame snapshot을 비교해 최초 divergence를 반환한다.
 - `FrameSession`: handling, timing, hold, lock/clear와 다음 spawn을 한 프레임 API로 연결한다.
-- 후속 target adapter: 실제 player handling의 원본 단위 변환과 정확한 TETR.IO stage order를 replay fixture에서 공급한다.
+- 선택적 target adapter: 실제 player handling의 원본 단위와 0.1-subframe OS event를 replay fixture에서 공급한다.
 
-generic normalizer의 순서는 결정론적 개발 contract다. exact TETR.IO stage order가 입증됐다는 뜻은 아니다.
+frame-aligned edge는 기록된 순서를 보존하며, hold edge 앞뒤의 piece action도 분리한다. generic DAS/ARR/DCD 반복은 sandbox용 handling contract이고 개인 브라우저 입력의 인증값은 아니다. 주 학습 action은 reachable locked-afterstate이므로 raw OS event 반복은 학습 mechanics 동등성 gate에서 분리한다.
 
 ## 2. 2026-08-24 근거 갱신
 
@@ -47,7 +47,7 @@ generic normalizer의 순서는 결정론적 개발 contract다. exact TETR.IO s
 | lock delay | 30 frames | 500 ms at 60 Hz |
 | lock resets | 15 | successful grounded move/rotation |
 
-`ActiveTimingProfile::gravity_at_frame`은 부동소수점 없이 이 schedule을 계산하고 20G에서 cap한다. 중력이 변해도 accumulator 단위가 바뀌지 않도록 전체 schedule에 공통인 고정 분모를 사용한다. target 값은 `1/50`을 `2400/120000`, 1초 증가 뒤 `47/2000`을 `2820/120000`, 20G를 `2400000/120000`으로 표현한다. margin frame 자체에는 초기 gravity를 유지하고 그 뒤 경과 frame에 따라 증가시키는 현재 generic contract는 replay boundary fixture 전까지 `OBSERVED`다.
+`ActiveTimingProfile::gravity_at_frame`은 exact rational schedule을 계산하고 20G에서 cap한다. client는 frame 끝에서 `frame > gmargin`일 때 증가시키므로 `margin + 1`의 action은 아직 초기 gravity를 보고, 첫 증가값은 `margin + 2`에서 적용된다. `TimingState`는 매 frame 이를 client의 1e-6 단위로 반올림한 뒤 정수 microcell phase에 더한다. 0~350,000 frame에서 client식 반복 `f64 +=`와 이 rational schedule을 각각 1e-6로 양자화한 값이 모두 같음을 회귀 검사한다. spawn은 occupancy ceiling 기준 `0.96`, fallback kick은 `0.1` phase에서 시작한다. 자동 낙하가 막힌 frame에만 lock counter가 증가하고 `locking > 30`에서 lock한다. 성공 move/rotation이 reset count 15에 도달하면 lock timer를 더 이상 지우지 않는다. 이 경계는 current bundle에서 직접 대조한 `OBSERVED`다.
 
 ## 4. 실행 가능과 conformance-ready의 분리
 
@@ -74,17 +74,10 @@ generic `HandlingState`와 `normalize_frame`은 다음을 구현한다.
 - hold request를 timing action과 분리해 game layer에 전달
 - held rotation/hold을 spawn에서 샘플링하고 generic IHS→IRS 순서로 적용
 
-`PlayerHandlingProfile`은 변환이 끝난 DAS/ARR/DCD/SDF를 프레임 단위로 보존한다. 원본 리플레이/UI 값의 단위 변환, fractional handling, OS event sampling과 exact target stage order는 아직 fixture-gated다. 현재 IHS→IRS 순서는 결정론적 generic contract이며 TETR.IO 인증값이 아니다.
+`PlayerHandlingProfile`은 변환이 끝난 DAS/ARR/DCD/SDF를 프레임 단위로 보존한다. 같은 frame의 edge 순서를 보존하며 rotate→hold와 hold→rotate가 서로 다른 결과를 낸다. 원본 replay/UI 단위와 0.1-subframe OS event sampling은 선택적 adapter가 맡는다. 개인 handling 반복의 세부 결과를 target 고정값으로 주장하지 않는다.
 
-## 6. 검증과 남은 작업
+## 6. 검증과 conformance 경계
 
-현재 unit suite는 initial/margin/increase/cap gravity, 30/15 lock profile, observed-vs-confirmed barrier, room handling 분리, player handling mapping, DAS/ARR/DCD 경계, ARR 0, sonic drop, held IRS/IHS와 IHS→IRS 적용을 검사한다. session test는 hard drop 이후 lock/clear/next spawn 연결, 즉시 hold 순서와 여러 피스에 걸친 clone 결정성을 검사한다. timing test는 마지막 성공 회전의 방향/kick 보존, 다음 translation의 덮어쓰기와 zero-distance hard drop의 회전 보존을 검사한다. `replay-conformance`는 last action을 포함한 timing mismatch를 구분한다.
+unit suite는 gravity schedule, spawn `0.96`과 kick `0.1` phase, `>30` lock boundary, reset cap, fallback kick 번호, same-frame hold 순서, IRS/IHS, last action, clear/spawn 연결과 clone 결정성을 검사한다. `replay-conformance`는 fall phase와 last action까지 비교한다.
 
-남은 핵심 작업은 다음과 같다.
-
-1. exact target same-frame stage order 검증
-2. exact T kick-index upgrade와 Clutch Clear/top-out 우선순위
-3. completed: score-free `ClearEvent` and observed TL attack rules; no solo scoring profile is planned
-4. 충분한 기준 상태를 제공하는 fixture가 확보될 때 reference differential로 현재 `OBSERVED` 값을 `CONFIRMED`로 승격
-
-이 설계 완료는 timing/handling 기반의 로컬 실행이 가능하다는 뜻이며, 전체 TETR.IO mechanics 동등성 완료를 뜻하지 않는다.
+선언한 학습 mechanics의 실행 구현은 완료됐다. 남은 작업은 충분한 기준 상태를 제공하는 외부 fixture가 확보될 때 `OBSERVED` 값을 differential 검증해 `CONFIRMED`로 승격하는 일이다. raw 개인 handling replay adapter는 필요할 때 별도 확장한다.

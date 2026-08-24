@@ -1,13 +1,11 @@
 # Spin, Perfect Clear 및 Top-out 설계 설명
 
-상태: generic mechanics foundation 구현 완료, target edge conformance 미완료
-기준 시각: `2026-08-24T17:34:50+09:00`
+상태: observed spin/Clutch/top-out 실행 구현 완료, 외부 differential 인증 미완료
+기준 시각: `2026-08-24T20:29:16+09:00`
 
-## 1. 이번 단계에 새 웹 조사가 필요하지 않은 이유
+## 1. 근거 갱신
 
-마지막 성공 입력 보존, line clear 뒤 빈 보드 검사와 top-out 사유의 typed representation은 외부 상수 문제가 아니라 엔진 상태 불변식이다. All-Mini+의 기본 분기 역시 이미 source ledger에 기록된 BETA 1.5.0 변경과 조사 문서의 T/non-T immobility 경로를 사용했다. 따라서 이번 단계는 새 웹 검색 없이 기존 근거를 코드로 옮겼다.
-
-다만 exact T kick-index upgrade, lock-out 우선순위와 Clutch Clear displacement는 기존 근거만으로 확정할 수 없다. 이 값은 구현을 막는 이유가 아니라 profile별 미확정 경계이며, fixture 없이 `CONFIRMED`로 승격하지 않는다.
+마지막 성공 입력, line clear 뒤 perfect clear와 typed top-out은 엔진 불변식으로 유지한다. 추가로 현재 client bundle의 회전·spin·Clutch 제어 흐름을 직접 대조해 kick 번호와 우선순위를 `OBSERVED`로 채웠다. 외부 기준 state fixture가 없으므로 `CONFIRMED`로 승격하지는 않는다.
 
 ## 2. 마지막 성공 행동과 회전 provenance
 
@@ -36,7 +34,7 @@ spin = classify(board_before_lock, final_piece, last_action, spin_rules)
 3. 3-corner지만 front corner 조건이 부족하면 Mini다.
 4. 3-corner를 만족하지 않아도 T가 immobile이면 BETA 1.5.0 경로에 따라 Mini다.
 
-T Mini를 Full로 올리는 kick index는 `t_full_kick_upgrade_mask`로 외부화했다. 현재 target의 exact mask는 fixture가 없어 0인 provisional 값이며, test는 명시적 mask가 주어졌을 때 upgrade가 동작함을 확인한다. 공격량과 B2B 계산은 이후 versus layer 책임이다.
+T Mini를 Full로 올리는 kick index는 `t_full_kick_upgrade_mask`로 외부화했다. current client는 `falling.kick === 3`일 때 Full로 올리므로 observed target mask는 `1 << 3`이다. direct 회전과 첫 fallback은 모두 kick `0`, 이후 fallback은 `1..3`으로 저장해 upstream numbering과 맞춘다. 공격량과 B2B 계산은 versus layer 책임이다.
 
 ## 4. Perfect clear
 
@@ -44,15 +42,15 @@ T Mini를 Full로 올리는 kick index는 `t_full_kick_upgrade_mask`로 외부�
 
 ## 5. Typed top-out
 
-`TopOutReason`은 다음을 구분한다.
+`TopOutReason`은 block/lock/partial-lock 계열을 구분하고, versus scheduler는 lethal garbage와 동시 terminal을 별도로 판정한다.
 
 - `BlockOut`: 새 active piece가 board와 충돌해 timing kernel에 들어갈 수 없음
 - `LockOut`: lock한 네 cell이 모두 hidden 영역에 있음
 - `PartialLockOut`: visible/hidden 영역에 걸쳐 lock됨
 
-`Board::lock`은 clear 전 piece cell을 기준으로 `Visible`, `PartiallyHidden`, `FullyHidden`을 기록한다. `TopOutRules`가 이 정보를 terminal reason으로 승격한다. 현재 기본값은 기존에 구현돼 있던 block-out만 활성화하며, target에서 확인되지 않은 lock-out과 partial lock-out을 임의로 켜지 않는다.
+`Board::lock`은 clear 전 piece cell을 기준으로 `Visible`, `PartiallyHidden`, `FullyHidden`을 기록한다. `TopOutRules`가 profile에서 활성화한 사유만 terminal로 승격한다. observed TL 기본은 block-out과 lethal garbage를 사용한다.
 
-Clutch Clear, line-clear와 spawn 충돌의 우선순위 및 next-piece upward displacement는 아직 구현하지 않았다. 이 부분을 “정확히 구현 완료”라고 주장하지 않는다.
+line clear 직후 spawn이나 IHS replacement가 막히면 Clutch가 piece를 위로 이동시켜 구조할 수 있다. lock 결과, Clutch 가능 여부, spawn/IHS와 최종 block-out 순서를 `GameState`와 `FrameSession`에 통합했다. 양쪽 terminal은 `BattleSession`이 같은 tick 결과를 모두 계산한 뒤 승/패/무승부로 확정한다.
 
 ## 6. 검증
 
@@ -61,10 +59,10 @@ Clutch Clear, line-clear와 spawn 충돌의 우선순위 및 next-piece upward d
 - rotation direction/kick 보존 및 translation 덮어쓰기
 - 이동 hard drop과 zero-distance hard drop의 provenance 차이
 - T Full, T Mini, immobile non-T Mini, non-rotation 거부
-- 명시적 kick mask에 의한 T Full upgrade
+- upstream 번호 3 kick mask에 의한 T Full upgrade
 - line clear 뒤 perfect clear
 - visible/partial/full-hidden lock 구분
-- block-out 사유와 선택 가능한 lock-out 변형
+- block-out, lethal garbage, Clutch spawn/IHS 구조와 동시 terminal
 - `rules-tetrio` All-Mini+ profile의 core rule mapping
 
-후속 단계에서 score-free `ClearEvent`와 observed versus attack transition을 구현했다. exact target spin/top-out edge는 별도의 differential fixture gate로 남는다.
+score-free `ClearEvent`, observed versus attack/garbage 및 round terminal까지 연결됐다. exact target 인증은 별도의 differential fixture gate로 남는다.

@@ -15,6 +15,7 @@
 - 2026-08-24T17:38:13+09:00 [USER] Continue engine implementation and prefer implementation over new web research where the required mechanics are already evidenced.
 - 2026-08-24T18:07:05+09:00 [USER] Exclude 40 LINES and BLITZ scoring; retain only an unscored solo test mode and 1v1 versus play, then continue implementation.
 - 2026-08-24T19:24:10+09:00 [USER] Continue the engine milestone after the score-free versus attack implementation; proceed with the next in-scope 1v1 mechanics work.
+- 2026-08-24T20:40:06+09:00 [USER] Continue autonomously and report only after the engine mechanics implementation is complete.
 
 ## [DECISIONS]
 
@@ -54,6 +55,10 @@
 - 2026-08-24T19:24:10+09:00 [CODE] Represent board occupancy and garbage provenance as aligned 10x40 bit layers so line compaction and the difficult garbage-clear +1 derive from lock facts instead of stack-shape inference.
 - 2026-08-24T19:24:10+09:00 [CODE] Model zero-passthrough cancellation and transit readiness separately: incoming packets may cancel before their 20-frame ready boundary, but only ready packets may rise; explicit packet holes are accepted until the exact change-on-attack RNG consumer is implemented.
 - 2026-08-24T19:24:10+09:00 [CODE] Apply opener cancellation per ordered attack packet, consuming attack budget before the equal-size opener-only budget and updating round sent totals before evaluating the next packet.
+- 2026-08-24T20:40:06+09:00 [CODE] Supersede the cross-frame rational-remainder timing representation with integer millionth-cell fall phase because the current client quantizes `y` to 1e-6, uses ceiling occupancy, and gives spawn/fallback-kick phases `0.96`/`0.1`.
+- 2026-08-24T20:40:06+09:00 [CODE] Treat the directly inspected current bundle control flow as executable `OBSERVED` evidence for RNG, kick numbering, lock/reset, hole/margin, Clutch and battle ordering; retain external board-checkpoint differential as the boundary for `CONFIRMED` conformance.
+- 2026-08-24T20:40:06+09:00 [CODE] Keep raw 0.1-subframe OS events and generic DAS/DCD repetition in the optional replay/sandbox adapter boundary; the primary reachable-locked-afterstate learning action does not depend on browser input timestamps.
+- 2026-08-24T20:40:06+09:00 [CODE] Permit guarded IEEE-754 only where pinned JavaScript floating evaluation itself is transition-relevant, including `Math.log1p` combo and repeated garbage-multiplier `+=`; board, timing phase, RNG, packet and counter state remains integer/fixed-point.
 
 ## [PROGRESS]
 
@@ -107,6 +112,12 @@
 - 2026-08-24T19:24:10+09:00 [CODE] Added `PROJECT_Explain_Garbage_Pipeline.md`; synchronized RULE, README, Korean plan, execution/frame/attack explanations, mechanics research, source ledger and the versioned observed TOML record.
 - 2026-08-24T19:24:10+09:00 [TOOL] Container verification passed: rustfmt check, clippy with `-D warnings`, 83 unit tests with 0 failures, optimized release build, and Python 3.13 TOML parsing; `git diff --check` also passed.
 - 2026-08-24T19:24:10+09:00 [TOOL] Fresh full non-persistent code-graph indexing found 1,207 nodes and 3,733 edges; `cancel_attack_packets` is isolated in the versus cluster while rules and replay layers consume typed core state.
+- 2026-08-24T20:40:06+09:00 [CODE] Added exact MINSTD piece/garbage streams, observed `ZLOSIJT` bag order, dynamic gravity/margin schedules, fractional fall phases, client kick numbering, lock/reset boundaries and frame-aligned hold action ordering.
+- 2026-08-24T20:40:06+09:00 [CODE] Added change-on-attack garbage generation with packet-depletion RNG consumption, Clutch and lethal garbage handling, and `versus::BattleSession` for deterministic simultaneous two-player attack/tank/terminal resolution.
+- 2026-08-24T20:40:06+09:00 [CODE] Added `PROJECT_Explain_Battle_Scheduler_and_Client_Mechanics.md` and synchronized the Korean plan, architecture, timing, spin/top-out, garbage, versus, scope and execution documents with the completed observed-mechanics boundary.
+- 2026-08-24T21:06:28+09:00 [TOOL] Final container gates passed: rustfmt check, clippy with `-D warnings`, 110 tests with 0 failures (engine-core 69, replay-conformance 4, rules-tetrio 10, versus 27), optimized release build, and Bun TOML parsing.
+- 2026-08-24T21:06:28+09:00 [TOOL] Fresh fast code-graph indexing before final verification found 1,370 nodes and 4,710 edges; the final post-edit index is recorded separately after continuity synchronization.
+- 2026-08-24T21:07:13+09:00 [TOOL] Final fresh fast code-graph indexing found 1,378 nodes and 4,794 edges, including the stateful JavaScript-compatible multiplier and completed battle integration.
 
 ## [DISCOVERIES]
 
@@ -135,6 +146,12 @@
 - 2026-08-24T19:24:10+09:00 [TOOL] Current TL preset directly exposes `garbagespeed=20`, `garbagecap=8`, `garbageblocking=combo blocking`, `passthrough=zero` and `openerphase=14`; unchanged option defaults provide `cancelmultiplier=1`, instant entry, queue false and phase 0.
 - 2026-08-24T19:24:10+09:00 [TOOL] Current-client `FightLines` cancels garbage-ARE entries before pending damage, skips hardened entries, consumes packet attack before extra cancellation, and re-evaluates `piecesplaced <= openerphase && pending >= stats.garbage.sent` for every packet.
 - 2026-08-24T19:24:10+09:00 [TOOL] Current-client `TakeAllDamage` inserts only active spawn-status garbage, at most the effective cap per tank; combo blocking prevents a tank on any line clear. Default messiness selects change-on-attack holes, but exact hole RNG consumption remains unimplemented.
+- 2026-08-24T20:40:06+09:00 [TOOL] Direct current-client rotation inspection shows direct success has kick index 0 and fallback table indices are also zero-based; because the local candidate list includes direct `(0,0)`, serializing its raw list index caused an off-by-one and was corrected so direct/first fallback are 0 and later fallbacks are 1..3.
+- 2026-08-24T20:40:06+09:00 [TOOL] Current-client movement uses fractional `y`, ceiling occupancy, spawn phase `0.96`, fallback-kick phase `0.1`, 1e-6 rounding, lock condition `locking > locktime`, and no timer reset on the input that reaches the reset cap.
+- 2026-08-24T20:40:06+09:00 [TOOL] Current-client same-frame key events execute immediately in event order; preserving the hold action index is necessary to distinguish actions that target the pre-hold piece from those that target the replacement.
+- 2026-08-24T21:04:53+09:00 [TOOL] Current client increments both `g` and `garbagemultiplier` at frame end only when `frame > margin`; actions on `margin + 1` still see the base value and `margin + 2` is the first increased event frame.
+- 2026-08-24T21:04:53+09:00 [TOOL] Repeating JavaScript `garbagemultiplier += 0.008/60` 7,500 times produces IEEE-754 bits `0x3ffffffffffffe10` (`1.9999999999998899`), whose floor is 1; exact-rational 2 would send a different attack, so the battle now stores and updates the pinned floating payload explicitly.
+- 2026-08-24T21:04:53+09:00 [TOOL] Although client gravity also uses repeated floating addition, exhaustive frames 0 through 350,000 show its 1e-6-quantized fall amount equals the exact-rational schedule; integer microcell timing therefore preserves observed fall transitions without long-lived floating position state.
 
 ## [OUTCOMES]
 
@@ -149,3 +166,4 @@
 - 2026-08-24T17:38:13+09:00 [CODE] Supersede the last-action/spin/perfect-clear-not-started status: the continuous engine now emits rotation provenance, All-Mini+ candidate classification, perfect clear, lock visibility and typed top-out. Exact target kick/top-out edges and solo scoring remain before versus attack/garbage and heuristic data generation.
 - 2026-08-24T18:07:05+09:00 [CODE] Supersede the solo-scoring and versus-attack-not-started statuses: solo is intentionally unscored, while observed TL clear/combo/B2B/Surge/Perfect-Clear attack transitions now execute with ordered packets. Incoming garbage/cancellation/insertion, opener double-cancel, two-player scheduling and round terminal remain before heuristic data generation.
 - 2026-08-24T19:24:10+09:00 [CODE] Supersede the incoming-garbage/opener-not-started status: ordered queueing, zero-passthrough cancellation, 14-piece packet-level opener cancellation, 20-frame ready gating, combo blocking, 8-line insertion and garbage-clear provenance now execute as an observed local pipeline. Change-on-attack hole RNG, margin scaling, two-player scheduling, Clutch/top-out ordering and round terminal remain before heuristic data generation.
+- 2026-08-24T21:06:28+09:00 [CODE] Supersede the remaining-engine-mechanics status: the declared learning-relevant score-free solo and TETRA LEAGUE Season 2 1v1 mechanics are implemented and locally verified, including current-client RNG/fall/kick/lock boundaries, attack/garbage/Clutch and simultaneous round terminal. The profile remains `OBSERVED_NOT_CONFORMANCE_CERTIFIED` until external board checkpoints pass differential gates; Phase 4 heuristic arena and imitation-record generation are next, and model training has not started.
