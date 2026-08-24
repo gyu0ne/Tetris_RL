@@ -58,6 +58,9 @@
 - 2026-08-24T16:28:38+09:00 [CODE] Filled timing literals as `OBSERVED`: 60 Hz, ARE 0, line-clear ARE 0, initial gravity `1/50G`, increase `7/2000G/s` after 7200 frames, 20G cap, 30-frame lock, 15 resets, and move/rotation reset behavior.
 - 2026-08-24T16:28:38+09:00 [CODE] Added `engine-core::handling`, exact-rational TL gravity scheduling, handling/profile tests, `configs/rules/` provenance records, and synchronized README, project plan, research, architecture, execution, rules and timing-design documents.
 - 2026-08-24T16:28:38+09:00 [TOOL] The first expanded test run found one DCD boundary expectation off by one after applying both rotation and spawn pauses; the test was corrected to the documented generic pause contract and the rerun passed 33 engine-core plus 5 rules-tetrio tests.
+- 2026-08-24T16:37:31+09:00 [TOOL] Final container verification passed: rustfmt check, clippy with `-D warnings`, all 38 unit tests, optimized release build, and parsing of the observed TOML profile; `git diff --check` and the repository trailing-whitespace scan also passed.
+- 2026-08-24T16:37:31+09:00 [TOOL] Fresh code-graph indexing found 696 nodes and 1,753 edges; the dependency direction remains one-way from `rules-tetrio` to the `engine-core` leaf mechanics layer.
+- 2026-08-24T16:37:31+09:00 [CODE] Created local commit `b478dbb` (`feat: add observed TL timing and input handling`) containing the researched profile, handling normalizer, tests, source records, and synchronized design documents; no push was performed.
 
 ## [DISCOVERIES]
 
