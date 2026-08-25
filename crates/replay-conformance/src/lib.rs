@@ -11,9 +11,11 @@ use engine_core::{
 };
 
 mod battle;
+mod normalized;
 mod suite;
 
 pub use battle::*;
+pub use normalized::*;
 pub use suite::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

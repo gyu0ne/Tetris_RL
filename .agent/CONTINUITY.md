@@ -17,6 +17,7 @@
 - 2026-08-24T19:24:10+09:00 [USER] Continue the engine milestone after the score-free versus attack implementation; proceed with the next in-scope 1v1 mechanics work.
 - 2026-08-24T20:40:06+09:00 [USER] Continue autonomously and report only after the engine mechanics implementation is complete.
 - 2026-08-25T12:03:46+09:00 [USER] TETR.IO 운영자의 인증은 불필요하며, 동일성의 완료 기준을 mechanics의 기능적 동등성으로 한정한 뒤 다음 단계를 계속 진행하라고 명시했다.
+- 2026-08-25T16:25:47+09:00 [USER] 기능 동등성 gate 다음 단계로 계속 진행하라고 지시했다.
 
 ## [DECISIONS]
 
@@ -63,6 +64,8 @@
 - 2026-08-25T12:03:46+09:00 [CODE] Supersede operator-certification wording: `Conformant` means all 20 required mechanics claims are covered by version-pinned passing reference traces with zero exact mismatch across the supplied corpus; it does not require or imply TETR.IO operator approval.
 - 2026-08-25T12:03:46+09:00 [CODE] A replay file is optional transport for seed/input/checkpoints, not a product or certification requirement. A pinned client capture is equally valid when it supplies the same observable solo/battle state and event oracle; input-only replays do not count as claim coverage.
 - 2026-08-25T12:08:47+09:00 [CODE] Prevent small-corpus false completion by distinguishing `Boundary` and `RandomizedBattle` cases; the default functional-conformance policy requires at least 10,000 passing randomized battle cases in addition to complete claim coverage and zero supplied-corpus mismatch.
+- 2026-08-25T16:25:47+09:00 [CODE] Define normalized JSON v1 as a strict manifest/trace pair: preserve the user-owned source artifact SHA-256 separately from the normalized trace SHA-256, reject unknown/defaulted fields, and bind only a matching solo/battle local trace after conversion.
+- 2026-08-25T16:25:47+09:00 [CODE] Project battle frame events into attack, cancellation, insertion and transmitted-packet observations; lock/spawn objects remain out of the wire contract because their observable result is already present in the same canonical game snapshot.
 
 ## [PROGRESS]
 
@@ -128,6 +131,11 @@
 - 2026-08-25T12:03:46+09:00 [TOOL] Fresh fast code-graph indexing found 1,457 nodes and 5,068 edges after separating solo, battle and suite conformance responsibilities.
 - 2026-08-25T12:08:47+09:00 [CODE] Added a configurable `FunctionalConformancePolicy`, randomized battle counters/report fields, trace-kind validation and a regression proving the one-case corpus remains `Incomplete` under the 10,000-case default.
 - 2026-08-25T12:08:47+09:00 [TOOL] Supersede the 114-test verification count: final container gates passed with rustfmt, clippy `-D warnings`, 115 tests and optimized release build after enforcing the randomized-corpus floor.
+- 2026-08-25T16:25:47+09:00 [CODE] Added `normalized.rs` with strict serde wire types, SHA-256-before-trace-parse integrity checking, canonical solo/battle conversion, mechanics-claim and trace-kind validation, local trace binding, exact IEEE multiplier interchange and ordered attack-packet reconstruction.
+- 2026-08-25T16:25:47+09:00 [CODE] Added a hash-pinned synthetic schema example under `fixtures/conformance/examples`, six loader/interchange regressions, `PROJECT_Explain_Normalized_Reference_Trace.md`, and synchronized architecture, execution, functional-conformance, fixture and root documentation; the example is explicitly excluded from reference coverage.
+- 2026-08-25T16:25:47+09:00 [CODE] Added pinned `serde 1`, `serde_json 1` and `sha2 0.10` dependencies only to `replay-conformance`; exposed finite IEEE multiplier and fixed-capacity packet reconstruction methods in `versus` for the adapter boundary.
+- 2026-08-25T16:25:47+09:00 [TOOL] Final container gates passed: rustfmt check, clippy with `-D warnings`, all 123 tests with 0 failures (engine-core 69, replay-conformance 15, rules-tetrio 10, versus 29), and optimized workspace release build; `git diff --check` passed before continuity synchronization.
+- 2026-08-25T16:25:47+09:00 [TOOL] Fresh fast non-persistent code-graph indexing found 1,639 nodes and 5,708 edges; `load_normalized_fixture` is the public conversion entry and is covered by six structural/integrity tests.
 
 ## [DISCOVERIES]
 
@@ -163,6 +171,7 @@
 - 2026-08-24T21:04:53+09:00 [TOOL] Repeating JavaScript `garbagemultiplier += 0.008/60` 7,500 times produces IEEE-754 bits `0x3ffffffffffffe10` (`1.9999999999998899`), whose floor is 1; exact-rational 2 would send a different attack, so the battle now stores and updates the pinned floating payload explicitly.
 - 2026-08-24T21:04:53+09:00 [TOOL] Although client gravity also uses repeated floating addition, exhaustive frames 0 through 350,000 show its 1e-6-quantized fall amount equals the exact-rational schedule; integer microcell timing therefore preserves observed fall transitions without long-lived floating position state.
 - 2026-08-25T12:03:46+09:00 [CODE] Solo board snapshots cannot detect transient same-frame attack splitting/cancellation that leaves similar later board state. Battle conformance therefore also compares emitted `BattleFrameOutcome`, ordered incoming packets, attack state, sent totals, margin multiplier and round result.
+- 2026-08-25T16:25:47+09:00 [CODE] Raw `BattleFrameOutcome` contains private lock/spawn transition structures that are unnecessary for differential wire compatibility; a smaller public event projection retains every battle-visible transient while avoiding coupling schema v1 to internal session implementation.
 
 ## [OUTCOMES]
 
@@ -180,3 +189,4 @@
 - 2026-08-24T21:06:28+09:00 [CODE] Supersede the remaining-engine-mechanics status: the declared learning-relevant score-free solo and TETRA LEAGUE Season 2 1v1 mechanics are implemented and locally verified, including current-client RNG/fall/kick/lock boundaries, attack/garbage/Clutch and simultaneous round terminal. The profile remains `OBSERVED_NOT_CONFORMANCE_CERTIFIED` until external board checkpoints pass differential gates; Phase 4 heuristic arena and imitation-record generation are next, and model training has not started.
 - 2026-08-25T12:03:46+09:00 [CODE] Supersede the operator-certification framing and prior status label: the executable functional-conformance gate is implemented and fully verified, while the target profile remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` because no version-pinned reference state/event corpus currently covers the 20 required claims. The next engine-validation step is a normalized reference adapter and boundary corpus; large teacher-record generation remains after that gate.
 - 2026-08-25T12:08:47+09:00 [CODE] The functional-conformance method now enforces all declared completion gates in code: reference evidence, exact solo/battle trace equality, 20-claim coverage and the default 10,000 randomized battle cases. External reference traces remain the only unmet evidence input.
+- 2026-08-25T16:25:47+09:00 [CODE] The normalized reference adapter boundary is implemented and verified. The target remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`: the remaining engine-conformance input is a real version-pinned TETR.IO extractor/capture corpus, beginning with small solo/TL boundary cases and then the 10,000-case randomized battle floor.

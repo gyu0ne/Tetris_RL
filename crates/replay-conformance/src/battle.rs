@@ -1,8 +1,50 @@
 use crate::{FrameSnapshot, SnapshotDifference, compare_snapshot};
 use versus::{
-    AttackMultiplier, AttackState, BattleFrameOutcome, BattlePlayerState, BattleResult,
-    BattleSession, IncomingGarbagePacket, PlayerId,
+    AttackMultiplier, AttackOutcome, AttackPackets, AttackState, BattleFrameOutcome,
+    BattlePlayerFrameOutcome, BattlePlayerState, BattleResult, BattleSession,
+    GarbageCancellationOutcome, GarbageInsertionOutcome, IncomingGarbagePacket, PlayerId,
 };
+
+/// Engine-neutral event projection. Lock and spawn effects are already
+/// represented by the post-frame game snapshot, so only battle-visible attack
+/// and garbage transitions are duplicated here.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BattlePlayerEventsSnapshot {
+    pub attack: Option<AttackOutcome>,
+    pub cancellation: Option<GarbageCancellationOutcome>,
+    pub insertion: Option<GarbageInsertionOutcome>,
+    pub transmitted: AttackPackets,
+}
+
+impl From<&BattlePlayerFrameOutcome> for BattlePlayerEventsSnapshot {
+    fn from(outcome: &BattlePlayerFrameOutcome) -> Self {
+        Self {
+            attack: outcome.attack,
+            cancellation: outcome.cancellation,
+            insertion: outcome.insertion,
+            transmitted: outcome.transmitted,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BattleEventsSnapshot {
+    pub frame: u64,
+    pub player_one: BattlePlayerEventsSnapshot,
+    pub player_two: BattlePlayerEventsSnapshot,
+    pub result: BattleResult,
+}
+
+impl From<&BattleFrameOutcome> for BattleEventsSnapshot {
+    fn from(outcome: &BattleFrameOutcome) -> Self {
+        Self {
+            frame: outcome.frame,
+            player_one: (&outcome.player_one).into(),
+            player_two: (&outcome.player_two).into(),
+            result: outcome.result,
+        }
+    }
+}
 
 /// Observable 1v1 state for one player at a shared battle frame.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,7 +76,7 @@ pub struct BattleSnapshot {
     pub garbage_multiplier: AttackMultiplier,
     pub result: BattleResult,
     /// Events emitted while advancing the immediately preceding shared frame.
-    pub events: Option<BattleFrameOutcome>,
+    pub events: Option<BattleEventsSnapshot>,
 }
 
 impl BattleSnapshot {
@@ -51,7 +93,7 @@ impl BattleSnapshot {
 
     pub fn after_step(battle: &BattleSession, outcome: &BattleFrameOutcome) -> Self {
         let mut snapshot = Self::from_battle(battle);
-        snapshot.events = Some(outcome.clone());
+        snapshot.events = Some(outcome.into());
         snapshot
     }
 }
@@ -97,8 +139,8 @@ pub enum BattleSnapshotDifference {
         actual: BattleResult,
     },
     Events {
-        expected: Option<Box<BattleFrameOutcome>>,
-        actual: Option<Box<BattleFrameOutcome>>,
+        expected: Option<Box<BattleEventsSnapshot>>,
+        actual: Option<Box<BattleEventsSnapshot>>,
     },
 }
 
@@ -215,8 +257,8 @@ fn compare_battle_snapshot(
     }
     if expected.events != actual.events {
         return Some(BattleSnapshotDifference::Events {
-            expected: expected.events.clone().map(Box::new),
-            actual: actual.events.clone().map(Box::new),
+            expected: expected.events.map(Box::new),
+            actual: actual.events.map(Box::new),
         });
     }
     None

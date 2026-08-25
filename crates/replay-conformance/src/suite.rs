@@ -55,6 +55,13 @@ pub const REQUIRED_MECHANIC_CLAIMS: [MechanicClaim; 20] = [
 ];
 
 impl MechanicClaim {
+    pub fn from_id(value: &str) -> Option<Self> {
+        REQUIRED_MECHANIC_CLAIMS
+            .iter()
+            .copied()
+            .find(|claim| claim.as_str() == value)
+    }
+
     pub const fn requires_battle_trace(self) -> bool {
         matches!(
             self,

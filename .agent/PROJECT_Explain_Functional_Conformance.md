@@ -1,7 +1,7 @@
 # 기능 동등성 검증 설계
 
-상태: 판정 방법론 및 Rust gate 구현 완료, 외부 reference corpus 미확보
-기준 시각: `2026-08-25T11:47:44+09:00`
+상태: 판정 방법론, Rust gate 및 normalized JSON v1 loader 구현 완료; 외부 reference corpus 미확보
+기준 시각: `2026-08-25T16:03:07+09:00`
 
 ## 1. 용어 확정
 
@@ -53,7 +53,9 @@ attack·garbage·battle claim을 solo trace로 채우는 것은 코드에서 거
 
 ## 5. 다음 실행 순서
 
-1. normalized reference trace schema와 version-pinned adapter를 작성한다.
+`normalized JSON v1` loader는 구현되었다. manifest는 원본 capture/replay와 정규화 trace의 SHA-256을 별도로 보존하며, trace는 stable enum/field를 통해 `FrameSnapshot` 또는 `BattleSnapshot`으로 변환된다. unknown field와 구조·bit·packet·frame 오류는 load 단계에서 거부한다. event projection은 lock/spawn 결과를 board snapshot과 중복하지 않고 attack/cancellation/insertion/transmitted packet만 보존한다.
+
+1. 버전 고정 capture extractor가 실제 TETR.IO 상태·이벤트를 normalized JSON v1로 출력하게 한다.
 2. 작은 solo/TL custom-room boundary capture부터 필수 claim을 채운다.
 3. 최초 divergence가 나오면 fixture를 최소화하고 engine 또는 profile을 수정한다.
 4. 전체 필수 claim 및 randomized differential corpus가 0-diff가 되면 profile을 `FUNCTIONALLY_CONFORMANT`로 올린다.

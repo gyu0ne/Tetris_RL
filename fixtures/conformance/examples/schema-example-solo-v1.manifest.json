@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "case_id": "schema-example-solo-v1",
+  "case_kind": "boundary",
+  "target_profile": "schema-example-not-conformance",
+  "reference_build": "schema-example",
+  "source": "synthetic schema example; never count as reference evidence",
+  "source_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "trace_sha256": "bdb4c8ed66292a038ab0fed68997a0da854ba53b48e91ae06f042f08522ee67d",
+  "claims": ["board_and_clear_geometry"]
+}

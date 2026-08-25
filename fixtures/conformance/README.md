@@ -32,3 +32,22 @@
 - `Boundary`와 `RandomizedBattle` case를 구분한다. 무작위 하한에는 서로 다른 seed의 통과 `RandomizedBattle` case만 센다.
 
 현재 Rust 계약의 필수 claim 목록은 `replay_conformance::REQUIRED_MECHANIC_CLAIMS`가 단일 기준이다. 외부 adapter가 추가되면 adapter는 normalized trace를 이 crate의 `FrameSnapshot` 또는 `BattleSnapshot`으로 변환해야 한다.
+
+## normalized JSON v1
+
+`replay_conformance::load_normalized_fixture`가 manifest와 trace의 파일 쌍을 읽는다. 실제 파일명은 자유지만 `*.manifest.json`과 `*.trace.json`을 권장한다.
+
+manifest 필드는 다음과 같다.
+
+- `schema_version`: 현재 `1`
+- `case_id`, `case_kind`: case 식별자와 `boundary`/`randomized_battle`
+- `target_profile`, `reference_build`, `source`: 버전 고정 및 수집 provenance
+- `source_artifact_sha256`: 사용자 소유 원본 replay/capture byte의 SHA-256
+- `trace_sha256`: 정규화 trace JSON byte의 SHA-256
+- `claims`: `MechanicClaim::as_str()`이 반환하는 ID 목록
+
+trace의 `trace_kind`는 `solo` 또는 `battle`이다. 필드는 Rust snapshot을 그대로 JSON에 노출하지 않고 고정된 문자열 enum과 명시적 wire 구조를 통해 변환한다. margin multiplier는 JavaScript 누적 반올림을 보존하도록 `0x`와 16자리 hex인 IEEE-754 payload로 기록한다.
+
+loader는 trace byte의 해시를 JSON parse보다 먼저 확인하고, unknown field, unsupported schema, 빈/중복/unknown claim, 잘못된 board/garbage bit, 0-line 또는 과다 attack packet, board 밖 hole, 비단조 frame, battle frame/result 불일치를 거부한다. `randomized_battle`이나 battle-only claim은 solo trace에 bind할 수 없다. 로드된 fixture는 `bind_solo`/`bind_battle`로 같은 조건에서 생성한 로컬 trace와 결합한 뒤 기존 exact-diff gate에 넣는다.
+
+`examples/`의 합성 fixture는 schema 회귀 전용이며 reference coverage로 세지 않는다. 실제 TETR.IO reference가 들어오지 않은 현재 profile 상태도 계속 `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`다.

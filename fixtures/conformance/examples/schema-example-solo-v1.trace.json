@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "trace_kind": "solo",
+  "snapshots": [
+    {
+      "frame": 0,
+      "board_rows": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "garbage_rows": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "active": {
+        "kind": "I",
+        "orientation": "spawn",
+        "x": 3,
+        "y": 20
+      },
+      "hold": null,
+      "preview": ["J", "L", "O", "S", "T"],
+      "top_out": null,
+      "timing": null
+    }
+  ]
+}

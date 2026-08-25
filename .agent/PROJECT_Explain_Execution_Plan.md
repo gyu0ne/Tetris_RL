@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: declared learning-relevant solo/1v1 mechanics implemented as an observed profile; external differential conformance certification remains
+Current state: declared learning-relevant solo/1v1 mechanics and normalized reference loader implemented; external reference capture corpus remains
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -42,7 +42,7 @@ Exit gate: timing boundary fixtures and solo full replays have zero unexplained 
 
 Exit gate: conformance C2–C5 pass for the declared corpus. Publish coverage and remaining `UNCONFIRMED` cases.
 
-Progress: `crates/versus` implements observed TL attacks, B2B/Surge packet ordering, perfect-clear and garbage-clear bonuses, ordered incoming packets, cancellation, opener 14, transit 20, combo blocking, cap 8, provenance, change-on-attack hole RNG, packet-depletion sample consumption and margin scaling. `BattleSession` performs simultaneous two-player lock/attack/tank/terminal resolution. The profile is executable but not externally conformance-certified.
+Progress: `crates/versus` implements observed TL attacks, B2B/Surge packet ordering, perfect-clear and garbage-clear bonuses, ordered incoming packets, cancellation, opener 14, transit 20, combo blocking, cap 8, provenance, change-on-attack hole RNG, packet-depletion sample consumption and margin scaling. `BattleSession` performs simultaneous two-player lock/attack/tank/terminal resolution. `crates/replay-conformance` now loads hash-bound normalized JSON v1 solo/battle traces, validates their exact wire structure and binds them to local traces. The profile is executable but remains externally unverified until real version-pinned captures fill the corpus.
 
 ## Phase 4 — Bot arena and strong baselines
 

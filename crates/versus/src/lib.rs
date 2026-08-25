@@ -133,6 +133,21 @@ impl AttackMultiplier {
         f64::from_bits(self.value_bits)
     }
 
+    /// Reconstructs the exact finite IEEE-754 payload emitted by a pinned
+    /// reference client. This is intentionally narrower than accepting an
+    /// arbitrary floating-point value through the rules API.
+    pub fn from_ieee_bits(value_bits: u64) -> Result<Self, AttackConfigError> {
+        if !f64::from_bits(value_bits).is_finite() {
+            return Err(AttackConfigError::NonFiniteGarbageMultiplier);
+        }
+        Ok(Self { value_bits })
+    }
+
+    /// Returns the exact payload used for deterministic trace interchange.
+    pub const fn ieee_bits(self) -> u64 {
+        self.value_bits
+    }
+
     const fn from_f64(value: f64) -> Self {
         Self {
             value_bits: value.to_bits(),
@@ -195,6 +210,16 @@ impl AttackPackets {
             .iter()
             .map(|packet| u64::from(packet.lines))
             .sum()
+    }
+
+    /// Builds an ordered packet sequence for reference-trace input while
+    /// preserving the runtime rule that zero-sized packets are omitted.
+    pub fn try_from_slice(packets: &[AttackPacket]) -> Result<Self, AttackError> {
+        let mut result = Self::empty();
+        for packet in packets {
+            result.push(packet.kind, packet.lines)?;
+        }
+        Ok(result)
     }
 
     fn push(&mut self, kind: AttackPacketKind, lines: u32) -> Result<(), AttackError> {
@@ -1075,10 +1100,10 @@ impl std::error::Error for GarbageError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        AttackContext, AttackMultiplier, AttackPacket, AttackPacketKind, AttackPackets,
-        AttackRules, AttackState, ComboRule, GarbageMessinessRules, GarbageMultiplierSchedule,
-        GarbageMultiplierState, GarbageRules, IncomingGarbagePacket, IncomingGarbageQueue,
-        cancel_attack_packets, insert_ready_garbage, resolve_attack,
+        AttackContext, AttackError, AttackMultiplier, AttackPacket, AttackPacketKind,
+        AttackPackets, AttackRules, AttackState, ComboRule, GarbageMessinessRules,
+        GarbageMultiplierSchedule, GarbageMultiplierState, GarbageRules, IncomingGarbagePacket,
+        IncomingGarbageQueue, cancel_attack_packets, insert_ready_garbage, resolve_attack,
     };
     use engine_core::{
         Board, ClearEvent, PieceKind, RotationDirection, SpinClassification, SpinOutcome,
@@ -1428,6 +1453,43 @@ mod tests {
         assert_eq!(state.current().value_bits, 0x3fff_ffff_ffff_fe10);
         assert_eq!(state.current().value().floor(), 1.0);
         assert!(state.current().value() < 2.0);
+    }
+
+    #[test]
+    fn trace_interchange_preserves_finite_multiplier_payload() {
+        let bits = 0x3fff_ffff_ffff_fe10;
+        let multiplier = AttackMultiplier::from_ieee_bits(bits).expect("finite payload");
+        assert_eq!(multiplier.ieee_bits(), bits);
+        assert!(AttackMultiplier::from_ieee_bits(f64::NAN.to_bits()).is_err());
+    }
+
+    #[test]
+    fn trace_packet_constructor_preserves_order_and_capacity() {
+        let source = [
+            AttackPacket {
+                kind: AttackPacketKind::Surge,
+                lines: 2,
+            },
+            AttackPacket {
+                kind: AttackPacketKind::Clear,
+                lines: 3,
+            },
+        ];
+        assert_eq!(
+            AttackPackets::try_from_slice(&source)
+                .expect("valid packets")
+                .as_slice(),
+            source
+        );
+
+        let too_many = [AttackPacket {
+            kind: AttackPacketKind::Clear,
+            lines: 1,
+        }; 6];
+        assert_eq!(
+            AttackPackets::try_from_slice(&too_many),
+            Err(AttackError::PacketCapacityExceeded)
+        );
     }
 
     #[test]
