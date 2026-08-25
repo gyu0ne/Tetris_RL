@@ -18,15 +18,15 @@ TETR.IO의 학습 관련 mechanics를 독립적으로 재현하고 1 대 1 bot�
 - 마지막 성공 입력, 회전 방향과 kick index를 보존하는 spin provenance
 - All-Mini+의 T corner/immobility 및 non-T immobility 판정, post-clear perfect clear
 - `BlockOut`/`LockOut`/`PartialLockOut`을 구분하는 typed top-out 규칙과 lock visibility
-- field별 출처·확신도를 가진 버전 고정 `rules-tetrio` profile과 실행 가능/동등성 인증 상태 분리
-- canonical frame snapshot과 최초 불일치 component를 반환하는 `replay-conformance` crate
+- field별 출처·확신도를 가진 버전 고정 `rules-tetrio` profile과 실행 가능/기능 동등성 검증 상태 분리
+- canonical solo/1대1 snapshot, 최초 불일치 component와 필수 mechanics coverage를 판정하는 `replay-conformance` crate
 - 점수와 분리된 `ClearEvent` 및 TL base attack, multiplier combo, B2B/Surge, Perfect Clear와 garbage-clear +1을 계산하는 `versus` crate; client의 `Math.log1p`와 반복 `+=`가 관찰 가능한 경로만 guarded IEEE-754로 재현
 - current client 순서를 보존하는 fixed-capacity attack packet: Surge 최대 3개 → clear → Perfect Clear
 - change-on-attack garbage hole RNG, transit/cancel/cap/combo-blocking/instant insertion과 margin multiplier
 - lock→상쇄→동시 zero-passthrough→garbage→spawn 순서를 보존하는 결정론적 2인 `BattleSession`
 - BlockOut/GarbageOut, Clutch Clear, 단독 승패와 동시 사망 draw
 
-선언된 학습 mechanics의 실행 경로는 `TETR.IO BETA 1.7.8 / TL S2` current client asset을 기준으로 구현되어 있다. 여기에는 `0.02G`, 120초 이후 gravity 증가, client의 `locking > locktime`/reset-cap 경계, 공격·garbage·Clutch·round terminal 순서가 포함된다. 다만 공개된 기준 보드 checkpoint가 없으므로 profile 표기는 계속 `OBSERVED_NOT_CONFORMANCE_CERTIFIED`다. 이는 알려진 기능 공백을 뜻하지 않고, 독립 구현이 비공개 원본과 동일하다는 외부 인증을 과장하지 않기 위한 증거 등급이다. TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 공급한다. 브라우저 OS event의 0.1 subframe 재생은 검증 adapter 범위이며, 주 학습 action인 reachable locked afterstate와 1 대 1 상태 전이는 raw keyboard timestamp에 의존하지 않는다. 사용자 제공 BLITZ replay는 이 입력 형식 검증에만 쓰고 replay player/viewer는 만들지 않는다.
+선언된 학습 mechanics의 실행 경로는 `TETR.IO BETA 1.7.8 / TL S2` current client asset을 기준으로 구현되어 있다. 여기에는 `0.02G`, 120초 이후 gravity 증가, client의 `locking > locktime`/reset-cap 경계, 공격·garbage·Clutch·round terminal 순서가 포함된다. 다만 기준 board/attack/garbage checkpoint corpus가 없으므로 profile 표기는 계속 `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`다. 운영자의 승인이나 공식 인증은 요구하지 않는다. 같은 조건·입력의 version-pinned reference trace와 exact diff가 0이고 필수 mechanics claim이 모두 덮이면 `Conformant`로 판정한다. TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 공급한다. 브라우저 OS event의 0.1 subframe 재생은 검증 adapter 범위이며, 주 학습 action인 reachable locked afterstate와 1 대 1 상태 전이는 raw keyboard timestamp에 의존하지 않는다. 사용자 제공 BLITZ replay는 이 입력 형식 검증에만 쓰고 replay player/viewer는 만들지 않는다.
 
 ## 컨테이너 검증
 

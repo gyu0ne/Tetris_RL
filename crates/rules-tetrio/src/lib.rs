@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn executable_observation_is_not_conformance_certification() {
+    fn executable_observation_is_not_functional_conformance() {
         let profile = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2();
         let blockers = profile.timing_conformance_blockers();
 

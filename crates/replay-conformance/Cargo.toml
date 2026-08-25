@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 engine-core = { path = "../engine-core" }
+versus = { path = "../versus" }
 
 [lints]
 workspace = true

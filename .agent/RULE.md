@@ -6,7 +6,7 @@ Last updated: 2026-08-24T20:29:16+09:00
 
 - This file is the repository-wide working agreement. A direct user instruction overrides it; the conflict and resolution must be logged in `CONTINUITY.md`.
 - The product is a local, independently implemented falling-block engine and a bot arena. It must not automate, inject into, or play on the live TETR.IO service.
-- “TETR.IO-equivalent” means observational conformance to a pinned public TETR.IO version and mode profile. Unpublished server behavior must be labeled `UNCONFIRMED`, never guessed.
+- “TETR.IO-equivalent” means functional/observational conformance to a pinned public TETR.IO version and mode profile. TETR.IO 운영자의 승인·서명·공식 인증은 완료 조건이 아니다. Unpublished server behavior must be labeled `UNCONFIRMED`, never guessed.
 - The initial conformance target is `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`, pending capture of authoritative replay/config fixtures. A later upstream patch does not silently change the target.
 - Equivalence covers only mechanics that can change legal actions/reachability, observable state transitions, attack/garbage behavior, or round-terminal reward. Accounts, rating, matchmaking, UI/audio/cosmetics, anti-cheat, and undisclosed service infrastructure are excluded.
 - Round/top-out/simultaneous-death/Clutch-Clear semantics remain in scope because they determine terminal reward. Match-level progression stays out of scope unless an explicit learning objective needs it.
@@ -59,7 +59,7 @@ research/            # experiment manifests and generated reports, not code
 - GitHub and Reddit claims are hypotheses until corroborated by a higher-priority source or a reproducible differential test.
 - Every rules profile must contain its source URL, access date, upstream version, confidence (`CONFIRMED`, `OBSERVED`, `UNCONFIRMED`), and fixture IDs.
 - A named TETR.IO profile must refuse executable activation while any transition-critical required field is missing; historical or provisional literals may run only under an explicitly non-conformant test profile.
-- A complete `OBSERVED` client-derived profile may run local mechanics tests, but it remains distinct from `CONFIRMED` conformance. Promotion requires reference replay/config fixtures and zero unexplained differential divergence.
+- A complete `OBSERVED` client-derived profile may run local mechanics tests, but it remains distinct from functionally verified `CONFIRMED` conformance. 여기서 `CONFIRMED`는 운영자 인증이 아니라 version-pinned reference trace와의 exact differential 결과다. Promotion requires reference trace/config fixtures and zero unexplained differential divergence.
 - When `room_handling` is disabled, room ARR/DAS/SDF fields are inactive metadata; effective handling must come from the player or replay profile.
 - Randomness must be explicit and seedable. A replay must reproduce piece sequence, per-frame inputs, locks, clears, attacks, garbage columns, top-out, and round result byte-for-byte.
 - Core geometry, timers and random state use integer/fixed-point units. A pinned upstream JavaScript floating expression or repeated update may use audited IEEE-754 `f64` only when its rounding is the compatibility behavior itself, with finite/range guards and boundary fixtures.
@@ -73,6 +73,7 @@ research/            # experiment manifests and generated reports, not code
 - Raw held-key interpretation and same-frame conflict ordering are versioned normalization responsibilities; the core timing kernel consumes an already ordered discrete action sequence.
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
 - Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.
+- Functional conformance uses `Incomplete`/`Divergent`/`Conformant` only. `Conformant` requires all `REQUIRED_MECHANIC_CLAIMS` to be covered by passing reference cases and zero mismatch across the supplied corpus; it must never be described as operator certification.
 - Conformance changes require golden fixtures and differential tests before merge. “Looks/feels the same” is not evidence.
 - Required profiles are staged: common modern core, unscored solo sandbox, and TETRA LEAGUE Season 2 1v1. 40 LINES, BLITZ, ZEN/custom scoring, and QUICK PLAY/ROYALE are out of scope.
 - A candidate feature is in conformance scope when it changes legal action/reachability, observation/transition/RNG, attack/garbage timing, or round terminal. Convenience tooling and service presentation are not conformance features.

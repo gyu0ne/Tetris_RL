@@ -16,6 +16,7 @@
 - 2026-08-24T18:07:05+09:00 [USER] Exclude 40 LINES and BLITZ scoring; retain only an unscored solo test mode and 1v1 versus play, then continue implementation.
 - 2026-08-24T19:24:10+09:00 [USER] Continue the engine milestone after the score-free versus attack implementation; proceed with the next in-scope 1v1 mechanics work.
 - 2026-08-24T20:40:06+09:00 [USER] Continue autonomously and report only after the engine mechanics implementation is complete.
+- 2026-08-25T12:03:46+09:00 [USER] TETR.IO 운영자의 인증은 불필요하며, 동일성의 완료 기준을 mechanics의 기능적 동등성으로 한정한 뒤 다음 단계를 계속 진행하라고 명시했다.
 
 ## [DECISIONS]
 
@@ -59,6 +60,8 @@
 - 2026-08-24T20:40:06+09:00 [CODE] Treat the directly inspected current bundle control flow as executable `OBSERVED` evidence for RNG, kick numbering, lock/reset, hole/margin, Clutch and battle ordering; retain external board-checkpoint differential as the boundary for `CONFIRMED` conformance.
 - 2026-08-24T20:40:06+09:00 [CODE] Keep raw 0.1-subframe OS events and generic DAS/DCD repetition in the optional replay/sandbox adapter boundary; the primary reachable-locked-afterstate learning action does not depend on browser input timestamps.
 - 2026-08-24T20:40:06+09:00 [CODE] Permit guarded IEEE-754 only where pinned JavaScript floating evaluation itself is transition-relevant, including `Math.log1p` combo and repeated garbage-multiplier `+=`; board, timing phase, RNG, packet and counter state remains integer/fixed-point.
+- 2026-08-25T12:03:46+09:00 [CODE] Supersede operator-certification wording: `Conformant` means all 20 required mechanics claims are covered by version-pinned passing reference traces with zero exact mismatch across the supplied corpus; it does not require or imply TETR.IO operator approval.
+- 2026-08-25T12:03:46+09:00 [CODE] A replay file is optional transport for seed/input/checkpoints, not a product or certification requirement. A pinned client capture is equally valid when it supplies the same observable solo/battle state and event oracle; input-only replays do not count as claim coverage.
 
 ## [PROGRESS]
 
@@ -118,6 +121,10 @@
 - 2026-08-24T21:06:28+09:00 [TOOL] Final container gates passed: rustfmt check, clippy with `-D warnings`, 110 tests with 0 failures (engine-core 69, replay-conformance 4, rules-tetrio 10, versus 27), optimized release build, and Bun TOML parsing.
 - 2026-08-24T21:06:28+09:00 [TOOL] Fresh fast code-graph indexing before final verification found 1,370 nodes and 4,710 edges; the final post-edit index is recorded separately after continuity synchronization.
 - 2026-08-24T21:07:13+09:00 [TOOL] Final fresh fast code-graph indexing found 1,378 nodes and 4,794 edges, including the stateful JavaScript-compatible multiplier and completed battle integration.
+- 2026-08-25T12:03:46+09:00 [CODE] Split functional conformance by responsibility: `lib.rs` retains solo snapshots, `battle.rs` compares both players plus attack/garbage/frame events/terminal state, and `suite.rs` validates evidence, trace kind, 20 mechanics claims and final `Incomplete`/`Divergent`/`Conformant` status.
+- 2026-08-25T12:03:46+09:00 [CODE] Added the Korean functional-conformance design and fixture contract, updated repository rules/plans/README, and renamed the profile evidence state from `OBSERVED_NOT_CONFORMANCE_CERTIFIED` to `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` to match the user-set completion meaning.
+- 2026-08-25T12:03:46+09:00 [TOOL] Container gates passed after the conformance refactor: rustfmt check, clippy with `-D warnings`, 114 tests with 0 failures (engine-core 69, replay-conformance 8, rules-tetrio 10, versus 27), and optimized workspace release build.
+- 2026-08-25T12:03:46+09:00 [TOOL] Fresh fast code-graph indexing found 1,457 nodes and 5,068 edges after separating solo, battle and suite conformance responsibilities.
 
 ## [DISCOVERIES]
 
@@ -152,6 +159,7 @@
 - 2026-08-24T21:04:53+09:00 [TOOL] Current client increments both `g` and `garbagemultiplier` at frame end only when `frame > margin`; actions on `margin + 1` still see the base value and `margin + 2` is the first increased event frame.
 - 2026-08-24T21:04:53+09:00 [TOOL] Repeating JavaScript `garbagemultiplier += 0.008/60` 7,500 times produces IEEE-754 bits `0x3ffffffffffffe10` (`1.9999999999998899`), whose floor is 1; exact-rational 2 would send a different attack, so the battle now stores and updates the pinned floating payload explicitly.
 - 2026-08-24T21:04:53+09:00 [TOOL] Although client gravity also uses repeated floating addition, exhaustive frames 0 through 350,000 show its 1e-6-quantized fall amount equals the exact-rational schedule; integer microcell timing therefore preserves observed fall transitions without long-lived floating position state.
+- 2026-08-25T12:03:46+09:00 [CODE] Solo board snapshots cannot detect transient same-frame attack splitting/cancellation that leaves similar later board state. Battle conformance therefore also compares emitted `BattleFrameOutcome`, ordered incoming packets, attack state, sent totals, margin multiplier and round result.
 
 ## [OUTCOMES]
 
@@ -167,3 +175,4 @@
 - 2026-08-24T18:07:05+09:00 [CODE] Supersede the solo-scoring and versus-attack-not-started statuses: solo is intentionally unscored, while observed TL clear/combo/B2B/Surge/Perfect-Clear attack transitions now execute with ordered packets. Incoming garbage/cancellation/insertion, opener double-cancel, two-player scheduling and round terminal remain before heuristic data generation.
 - 2026-08-24T19:24:10+09:00 [CODE] Supersede the incoming-garbage/opener-not-started status: ordered queueing, zero-passthrough cancellation, 14-piece packet-level opener cancellation, 20-frame ready gating, combo blocking, 8-line insertion and garbage-clear provenance now execute as an observed local pipeline. Change-on-attack hole RNG, margin scaling, two-player scheduling, Clutch/top-out ordering and round terminal remain before heuristic data generation.
 - 2026-08-24T21:06:28+09:00 [CODE] Supersede the remaining-engine-mechanics status: the declared learning-relevant score-free solo and TETRA LEAGUE Season 2 1v1 mechanics are implemented and locally verified, including current-client RNG/fall/kick/lock boundaries, attack/garbage/Clutch and simultaneous round terminal. The profile remains `OBSERVED_NOT_CONFORMANCE_CERTIFIED` until external board checkpoints pass differential gates; Phase 4 heuristic arena and imitation-record generation are next, and model training has not started.
+- 2026-08-25T12:03:46+09:00 [CODE] Supersede the operator-certification framing and prior status label: the executable functional-conformance gate is implemented and fully verified, while the target profile remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` because no version-pinned reference state/event corpus currently covers the 20 required claims. The next engine-validation step is a normalized reference adapter and boundary corpus; large teacher-record generation remains after that gate.

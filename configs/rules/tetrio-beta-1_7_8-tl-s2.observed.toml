@@ -2,7 +2,7 @@
 id = "tetrio-beta-1.7.8-tetra-league-season-2"
 upstream_version = "BETA 1.7.8"
 mode = "TETRA LEAGUE Season 2"
-status = "OBSERVED_NOT_CONFORMANCE_CERTIFIED"
+status = "OBSERVED_NOT_FUNCTIONALLY_VERIFIED"
 
 [provenance.current_client]
 asset = "https://tetr.io/js/tetrio.js?hv=63ab5c7c7.efa161fa8f91.20260810T191705"
@@ -144,6 +144,6 @@ text = "FightLines cancels each ordered attack packet against incoming garbage b
 
 [conformance]
 timing_values_present = true
-reference_replay_fixture_present = false
+reference_trace_fixture_present = false
 frame_order_confirmed = false
 profile_conformance_ready = false

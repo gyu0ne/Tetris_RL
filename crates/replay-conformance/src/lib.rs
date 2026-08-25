@@ -7,8 +7,14 @@
 #![forbid(unsafe_code)]
 
 use engine_core::{
-    GameState, HEIGHT, LastAction, PieceKind, PieceState, TimingState, TopOutReason,
+    FrameSession, GameState, HEIGHT, LastAction, PieceKind, PieceState, TimingState, TopOutReason,
 };
+
+mod battle;
+mod suite;
+
+pub use battle::*;
+pub use suite::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimingSnapshot {
@@ -67,6 +73,13 @@ impl FrameSnapshot {
             preview: game.preview(),
             top_out: game.top_out_reason(),
             timing: Some(timing.into()),
+        }
+    }
+
+    pub fn from_session(session: &FrameSession) -> Self {
+        match session.timing() {
+            Some(timing) => Self::from_timed_game(session.frame(), session.game(), timing),
+            None => Self::from_game(session.frame(), session.game()),
         }
     }
 }
@@ -153,7 +166,7 @@ pub fn compare_traces(
     Ok(())
 }
 
-fn compare_snapshot(
+pub fn compare_snapshot(
     expected: &FrameSnapshot,
     actual: &FrameSnapshot,
 ) -> Option<SnapshotDifference> {
@@ -233,13 +246,44 @@ fn compare_snapshot(
 #[cfg(test)]
 mod tests {
     use super::{
-        ConformanceMismatch, FrameSnapshot, SnapshotDifference, TimingSnapshot, compare_traces,
+        BattlePlayerSnapshot, BattleSnapshot, BattleSnapshotDifference, ConformanceMismatch,
+        FrameSnapshot, FunctionalCaseFailure, FunctionalConformanceCase,
+        FunctionalConformanceStatus, InvalidCaseReason, MechanicClaim, REQUIRED_MECHANIC_CLAIMS,
+        ReferenceEvidence, ReferenceTrace, SnapshotDifference, TimingSnapshot,
+        compare_battle_traces, compare_traces, evaluate_functional_conformance,
     };
     use engine_core::{GameConfig, GameState, LastAction};
+    use versus::{AttackMultiplier, AttackState, BattleResult, IncomingGarbagePacket};
 
     fn snapshot(frame: u64) -> FrameSnapshot {
         let game = GameState::new(41, GameConfig::default()).expect("valid game");
         FrameSnapshot::from_game(frame, &game)
+    }
+
+    fn battle_snapshot(frame: u64) -> BattleSnapshot {
+        let player = BattlePlayerSnapshot {
+            game: snapshot(frame),
+            attack: AttackState::default(),
+            incoming: Vec::new(),
+            sent_lines: 0,
+        };
+        BattleSnapshot {
+            frame,
+            player_one: player.clone(),
+            player_two: player,
+            garbage_multiplier: AttackMultiplier::one(),
+            result: BattleResult::Ongoing,
+            events: None,
+        }
+    }
+
+    fn evidence(target_profile: &str) -> ReferenceEvidence {
+        ReferenceEvidence {
+            target_profile: target_profile.to_owned(),
+            reference_build: "TETR.IO BETA 1.7.8".to_owned(),
+            source: "sanitized user-owned reference capture".to_owned(),
+            artifact_sha256: "a".repeat(64),
+        }
     }
 
     #[test]
@@ -311,5 +355,126 @@ mod tests {
                 actual: 1,
             })
         );
+    }
+
+    #[test]
+    fn battle_trace_reports_exact_queue_difference() {
+        let expected = vec![battle_snapshot(8)];
+        let mut actual = expected.clone();
+        actual[0].player_two.incoming.push(IncomingGarbagePacket {
+            lines: 2,
+            hole_column: Some(4),
+            ready_at_frame: 28,
+            hardened: false,
+        });
+
+        let mismatch = compare_battle_traces(&expected, &actual).expect_err("must differ");
+        let super::BattleConformanceMismatch::Frame(frame) = mismatch else {
+            panic!("expected frame mismatch");
+        };
+        assert!(matches!(
+            frame.difference,
+            BattleSnapshotDifference::PlayerTwoIncoming { .. }
+        ));
+    }
+
+    #[test]
+    fn all_required_claims_and_exact_traces_are_conformant() {
+        let target = "tetrio-beta-1.7.8-tl-s2";
+        let solo = vec![snapshot(0)];
+        let battle = vec![battle_snapshot(0)];
+        let solo_claims = REQUIRED_MECHANIC_CLAIMS
+            .iter()
+            .copied()
+            .filter(|claim| !claim.requires_battle_trace())
+            .collect();
+        let battle_claims = REQUIRED_MECHANIC_CLAIMS
+            .iter()
+            .copied()
+            .filter(|claim| claim.requires_battle_trace())
+            .collect();
+        let cases = vec![
+            FunctionalConformanceCase {
+                id: "solo-reference".to_owned(),
+                evidence: evidence(target),
+                claims: solo_claims,
+                trace: ReferenceTrace::Solo {
+                    expected: &solo,
+                    actual: &solo,
+                },
+            },
+            FunctionalConformanceCase {
+                id: "battle-reference".to_owned(),
+                evidence: evidence(target),
+                claims: battle_claims,
+                trace: ReferenceTrace::Battle {
+                    expected: &battle,
+                    actual: &battle,
+                },
+            },
+        ];
+
+        let report = evaluate_functional_conformance(target, &cases);
+        assert_eq!(report.status, FunctionalConformanceStatus::Conformant);
+        assert_eq!(report.compared_cases, 2);
+        assert_eq!(report.compared_frames, 2);
+        assert!(report.missing_claims.is_empty());
+        assert!(report.failures.is_empty());
+    }
+
+    #[test]
+    fn a_mismatch_is_divergent_and_does_not_cover_its_claim() {
+        let target = "tetrio-beta-1.7.8-tl-s2";
+        let expected = vec![snapshot(0)];
+        let mut actual = expected.clone();
+        actual[0].board_rows[0] = 1;
+        let cases = vec![FunctionalConformanceCase {
+            id: "geometry-reference".to_owned(),
+            evidence: evidence(target),
+            claims: vec![MechanicClaim::BoardAndClearGeometry],
+            trace: ReferenceTrace::Solo {
+                expected: &expected,
+                actual: &actual,
+            },
+        }];
+
+        let report = evaluate_functional_conformance(target, &cases);
+        assert_eq!(report.status, FunctionalConformanceStatus::Divergent);
+        assert!(
+            report
+                .missing_claims
+                .contains(&MechanicClaim::BoardAndClearGeometry)
+        );
+        assert!(matches!(
+            report.failures.as_slice(),
+            [FunctionalCaseFailure::SoloMismatch { .. }]
+        ));
+    }
+
+    #[test]
+    fn battle_claim_cannot_be_covered_by_a_solo_trace() {
+        let target = "tetrio-beta-1.7.8-tl-s2";
+        let trace = vec![snapshot(0)];
+        let cases = vec![FunctionalConformanceCase {
+            id: "wrong-trace-kind".to_owned(),
+            evidence: evidence(target),
+            claims: vec![MechanicClaim::GarbageTransitAndCancellation],
+            trace: ReferenceTrace::Solo {
+                expected: &trace,
+                actual: &trace,
+            },
+        }];
+
+        let report = evaluate_functional_conformance(target, &cases);
+        assert_eq!(report.status, FunctionalConformanceStatus::Divergent);
+        assert!(matches!(
+            report.failures.as_slice(),
+            [FunctionalCaseFailure::Invalid {
+                reason: InvalidCaseReason::BattleClaimRequiresBattleTrace(
+                    MechanicClaim::GarbageTransitAndCancellation
+                ),
+                ..
+            }]
+        ));
     }
 }

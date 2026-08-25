@@ -1,7 +1,7 @@
 # TETR.IO 동등 엔진 및 강화학습 1 대 1 봇 통합 개발 계획서
 
 > 기준일: 2026-08-24
-> 현재 상태: 학습에 영향을 주는 선언 범위의 deterministic solo/1대1 mechanics 구현 완료, 외부 기준 상태를 이용한 target conformance 인증은 미완료
+> 현재 상태: 학습에 영향을 주는 선언 범위의 deterministic solo/1대1 mechanics와 기능 동등성 판정 gate 구현 완료, version-pinned reference corpus 검증은 미완료
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 
@@ -12,7 +12,7 @@
 1. 공개적으로 검증 가능한 범위에서 특정 버전의 TETR.IO와 동일한 상태 전이와 타이밍을 재현하는 로컬 테트리스 엔진을 만든다.
 2. 이 엔진 위에서 제한된 연산 자원을 효율적으로 사용해 강한 테트리스 1 대 1 강화학습 봇을 학습하고 평가한다.
 
-기준 프로필은 `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`로 고정한다. 현재 client bundle에서 직접 추출한 상수와 제어 흐름은 `OBSERVED`로 실행하며, 외부 기준 board checkpoint와 differential fixture를 통과하기 전에는 `CONFIRMED`로 승격하지 않는다. 이후 TETR.IO가 업데이트되더라도 이 프로젝트의 기준 버전은 자동으로 바뀌지 않는다.
+기준 프로필은 `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`로 고정한다. 현재 client bundle에서 직접 추출한 상수와 제어 흐름은 `OBSERVED`로 실행하며, version-pinned 기준 trace와 differential fixture를 통과하기 전에는 `CONFIRMED`로 승격하지 않는다. 이때 `CONFIRMED`는 TETR.IO 운영자 인증이 아니라 선언한 mechanics의 기능 동등성 검증 상태다. 이후 TETR.IO가 업데이트되더라도 이 프로젝트의 기준 버전은 자동으로 바뀌지 않는다.
 
 ## 2. “TETR.IO와 완벽히 같음”의 정의
 
@@ -418,7 +418,7 @@ non-learning baseline은 반드시 유지한다.
 - 결정론적 2인 scheduling과 명시적인 latency model을 추가한다.
 - 최소화한 사례에 이어 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
 
-**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 계산한다. TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack hole RNG, packet별 RNG 소비, messiness, 180초 margin 이후 `0.008/s` 증가를 구현했다. `BattleSession`은 양쪽 lock 결과를 먼저 계산한 뒤 같은 tick의 공격을 동시에 전달하고, 상쇄·tank·Clutch·block/garbage out과 동시 terminal을 결정론적으로 처리한다. `Board`의 garbage provenance가 special +1 context를 공급한다. 선언된 mechanics는 실행 가능하지만 profile은 외부 reference conformance 인증 상태가 아니다.
+**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 계산한다. TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack hole RNG, packet별 RNG 소비, messiness, 180초 margin 이후 `0.008/s` 증가를 구현했다. `BattleSession`은 양쪽 lock 결과를 먼저 계산한 뒤 같은 tick의 공격을 동시에 전달하고, 상쇄·tank·Clutch·block/garbage out과 동시 terminal을 결정론적으로 처리한다. `Board`의 garbage provenance가 special +1 context를 공급한다. `replay-conformance`는 양쪽 상태·attack·garbage·frame event·terminal의 exact diff와 20개 필수 mechanics claim coverage를 판정한다. 실행 mechanics는 완료됐지만 version-pinned reference corpus가 없어 profile은 아직 기능 동등성 검증 완료 상태가 아니다.
 
 **통과 조건:** 선언된 corpus에 대해 C2~C5가 통과하고 남은 `UNCONFIRMED` 항목과 coverage가 공개되어야 한다.
 
@@ -499,10 +499,11 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. 전체 workspace format/lint/test/release build와 문서·연속성 기록을 완료하고 mechanics milestone을 commit한다.
-2. CPU/RAM/GPU 예산을 수치화하고 Phase 4의 afterstate heuristic arena 및 기록 schema를 구현한다.
-3. 주 학습 action은 reachable locked-afterstate로 유지하고, raw 0.1-subframe/개인 handling adapter는 필요할 때만 별도 검증한다.
-4. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
+1. 기능 동등성 gate 변경을 전체 workspace format/lint/test/release build로 검증하고 commit한다.
+2. replay 재생 UI 없이 version-pinned 기준 capture를 normalized solo/battle trace로 변환하는 adapter를 구현한다.
+3. 필수 mechanics claim별 경계 fixture를 채우고 exact mismatch를 0개로 만든다.
+4. CPU/RAM/GPU 예산을 수치화하고 Phase 4의 afterstate heuristic arena 및 기록 schema를 구현한다. 대량 teacher record 생성은 기능 동등성 gate 통과 뒤 시작한다.
+5. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
 5. 외부 기준 board checkpoint가 확보되면 `OBSERVED` mechanics를 differential 검증해 `CONFIRMED`로 승격한다.
 
 현재 가장 중요한 작업은 코드를 빠르게 작성하는 것이 아니라 **무엇을 동일하게 만들어야 하는지 증거로 고정하는 것**이다. 규칙이 틀린 빠른 engine이나 잘못된 보상을 최적화한 강한 모델은 프로젝트 목표를 달성하지 못한다.
