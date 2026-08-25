@@ -43,6 +43,19 @@ docker compose build training
 
 본 데이터의 `engine_revision`은 실제 코드를 가리켜야 하므로 clean commit에서 시작한다.
 
+### training 이미지에서 clippy 다운로드 오류가 날 때
+
+PyO3 bridge 빌드는 `rustc`와 `cargo`만 필요하다. `Dockerfile.training`은 base image에 이미 설치된 `1.89.0` toolchain을 명시하므로 저장소의 개발용 `clippy/rustfmt` component를 추가로 내려받지 않는다.
+
+오래된 revision에서 다음과 같은 오류가 발생했다면 최신 clean commit으로 이동한 뒤 전체 명령을 다시 실행한다.
+
+```text
+component download failed for clippy-x86_64-unknown-linux-gnu
+dns error: failed to lookup address information
+```
+
+이 오류가 데이터 생성 전 training image build 단계에서 발생했다면 dataset이나 checkpoint는 만들어지지 않았으므로 별도 정리 없이 재실행해도 된다. 반면 crates.io package나 Python wheel 자체의 DNS 조회가 실패했다면 필요한 dependency가 아직 cache되지 않은 것이므로 네트워크가 복구된 뒤 같은 build를 재시도한다.
+
 ## 1. 교사 결정 최소 100만 개 생성
 
 ```powershell

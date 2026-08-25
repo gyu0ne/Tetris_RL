@@ -95,6 +95,8 @@
 
 ## [PROGRESS]
 
+- 2026-08-25T20:38:58+09:00 [CODE] Updated `Dockerfile.training` to set `RUSTUP_TOOLCHAIN=1.89.0` for the PyO3 builder, preventing the repository's development-only `clippy/rustfmt` component declaration from triggering an unnecessary download. Added the failure distinction and safe retry procedure to `Explanation/Imitation_Learning_Runbook.md`.
+- 2026-08-25T20:38:58+09:00 [TOOL] `docker compose build training` completed successfully after the fix, compiling the release PyO3 bridge without downloading clippy. The rebuilt image then passed all 12 Python dataset/model/training/evaluation/closed-loop bridge tests.
 - 2026-08-25T20:26:31+09:00 [TOOL] Plan-only verification passed: `git diff --check` reported no whitespace errors, the new plan contains the scope/gate/command/deferred-versus markers and a final newline, and `git diff --name-only -- crates python configs scripts` returned zero implementation changes. Container builds were not rerun because no source, configuration or script changed.
 - 2026-08-25T20:26:31+09:00 [CODE] Added the Korean solo-learning completion plan and synchronized the execution plan and root Korean project plan with the user-approved solo-only scope. No engine, model, training, configuration or script implementation was changed.
 
@@ -189,6 +191,8 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-25T20:38:58+09:00 [TOOL] The submitted final-solo run stopped before dataset generation: the training builder read `rust-toolchain.toml`, attempted to install missing clippy, and failed DNS lookup of `static.rust-lang.org`. A network-disabled `rust:1.89.0-slim-bookworm` probe with `RUSTUP_TOOLCHAIN=1.89.0` successfully parsed the workspace, proving the installed compiler can bypass optional component resolution.
+- 2026-08-25T20:38:58+09:00 [TOOL] No `datasets/solo-imitation-bootstrap-v1`, round-0 candidate checkpoint, or promoted solo checkpoint directory exists after the failed run; rerunning after the clean fix does not overwrite partial learning artifacts.
 - 2026-08-25T20:09:50+09:00 [TOOL] The complete reduced pipeline passed in containers: 300 decisions generated on 20 distinct seeds, three independent checkpoints trained with best epochs, one real `.pt` selected through Rust closed loop, promotion reloaded, and 20 learner-state decisions merged into a hash-valid 320-decision dataset. All temporary verification artifacts were then removed from the four exact workspace directories.
 - 2026-08-25T20:09:50+09:00 [TOOL] Final gates passed after the bridge type cleanup: Ruff format/check, 12 Python tests, rustfmt, workspace clippy `-D warnings`, PyO3-feature clippy with its pinned no-Python build flags, all 132 Rust tests, optimized workspace build and training-image build. The first feature-clippy attempt lacked the Dockerfile's `PYO3_NO_PYTHON=1` environment and was superseded by the passing pinned invocation.
 - 2026-08-25T20:09:50+09:00 [CODE] The previous implementation already changed game seeds as `base_seed + index`; the actual overfitting risk was not one reused game seed but the small dataset, fixed per-epoch record order, single initialization and last-epoch-only selection. The new schedule makes the uniqueness explicit and addresses all four training weaknesses.
@@ -235,6 +239,7 @@
 
 ## [OUTCOMES]
 
+- 2026-08-25T20:38:58+09:00 [CODE] The submitted Docker failure is fixed and verified. After this change is committed, the user can safely rerun `scripts/run-final-solo-bootstrap.ps1`; the actual long solo training remains pending.
 - 2026-08-25T20:26:31+09:00 [CODE] The current handoff is plan-only: the production-scale solo pipeline remains implemented, but its day-scale run and final `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt` are still pending. The sole operational next step is `scripts/run-final-solo-bootstrap.ps1`; 1v1 learning is out of current scope.
 
 - 2026-08-25T20:09:50+09:00 [CODE] Supersede the 100,000-decision handoff: the production-scale solo bootstrap pipeline is implemented and end-to-end verified, but no strength claim is made until the user runs the day-scale command and obtains `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt`. The next implementation phase after that artifact is the fixed-cadence two-player environment and terminal self-play RL.
