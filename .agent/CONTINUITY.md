@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-25T20:26:31+09:00 [USER] Freeze the current completion boundary at solo learning: prepare the implementation/execution plan only, retain the implemented solo pipeline, and defer 1v1 learning code until a later explicit request.
+
 - 2026-08-24T14:18:08+09:00 [USER] Build a local TETR.IO-equivalent engine first, then a compute-efficient reinforcement-learning 1v1 bot; keep features separated and document major changes and settled designs.
 - 2026-08-24T14:18:08+09:00 [CODE] Execute the gated roadmap in `PROJECT_Explain_Execution_Plan.md`: specification and fixtures, deterministic core, versus rules, conformance, baselines, RL/reward experiments, optimization, final evaluation.
 - 2026-08-24T14:35:07+09:00 [USER] Consolidate and translate the initial design into one Korean HTML report optimized for personal browser viewing with a technical tone and A4 report layout.
@@ -27,6 +29,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-25T20:26:31+09:00 [CODE] Make `PROJECT_Explain_Solo_Learning_Completion_Plan.md` the current plan of record: completion requires the promoted solo checkpoint, independent reload, and zero top-outs over 2,000 held-out seeds × 10,000 placements; fixed-cadence 1v1 learning and self-play are deferred.
+- 2026-08-25T20:26:31+09:00 [CODE] Remove every uncommitted partial 1v1 placement-adapter edit and preserve the committed solo baseline `82f845f`; no 1v1 source code remains from the interrupted work.
 
 - 2026-08-24T14:18:08+09:00 [CODE] Define “perfectly same” as observational conformance to a pinned upstream version because hidden server implementation details cannot be proven from public evidence. Tentative pin: TETR.IO BETA 1.7.8 with TETRA LEAGUE Season 2; exact exported settings remain UNCONFIRMED.
 - 2026-08-24T14:18:08+09:00 [CODE] Use a deterministic Rust bitboard engine with versioned rules profiles and a narrow Python training bridge; this separates correctness-critical simulation from research iteration and reduces simulation cost.
@@ -89,6 +94,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-25T20:26:31+09:00 [TOOL] Plan-only verification passed: `git diff --check` reported no whitespace errors, the new plan contains the scope/gate/command/deferred-versus markers and a final newline, and `git diff --name-only -- crates python configs scripts` returned zero implementation changes. Container builds were not rerun because no source, configuration or script changed.
+- 2026-08-25T20:26:31+09:00 [CODE] Added the Korean solo-learning completion plan and synchronized the execution plan and root Korean project plan with the user-approved solo-only scope. No engine, model, training, configuration or script implementation was changed.
 
 - 2026-08-25T17:28:17+09:00 [CODE] Added the `arena` crate with hold-aware geometric afterstate enumeration, ten integer features, checked milli-scaled Dellacherie scoring, full candidate rank/margin records and deterministic mtime-zero gzip generation.
 - 2026-08-25T17:28:17+09:00 [CODE] Added the Python `tetris_rl` loader, 2,817-parameter scorer and listwise imitation trainer plus pinned CPU PyTorch 2.8.0/NumPy/Ruff container workflow. Loader gates SHA-256, schema, mechanics status, match-level split and rank integrity.
@@ -226,6 +234,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-25T20:26:31+09:00 [CODE] The current handoff is plan-only: the production-scale solo pipeline remains implemented, but its day-scale run and final `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt` are still pending. The sole operational next step is `scripts/run-final-solo-bootstrap.ps1`; 1v1 learning is out of current scope.
 
 - 2026-08-25T20:09:50+09:00 [CODE] Supersede the 100,000-decision handoff: the production-scale solo bootstrap pipeline is implemented and end-to-end verified, but no strength claim is made until the user runs the day-scale command and obtains `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt`. The next implementation phase after that artifact is the fixed-cadence two-player environment and terminal self-play RL.
 - 2026-08-25T19:22:56+09:00 [CODE] Supersede the evaluator-not-implemented status: tie-aware offline, authoritative closed-loop solo and verified checkpoint promotion are implemented. No full-model metric is claimed because the user intentionally deleted the prior records/checkpoint; the documented next run starts by regenerating 100,000 decisions and trains/evaluates the real `model.pt`.

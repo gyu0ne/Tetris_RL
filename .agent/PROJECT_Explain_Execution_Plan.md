@@ -1,7 +1,9 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: declared learning-relevant solo/1v1 mechanics, normalized reference loader, manual solo playground and first placement-level heuristic/imitation pipeline implemented; fixed-cadence 1v1 arena and versus teacher are next while external corpus expansion remains parallel
+Current state: declared learning-relevant solo/1v1 mechanics and the production-scale solo imitation pipeline are implemented; the current user-approved completion boundary is generation and verification of the long-run solo checkpoint, while all 1v1 learning implementation is deferred
+
+Current scope freeze (2026-08-25): execute and validate the solo pipeline described in `PROJECT_Explain_Solo_Learning_Completion_Plan.md`. Phases 5–8 and any fixed-cadence 1v1 learning adapter remain future work until the user explicitly reopens that scope.
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -99,11 +101,10 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Run `scripts/run-final-solo-bootstrap.ps1` from its clean committed revision and retain the promoted solo checkpoint.
-2. Implement the fixed-cadence two-player afterstate environment, versus observation features and terminal self-play learner initialized from the solo checkpoint.
-3. Keep raw 0.1-subframe and personal handling replay support as an optional validation adapter.
-4. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
-5. Promote `OBSERVED` mechanics only after external board checkpoints pass differential tests.
+1. Run `scripts/run-final-solo-bootstrap.ps1` from its clean committed revision.
+2. Retain the promoted `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt` and verify that it loads independently with matching dataset and engine metadata.
+3. If the zero-top-out gate fails after both automatic learner-state aggregation rounds, stop and plan a solo feature/model/teacher redesign; do not lower the gate.
+4. Do not implement fixed-cadence 1v1 learning, self-play or versus observations until the user explicitly reopens that scope.
 
 ## Key risks
 

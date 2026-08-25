@@ -5,6 +5,8 @@
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 
+> 현재 범위(2026-08-25): 당장의 완료 목표는 장기 솔로 학습을 실행해 검증된 단일 checkpoint를 만드는 것까지다. 1대1 학습 환경과 self-play 구현은 사용자 지시가 다시 있기 전까지 보류한다. 구체적인 실행·판정 계획은 `.agent/PROJECT_Explain_Solo_Learning_Completion_Plan.md`를 따른다.
+
 ## 1. 프로젝트 목표
 
 이 프로젝트의 최종 목표는 다음 두 가지다.
