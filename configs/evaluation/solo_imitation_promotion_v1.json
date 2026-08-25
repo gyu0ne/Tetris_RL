@@ -1,19 +1,26 @@
 {
   "schema_version": "solo-imitation-promotion-config-v1",
-  "source_checkpoint": "checkpoints/solo-imitation-bootstrap-v1/model.pt",
-  "promoted_checkpoint": "checkpoints/solo-imitation-v1/model.pt",
+  "source_checkpoint": "checkpoints/solo-imitation-bootstrap-r{round}/selected.pt",
+  "promoted_checkpoint": "checkpoints/solo-imitation-versus-bootstrap-v1/model.pt",
   "offline": {
     "split": "validation",
     "min_tie_aware_optimal_rate": 0.97,
     "min_positive_margin_agreement": 0.95,
     "max_mean_normalized_regret": 0.05,
-    "report": "runs/evaluation/solo-imitation-bootstrap-v1-offline.json"
+    "report": "runs/evaluation/solo-imitation-r{round}-offline.json"
   },
-  "closed_loop": {
+  "candidate_selection": {
     "base_seed": 20001,
-    "seeds": 500,
-    "horizon": 1000,
-    "min_survival_at_horizon": 0.95,
-    "report": "runs/evaluation/solo-imitation-bootstrap-v1-closed-loop.json"
+    "seeds": 256,
+    "horizon": 2000,
+    "minimum_survival": 1.0,
+    "report": "runs/evaluation/solo-imitation-r{round}-selection.json"
+  },
+  "final_closed_loop": {
+    "base_seed": 40001,
+    "seeds": 2000,
+    "horizon": 10000,
+    "min_survival_at_horizon": 1.0,
+    "report": "runs/evaluation/solo-imitation-r{round}-final-closed-loop.json"
   }
 }

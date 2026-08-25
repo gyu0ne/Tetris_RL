@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import random
 from collections.abc import Iterable, Iterator
@@ -32,11 +33,21 @@ class EpochMetrics:
     mean_teacher_regret: float
 
 
+@dataclass(frozen=True)
+class PreparedTrainingData:
+    dataset: ValidatedDataset
+    stats: FeatureStats
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the v1 placement-level imitation scorer")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=100, help="maximum epochs")
+    parser.add_argument("--min-epochs", type=int, default=20)
+    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--min-improvement", type=float, default=0.1)
+    parser.add_argument("--shuffle-buffer", type=int, default=4_096)
     parser.add_argument("--batch-decisions", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--teacher-temperature", type=float, default=1.0)
@@ -48,29 +59,51 @@ def main() -> None:
     train(args)
 
 
-def train(args: argparse.Namespace) -> None:
-    if args.epochs <= 0 or args.batch_decisions <= 0 or args.threads <= 0:
-        raise ValueError("epochs, batch-decisions and threads must be positive")
+def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None) -> None:
+    if (
+        args.epochs <= 0
+        or args.min_epochs <= 0
+        or args.patience <= 0
+        or args.batch_decisions <= 0
+        or args.shuffle_buffer <= 0
+        or args.threads <= 0
+    ):
+        raise ValueError("epoch, patience, batch, shuffle and thread values must be positive")
+    if args.min_epochs > args.epochs:
+        raise ValueError("min-epochs must not exceed epochs")
+    if args.min_improvement < 0:
+        raise ValueError("min-improvement must be nonnegative")
     if args.teacher_temperature <= 0 or args.teacher_score_scale <= 0:
         raise ValueError("teacher temperature and score scale must be positive")
 
-    random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.set_num_threads(args.threads)
     torch.use_deterministic_algorithms(True)
     device = torch.device("cpu")
 
-    dataset = validate_dataset(args.manifest, allow_observed=args.allow_observed)
-    stats = compute_feature_stats(dataset)
+    if prepared is None:
+        prepared = prepare_training_data(args.manifest, allow_observed=args.allow_observed)
+    dataset = prepared.dataset
+    stats = prepared.stats
     model = AfterstateScorer(ModelConfig(input_features=len(FEATURE_NAMES))).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1.0e-4)
 
-    last_validation: EpochMetrics | None = None
+    best_validation: EpochMetrics | None = None
+    best_state: dict[str, Tensor] | None = None
+    best_epoch = 0
+    significant_regret: float | None = None
+    stale_epochs = 0
+    completed_epochs = 0
+    history: list[dict[str, object]] = []
     for epoch in range(1, args.epochs + 1):
         model.train()
         training = _run_epoch(
             model,
-            _normalized(dataset, "train", stats),
+            _buffered_shuffle(
+                _normalized(dataset, "train", stats),
+                args.shuffle_buffer,
+                _epoch_seed(args.seed, epoch),
+            ),
             args.batch_decisions,
             args.teacher_temperature,
             args.teacher_score_scale,
@@ -79,7 +112,7 @@ def train(args: argparse.Namespace) -> None:
         )
         model.eval()
         with torch.no_grad():
-            last_validation = _run_epoch(
+            validation = _run_epoch(
                 model,
                 _normalized(dataset, "validation", stats),
                 args.batch_decisions,
@@ -88,16 +121,45 @@ def train(args: argparse.Namespace) -> None:
                 None,
                 device,
             )
+        if validation.decisions == 0:
+            raise ValueError("validation split needs at least one decision")
+
+        selected = _is_better(validation, best_validation)
+        if selected:
+            best_validation = validation
+            best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch
+
+        if (
+            significant_regret is None
+            or validation.mean_teacher_regret < significant_regret - args.min_improvement
+        ):
+            significant_regret = validation.mean_teacher_regret
+            stale_epochs = 0
+        else:
+            stale_epochs += 1
+        completed_epochs = epoch
+        epoch_record = {
+            "epoch": epoch,
+            "train": asdict(training),
+            "validation": asdict(validation),
+            "selected": selected,
+            "stale_epochs": stale_epochs,
+        }
+        history.append(epoch_record)
         print(
             json.dumps(
-                {
-                    "epoch": epoch,
-                    "train": asdict(training),
-                    "validation": asdict(last_validation),
-                },
+                epoch_record,
                 sort_keys=True,
             )
         )
+        if epoch >= args.min_epochs and stale_epochs >= args.patience:
+            break
+
+    if best_state is None or best_validation is None:
+        raise RuntimeError("training produced no checkpoint candidate")
+    model.load_state_dict(best_state, strict=True)
+    early_stopped = completed_epochs < args.epochs
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -114,7 +176,14 @@ def train(args: argparse.Namespace) -> None:
             "model_config": model.config.to_dict(),
             "model_state": model.state_dict(),
             "training": {
-                "epochs": args.epochs,
+                "epochs": completed_epochs,
+                "max_epochs": args.epochs,
+                "min_epochs": args.min_epochs,
+                "selected_epoch": best_epoch,
+                "early_stopped": early_stopped,
+                "patience": args.patience,
+                "min_improvement": args.min_improvement,
+                "shuffle_buffer": args.shuffle_buffer,
                 "batch_decisions": args.batch_decisions,
                 "learning_rate": args.learning_rate,
                 "teacher_temperature": args.teacher_temperature,
@@ -122,7 +191,8 @@ def train(args: argparse.Namespace) -> None:
                 "seed": args.seed,
                 "threads": args.threads,
             },
-            "validation": asdict(last_validation) if last_validation else None,
+            "validation": asdict(best_validation),
+            "training_history": history,
         },
         args.output,
     )
@@ -132,15 +202,54 @@ def train(args: argparse.Namespace) -> None:
                 "checkpoint": str(args.output),
                 "parameters": model.parameter_count(),
                 "dataset_id": dataset.manifest["dataset_id"],
+                "completed_epochs": completed_epochs,
+                "selected_epoch": best_epoch,
+                "early_stopped": early_stopped,
             },
             sort_keys=True,
         )
     )
 
 
+def prepare_training_data(manifest: Path, *, allow_observed: bool) -> PreparedTrainingData:
+    dataset = validate_dataset(manifest, allow_observed=allow_observed)
+    return PreparedTrainingData(dataset, compute_feature_stats(dataset))
+
+
 def _normalized(dataset: ValidatedDataset, split: Split, stats: FeatureStats) -> Iterator[Decision]:
     for decision in iter_decisions(dataset, split):
         yield normalize(decision, stats)
+
+
+def _buffered_shuffle(
+    decisions: Iterable[Decision], buffer_size: int, seed: int
+) -> Iterator[Decision]:
+    """Deterministic bounded-memory shuffle for a streamed gzip dataset."""
+
+    randomizer = random.Random(seed)
+    buffer: list[Decision] = []
+    for decision in decisions:
+        if len(buffer) < buffer_size:
+            buffer.append(decision)
+            continue
+        selected = randomizer.randrange(buffer_size)
+        yield buffer[selected]
+        buffer[selected] = decision
+    randomizer.shuffle(buffer)
+    yield from buffer
+
+
+def _epoch_seed(training_seed: int, epoch: int) -> int:
+    return (training_seed << 32) ^ epoch
+
+
+def _is_better(current: EpochMetrics, best: EpochMetrics | None) -> bool:
+    if best is None:
+        return True
+    return (current.mean_teacher_regret, current.loss) < (
+        best.mean_teacher_regret,
+        best.loss,
+    )
 
 
 def _run_epoch(

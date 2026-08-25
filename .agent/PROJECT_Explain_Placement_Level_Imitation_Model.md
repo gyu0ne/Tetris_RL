@@ -93,6 +93,6 @@ feature normalization은 train split에서만 계산한다. `seed % 5 == 0` matc
 1. fixed-cadence placement-level `BattleSession` adapter
 2. attack/cancel/incoming/B2B/Surge/opponent danger feature
 3. 공격·downstack·B2B·안전 style teacher ensemble
-4. 100k-decision 생성/학습/삭제 benchmark
-5. held-out closed-loop match에서 linear teacher, chosen-only BC와 full-score distillation 비교
-6. learner-state dataset aggregation 뒤에만 RL 초기 checkpoint 승격
+4. 최소 1M-decision·세 초기화·best epoch 장기 solo 학습 실행
+5. 실제 Rust closed loop에서 후보 선택과 별도 20M-placement zero-top-out 최종 평가
+6. 실패 시 250k learner-state dataset aggregation을 최대 두 번 수행한 뒤에만 RL 초기 checkpoint 승격

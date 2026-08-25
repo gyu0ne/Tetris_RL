@@ -36,7 +36,12 @@ pub fn generate_solo_dataset(
     let mut max_candidates = 0_u16;
 
     for match_index in 0..config.matches {
-        let seed = config.base_seed.wrapping_add(u64::from(match_index));
+        let seed = u64::from(match_index)
+            .checked_mul(config.seed_stride)
+            .and_then(|offset| config.base_seed.checked_add(offset))
+            .ok_or(GenerationError::InvalidConfig(
+                "seed schedule must not overflow u64",
+            ))?;
         let match_id = format!("solo-{seed:016x}");
         let mut game = GameState::new(seed, game_config)?;
 
@@ -111,6 +116,7 @@ pub fn generate_solo_dataset(
             .collect(),
         teacher: teacher_record,
         base_seed: config.base_seed,
+        seed_stride: config.seed_stride,
         requested_matches: config.matches,
         completed_matches: config.matches,
         requested_decisions_per_match: config.decisions_per_match,
@@ -298,6 +304,20 @@ fn validate_config(config: &SoloGenerationConfig) -> Result<(), GenerationError>
             "decisions_per_match must be positive",
         ));
     }
+    if config.seed_stride == 0 {
+        return Err(GenerationError::InvalidConfig(
+            "seed_stride must be positive",
+        ));
+    }
+    if u64::from(config.matches - 1)
+        .checked_mul(config.seed_stride)
+        .and_then(|offset| config.base_seed.checked_add(offset))
+        .is_none()
+    {
+        return Err(GenerationError::InvalidConfig(
+            "seed schedule must not overflow u64",
+        ));
+    }
     if config.engine_revision.trim().is_empty() {
         return Err(GenerationError::InvalidConfig(
             "engine_revision must not be empty",
@@ -452,6 +472,7 @@ mod tests {
         let second_bytes = fs::read(&second.records_path).unwrap();
         assert_eq!(first_bytes, second_bytes);
         assert_eq!(one.manifest.records_sha256, two.manifest.records_sha256);
+        assert_eq!(one.manifest.seed_stride, 104_729);
 
         let decoder = flate2::read::GzDecoder::new(first_bytes.as_slice());
         let record: DecisionRecord = serde_json::Deserializer::from_reader(decoder)
@@ -490,6 +511,7 @@ mod tests {
             manifest_path,
             engine_revision: "test-revision".to_owned(),
             base_seed: 7,
+            seed_stride: 104_729,
             matches: 2,
             decisions_per_match: 3,
         }

@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--offline-report", type=Path, required=True)
     parser.add_argument("--closed-loop-report", type=Path, required=True)
+    parser.add_argument("--selection-report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--allow-observed", action="store_true")
     args = parser.parse_args()
@@ -22,14 +23,18 @@ def main() -> None:
     source_hash = _sha256_file(args.checkpoint)
     offline = _read_report(args.offline_report, "offline-imitation-evaluation-v1")
     closed_loop = _read_report(args.closed_loop_report, "closed-loop-solo-evaluation-v1")
+    selection = _read_report(args.selection_report, "imitation-candidate-selection-v1")
     _expect(offline["checkpoint_sha256"] == source_hash, "offline checkpoint SHA-256")
     _expect(closed_loop["checkpoint_sha256"] == source_hash, "closed-loop checkpoint SHA-256")
     _expect(bool(offline["gates"]["passed"]), "offline gates did not pass")
     _expect(bool(closed_loop["gates"]["passed"]), "closed-loop gates did not pass")
+    _expect(bool(selection["passed"]), "candidate selection did not pass")
+    _expect(selection["selected_checkpoint_sha256"] == source_hash, "selection checkpoint SHA-256")
 
     loaded = load_scorer(args.checkpoint, allow_observed=args.allow_observed)
     _expect(offline["dataset_id"] == loaded.metadata["dataset_id"], "offline dataset ID")
     _expect(closed_loop["dataset_id"] == loaded.metadata["dataset_id"], "closed-loop dataset ID")
+    _expect(selection["dataset_id"] == loaded.metadata["dataset_id"], "selection dataset ID")
     _expect(
         offline["engine_revision"] == loaded.metadata["engine_revision"],
         "offline engine revision",
@@ -38,11 +43,15 @@ def main() -> None:
         closed_loop["engine_revision"] == loaded.metadata["engine_revision"],
         "closed-loop engine revision",
     )
-
+    _expect(
+        selection["engine_revision"] == loaded.metadata["engine_revision"],
+        "selection engine revision",
+    )
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     payload["promotion"] = {
-        "schema_version": "solo-imitation-promotion-v1",
+        "schema_version": "solo-imitation-promotion-v2",
         "source_checkpoint_sha256": source_hash,
+        "selection": selection,
         "offline": offline,
         "closed_loop": closed_loop,
     }

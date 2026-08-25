@@ -1,0 +1,169 @@
+param(
+    [int]$TrainingThreads = 2
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Assert-LastExitCode {
+    param([string]$Stage)
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Stage failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-MultiseedTraining {
+    param(
+        [string]$Manifest,
+        [string]$OutputDirectory
+    )
+
+    docker compose run --rm training python -m tetris_rl.training.multiseed `
+        --manifest $Manifest `
+        --output-dir $OutputDirectory `
+        --seeds 2026 2027 2028 `
+        --epochs 100 `
+        --min-epochs 20 `
+        --patience 10 `
+        --min-improvement 0.1 `
+        --shuffle-buffer 4096 `
+        --batch-decisions 64 `
+        --learning-rate 0.0003 `
+        --teacher-temperature 1.0 `
+        --teacher-score-scale 1000 `
+        --threads $TrainingThreads `
+        --allow-observed
+    Assert-LastExitCode 'multi-seed training'
+}
+
+$dirtyFiles = @(git status --porcelain)
+Assert-LastExitCode 'git status'
+if ($dirtyFiles.Count -ne 0) {
+    throw 'Final training must start from a clean commit so engine_revision identifies the code exactly.'
+}
+
+$revision = (git rev-parse HEAD).Trim()
+Assert-LastExitCode 'git revision lookup'
+
+docker compose build rust
+Assert-LastExitCode 'Rust image build'
+docker compose build training
+Assert-LastExitCode 'training image build'
+
+$baseRecords = 'datasets/solo-imitation-bootstrap-v1/records.jsonl.gz'
+$baseManifest = 'datasets/solo-imitation-bootstrap-v1/manifest.json'
+
+docker compose run --rm rust cargo run --release -p arena --bin generate-solo -- `
+    --records $baseRecords `
+    --manifest $baseManifest `
+    --engine-revision $revision `
+    --seed 10001 `
+    --seed-stride 104729 `
+    --matches 4096 `
+    --decisions-per-match 250
+Assert-LastExitCode 'teacher dataset generation'
+
+$manifestData = Get-Content -LiteralPath $baseManifest -Raw | ConvertFrom-Json
+if ([int64]$manifestData.decisions -lt 1000000) {
+    docker compose run --rm rust cargo run --release -p arena --bin generate-solo -- `
+        --records $baseRecords `
+        --manifest $baseManifest `
+        --engine-revision $revision `
+        --seed 10001 `
+        --seed-stride 104729 `
+        --matches 4224 `
+        --decisions-per-match 250
+    Assert-LastExitCode 'fallback teacher dataset generation'
+    $manifestData = Get-Content -LiteralPath $baseManifest -Raw | ConvertFrom-Json
+}
+if ([int64]$manifestData.decisions -lt 1000000) {
+    throw "Teacher dataset contains only $($manifestData.decisions) decisions; at least 1000000 are required."
+}
+
+$currentManifest = $baseManifest
+$maximumAggregationRounds = 2
+
+for ($round = 0; $round -le $maximumAggregationRounds; $round += 1) {
+    $checkpointDirectory = "checkpoints/solo-imitation-bootstrap-r$round"
+    $selectedCheckpoint = "$checkpointDirectory/selected.pt"
+    $reportPrefix = "runs/evaluation/solo-imitation-r$round"
+    $offlineReport = "$reportPrefix-offline.json"
+    $selectionReport = "$reportPrefix-selection.json"
+    $closedLoopReport = "$reportPrefix-final-closed-loop.json"
+    $developmentBaseSeed = 20001 + 100000 * $round
+    $finalBaseSeed = 40001 + 100000 * $round
+
+    Invoke-MultiseedTraining -Manifest $currentManifest -OutputDirectory $checkpointDirectory
+
+    docker compose run --rm training python -m tetris_rl.evaluation.select `
+        --manifest $currentManifest `
+        --candidate "$checkpointDirectory/seed-2026.pt" `
+        --candidate "$checkpointDirectory/seed-2027.pt" `
+        --candidate "$checkpointDirectory/seed-2028.pt" `
+        --output-checkpoint $selectedCheckpoint `
+        --offline-output $offlineReport `
+        --selection-output $selectionReport `
+        --base-seed $developmentBaseSeed `
+        --seeds 256 `
+        --horizon 2000 `
+        --batch-decisions 64 `
+        --threads $TrainingThreads `
+        --min-dev-survival 1.0 `
+        --allow-observed
+    Assert-LastExitCode 'candidate selection'
+
+    docker compose run --rm training python -m tetris_rl.evaluation.closed_loop `
+        --checkpoint $selectedCheckpoint `
+        --base-seed $finalBaseSeed `
+        --seeds 2000 `
+        --horizon 10000 `
+        --threads $TrainingThreads `
+        --allow-observed `
+        --require-gates `
+        --min-survival 1.0 `
+        --output $closedLoopReport
+    $closedLoopExitCode = $LASTEXITCODE
+
+    if ($closedLoopExitCode -eq 0) {
+        $finalCheckpoint = 'checkpoints/solo-imitation-versus-bootstrap-v1/model.pt'
+        docker compose run --rm training python -m tetris_rl.evaluation.promote `
+            --checkpoint $selectedCheckpoint `
+            --offline-report $offlineReport `
+            --selection-report $selectionReport `
+            --closed-loop-report $closedLoopReport `
+            --output $finalCheckpoint `
+            --allow-observed
+        Assert-LastExitCode 'checkpoint promotion'
+
+        docker compose run --rm training python -c "from pathlib import Path; from tetris_rl.models.checkpoint import load_scorer; loaded=load_scorer(Path('$finalCheckpoint'), allow_observed=True); print({'parameters': loaded.model.parameter_count(), 'engine_revision': loaded.metadata['engine_revision'], 'dataset_id': loaded.metadata['dataset_id'], 'promotion': loaded.metadata['promotion']['schema_version']})"
+        Assert-LastExitCode 'promoted checkpoint reload'
+        Write-Host "Final solo bootstrap: $finalCheckpoint"
+        exit 0
+    }
+
+    if ($closedLoopExitCode -ne 3) {
+        throw "final closed-loop evaluation failed with exit code $closedLoopExitCode"
+    }
+    if ($round -eq $maximumAggregationRounds) {
+        throw 'The model still topped out after two learner-state aggregation rounds. Redesign the solo features/model before versus RL.'
+    }
+
+    $nextRound = $round + 1
+    $nextDatasetDirectory = "datasets/solo-imitation-dagger-r$nextRound"
+    $nextRecords = "$nextDatasetDirectory/records.jsonl.gz"
+    $nextManifest = "$nextDatasetDirectory/manifest.json"
+    docker compose run --rm training python -m tetris_rl.training.aggregate `
+        --manifest $currentManifest `
+        --checkpoint $selectedCheckpoint `
+        --records $nextRecords `
+        --output-manifest $nextManifest `
+        --matches 1024 `
+        --decisions-per-match 250 `
+        --target-decisions 250000 `
+        --parallel-games 128 `
+        --threads $TrainingThreads `
+        --allow-observed
+    Assert-LastExitCode 'learner-state aggregation'
+    $currentManifest = $nextManifest
+}

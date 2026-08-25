@@ -8,6 +8,13 @@ mod python {
     use pyo3::types::PyBytes;
     use std::mem::size_of;
 
+    type LabeledCandidateBatch<'py> = (
+        Bound<'py, PyBytes>,
+        Bound<'py, PyBytes>,
+        Vec<usize>,
+        Vec<bool>,
+    );
+
     #[pyclass(name = "SoloBatch")]
     struct PySoloBatch {
         inner: SoloBatch,
@@ -27,13 +34,26 @@ mod python {
             py: Python<'py>,
         ) -> PyResult<(Bound<'py, PyBytes>, Vec<usize>, Vec<bool>)> {
             let batch = self.inner.candidates().map_err(value_error)?;
-            let mut bytes = Vec::with_capacity(batch.features.len() * 10 * size_of::<i32>());
-            for features in batch.features {
-                for value in features {
-                    bytes.extend_from_slice(&value.to_le_bytes());
-                }
-            }
+            let bytes = feature_bytes(batch.features);
             Ok((PyBytes::new(py, &bytes), batch.offsets, batch.done))
+        }
+
+        fn labeled_candidates<'py>(
+            &mut self,
+            py: Python<'py>,
+        ) -> PyResult<LabeledCandidateBatch<'py>> {
+            let batch = self.inner.candidates().map_err(value_error)?;
+            let features = feature_bytes(batch.features);
+            let mut scores = Vec::with_capacity(batch.teacher_scores.len() * size_of::<i64>());
+            for score in batch.teacher_scores {
+                scores.extend_from_slice(&score.to_le_bytes());
+            }
+            Ok((
+                PyBytes::new(py, &features),
+                PyBytes::new(py, &scores),
+                batch.offsets,
+                batch.done,
+            ))
         }
 
         fn step(&mut self, selections: Vec<i64>) -> PyResult<()> {
@@ -67,5 +87,15 @@ mod python {
 
     fn value_error(error: impl std::fmt::Display) -> PyErr {
         PyValueError::new_err(error.to_string())
+    }
+
+    fn feature_bytes(features: Vec<[i32; 10]>) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(features.len() * 10 * size_of::<i32>());
+        for features in features {
+            for value in features {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        bytes
     }
 }

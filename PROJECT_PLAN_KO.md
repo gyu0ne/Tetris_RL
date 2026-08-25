@@ -441,9 +441,9 @@ non-learning baseline은 반드시 유지한다.
 - 선택 행동뿐 아니라 모든 legal afterstate의 score/rank, teacher margin·style·budget, rules/engine hash, seed와 결과를 shard에 저장한다.
 - chosen-action BC, full-score/rank distillation과 value initialization을 비교한다.
 - learner가 방문한 상태에 teacher를 다시 질의하는 dataset aggregation을 수행한다.
-- `100k` smoke, `1M` pilot, `10M` medium decision 순서로 strength-per-byte/second를 확인한 뒤 larger dataset을 승인한다.
+- 최종 solo bootstrap은 최소 `1M` teacher decision, 독립 초기화 3회와 learner-state `250k`×최대 2회를 사용한다. 짧은 smoke 수치를 실사용 모델 기준으로 승격하지 않는다.
 
-**현재 진척:** `arena`가 hold 분기를 포함한 geometric locked afterstate 전체를 열거하고, 10개 정수 board feature와 milli-scaled Dellacherie teacher score/rank/top-two margin을 deterministic gzip shard로 생성한다. Python loader는 SHA-256, rules/engine/action schema, `OBSERVED` opt-in, seed/match split과 rank permutation을 검증한다. CPU PyTorch 2.8.0의 공유 `10→64→32→1` scorer(2,817 parameter)는 candidate score soft target을 listwise distill한다. 512-decision smoke에서 3 epoch 뒤 held-out 64 decisions top-1 59.375%를 기록했지만, 이는 pipeline 동작 확인일 뿐 strength 통과 결과가 아니다. checkpoint는 manifest와 feature normalization을 포함하며 shard는 학습 뒤 삭제 가능한 임시 산출물이다. 1대1 versus feature/teacher, fixed-cadence placement arena, closed-loop 평가와 dataset aggregation은 아직 미구현이다.
+**현재 진척:** `arena`가 hold 분기를 포함한 geometric locked afterstate 전체를 열거하고, 10개 정수 board feature와 milli-scaled Dellacherie teacher score/rank/top-two margin을 deterministic gzip shard로 생성한다. 게임별 seed는 manifest에 기록된 `base_seed + seed_stride × match_index`로 모두 다르다. Python loader는 SHA-256, rules/engine/action schema, `OBSERVED` opt-in, seed/match split과 rank permutation을 검증한다. CPU PyTorch 2.8.0의 공유 `10→64→32→1` scorer(2,817 parameter)는 bounded shuffle, validation best-epoch 복원과 early stopping을 사용해 세 초기화로 독립 학습된다. 실제 `.pt` 후보는 같은 offline/development closed-loop gate에서 선택되고, 별도 2,000 seed×10,000 placement에서 top-out 0일 때만 승격된다. 실패하면 Rust batch가 learner 방문 상태에 교사 점수를 붙여 25만 결정을 추가하며 최대 두 번 scratch 재학습한다. 전체 solo 절차는 `scripts/run-final-solo-bootstrap.ps1`로 자동 실행된다. 실제 장기 run과 1대1 versus feature/teacher·fixed-cadence RL은 다음 단계다.
 
 **통과 조건:** imitation checkpoint가 같은 latency budget의 random initialization과 chosen-only BC보다 held-out closed-loop 대국에서 강하고 illegal action이 0개여야 한다. offline accuracy만으로는 통과하지 못한다.
 
@@ -504,7 +504,7 @@ non-learning baseline은 반드시 유지한다.
 
 1. 12 frame/piece 기본 cadence와 8/12/15 민감도 설정을 가진 placement-level `BattleSession` adapter를 구현한다.
 2. incoming/attack/B2B/Surge/상대 danger feature와 여러 style의 1대1 teacher를 추가한다.
-3. `100k` decision smoke를 생성-학습-삭제하며 generation decisions/s, bytes/decision, inference latency와 closed-loop strength를 측정한다.
+3. clean commit에서 최종 solo bootstrap 스크립트를 실행해 최소 `1M` decision·세 초기화·최대 100 epoch·20M-placement 승격 checkpoint를 만든다.
 4. 같은 원칙으로 `BattleSession`을 연결한 1대1 dual-board 진단 화면을 추가하고 사용자가 핵심 mechanics를 직접 확인한다.
 5. 외부 기준 checkpoint가 확보되면 핵심 mechanics 경계 fixture를 우선 채우고 formal conformance corpus는 병행 확장한다.
 

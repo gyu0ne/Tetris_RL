@@ -6,6 +6,7 @@ use std::fmt;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CandidateBatch {
     pub features: Vec<[i32; FEATURE_COUNT]>,
+    pub teacher_scores: Vec<i64>,
     pub offsets: Vec<usize>,
     pub done: Vec<bool>,
 }
@@ -37,6 +38,7 @@ impl SoloBatch {
 
     pub fn candidates(&mut self) -> Result<CandidateBatch, ClosedLoopError> {
         let mut features = Vec::new();
+        let mut teacher_scores = Vec::new();
         let mut offsets = Vec::with_capacity(self.games.len() + 1);
         let mut done = Vec::with_capacity(self.games.len());
         offsets.push(0);
@@ -53,12 +55,14 @@ impl SoloBatch {
             }
             let choices = cached.as_ref().expect("candidate cache was initialized");
             features.extend(choices.iter().map(|choice| choice.record.features));
+            teacher_scores.extend(choices.iter().map(|choice| choice.record.teacher_score));
             offsets.push(features.len());
             done.push(choices.is_empty());
         }
 
         Ok(CandidateBatch {
             features,
+            teacher_scores,
             offsets,
             done,
         })
@@ -182,6 +186,7 @@ mod tests {
         assert_eq!(candidates.offsets.len(), 3);
         assert_eq!(candidates.offsets[0], 0);
         assert_eq!(candidates.offsets[2], candidates.features.len());
+        assert_eq!(candidates.teacher_scores.len(), candidates.features.len());
         assert!(candidates.done.iter().all(|done| !done));
 
         batch.step(&[Some(0), Some(0)]).unwrap();

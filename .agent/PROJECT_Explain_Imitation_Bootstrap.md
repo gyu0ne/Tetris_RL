@@ -1,6 +1,6 @@
 # 휴리스틱 기록 기반 모방학습 Bootstrap
 
-상태: solo bootstrap foundation 구현 및 smoke 완료, 1대1 teacher/aggregation/RL 미착수
+상태: solo 장기학습·평가·learner-state aggregation 실행 파이프라인 구현 완료, 실제 장기 run과 1대1 teacher/RL은 미실행
 
 결정일: `2026-08-24`
 
@@ -14,7 +14,10 @@
 - 모든 후보의 action, board checksum, feature, teacher score/rank와 immediate clear event를 deterministic gzip JSONL에 저장한다.
 - manifest와 record의 SHA-256/rules/engine/status/action schema를 Python loader가 검증하며 `OBSERVED` 데이터는 명시적 opt-in 없이는 거부한다.
 - CPU PyTorch 2.8.0의 `10→64→32→1` 공유 scorer가 후보 score soft target을 listwise distill한다.
-- checkpoint는 dataset manifest, feature mean/std, model/training config와 smoke 평가를 포함한다. 대용량 shard는 임시 산출물이며 학습과 offline 평가 후 삭제한다.
+- checkpoint는 dataset manifest, feature mean/std, model/training config, best epoch와 전체 history를 포함한다. 승격 checkpoint에는 후보 선택·offline·closed-loop 보고서도 포함한다. 대용량 shard는 임시 산출물이며 최종 checkpoint 재로드 후 삭제할 수 있다.
+- 매 게임 seed는 `base_seed + seed_stride × match_index`이며 같은 dataset 안에서 중복되지 않는다.
+- 장기 trainer는 bounded-memory deterministic shuffle, minimum epoch, patience early stopping과 validation regret best-epoch 복원을 사용한다.
+- 세 초기화 seed의 후보를 실제 Rust closed loop에서 고르고, top-out이 있으면 learner가 방문한 상태 250,000개에 같은 Rust teacher label을 붙여 scratch 재학습한다.
 
 512-decision smoke는 448 train/64 held-out decision으로 분리됐고 3 epoch 뒤 held-out top-1 59.375%, mean teacher regret 1,961.234375 milli-score를 기록했다. 이는 end-to-end 연결과 학습 감소를 확인한 결과일 뿐, 1대1 strength나 architecture 채택 근거가 아니다.
 
@@ -59,14 +62,15 @@
 
 ## 데이터 규모 게이트
 
-처음부터 막연히 수억 건을 만들지 않는다.
+최종 solo bootstrap의 현재 고정 예산은 다음과 같다.
 
-- smoke: `100k` decisions, schema·determinism·loader 검증
-- pilot: `1M` decisions, teacher mix와 BC architecture 비교
-- medium: `10M` decisions, dataset aggregation과 held-out strength 확인
-- large: 이전 단계의 strength-per-byte/second 개선이 확인된 경우만 승인
+- 기본 교사 dataset: 최소 `1,000,000` decisions, 4,096개 이상의 서로 다른 game seed
+- 독립 학습: initialization seed 3개, 최대 100 epoch, 최소 20 epoch, patience 10
+- 분포 이탈 보정: learner-state `250,000` decisions × 최대 2회
+- 후보 선택: 256 seed × 2,000 placement에서 top-out 0
+- 최종 승격: 별도 2,000 seed × 10,000 placement에서 top-out 0
 
-실제 수치는 simulator와 storage benchmark 뒤 experiment config에서 확정한다.
+이 값은 짧은 pipeline smoke가 아니라 하루 단위 장기 실행 예산이다. 최종 run 결과가 생기기 전에는 성능 완료로 기록하지 않는다.
 
 ## 평가
 

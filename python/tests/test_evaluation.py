@@ -2,6 +2,7 @@ import unittest
 
 from tetris_rl.evaluation.closed_loop import evaluate_closed_loop
 from tetris_rl.evaluation.offline import evaluate_decisions
+from tetris_rl.evaluation.select import _choose_candidate
 from tetris_rl.models import AfterstateScorer
 from tetris_rl.models.checkpoint import LoadedScorer
 from tetris_rl.training.dataset import Decision
@@ -75,6 +76,40 @@ class ClosedLoopEvaluationTest(unittest.TestCase):
         self.assertEqual(metrics.survived, 1)
         self.assertEqual(metrics.survival_at_horizon, 0.5)
         self.assertEqual(metrics.mean_pieces_placed, 1.5)
+
+
+class CandidateSelectionTest(unittest.TestCase):
+    def test_candidate_selection_uses_paired_survival_then_regret(self) -> None:
+        candidates = [
+            self._candidate("a", survival=0.96, pieces=490.0, regret=0.02),
+            self._candidate("b", survival=0.97, pieces=480.0, regret=0.03),
+            self._candidate("c", survival=0.97, pieces=490.0, regret=0.04),
+        ]
+
+        selected = _choose_candidate(candidates)
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["checkpoint_sha256"], "c")
+
+    def test_candidate_selection_rejects_runs_that_miss_gates(self) -> None:
+        candidate = self._candidate("a", survival=1.0, pieces=500.0, regret=0.0)
+        candidate["eligible"] = False
+
+        self.assertIsNone(_choose_candidate([candidate]))
+
+    @staticmethod
+    def _candidate(
+        checkpoint_hash: str, *, survival: float, pieces: float, regret: float
+    ) -> dict[str, object]:
+        return {
+            "checkpoint_sha256": checkpoint_hash,
+            "eligible": True,
+            "development_closed_loop": {
+                "survival_at_horizon": survival,
+                "mean_pieces_placed": pieces,
+            },
+            "offline": {"mean_normalized_regret": regret},
+        }
 
 
 if __name__ == "__main__":

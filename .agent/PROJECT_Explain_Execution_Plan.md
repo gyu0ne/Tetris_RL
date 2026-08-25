@@ -57,9 +57,9 @@ Exit gate: repeatable ratings with confidence intervals; no training system yet.
 - Generate versioned trajectories from diverse linear/search teachers and the frozen opponent pool. `OBSERVED` exploratory shards require explicit labeling/opt-in; release training remains conformance-gated.
 - Store all legal afterstate scores/ranks, teacher margin/budget/style, rules/engine hashes, seeds and outcomes in sharded records.
 - Train chosen-action BC, full-score/rank distillation and value initialization; then aggregate teacher labels on learner-visited states.
-- Compare smoke 100k, pilot 1M and medium 10M decision budgets before approving a larger dataset.
+- Run the fixed final solo budget of at least 1M teacher decisions, three independent initializations and up to two 250k learner-state aggregation rounds before versus RL.
 
-Progress: `crates/arena` implements hold-aware geometric candidates, ten integer features, a Dellacherie linear teacher and deterministic compressed full-score records. `python/tetris_rl` validates provenance/integrity and trains a CPU `10→64→32→1` shared scorer with listwise score distillation. A 512-decision end-to-end smoke passed; its 59.375% held-out top-1 is pipeline evidence only. Records are ephemeral and checkpoints embed regeneration metadata. Fixed-cadence `BattleSession`, versus features/teachers, 100k smoke, closed-loop comparison and aggregation remain.
+Progress: `crates/arena` implements hold-aware geometric candidates, ten integer features, a Dellacherie linear teacher, deterministic compressed full-score records and a native batched learner-state label bridge. `python/tetris_rl` validates provenance/integrity and trains a CPU `10→64→32→1` shared scorer with bounded shuffle, best-epoch restore, early stopping and three independent initializations. Actual PyTorch candidates are selected through paired offline/development closed-loop gates; a separate 20M-placement zero-top-out run gates promotion. Failure invokes up to two 250k learner-state aggregation rounds. `scripts/run-final-solo-bootstrap.ps1` executes the whole solo pipeline. The long run itself and fixed-cadence versus teacher/RL remain.
 
 Exit gate: the imitation checkpoint improves held-out closed-loop strength under a fixed latency budget, has zero illegal actions, and beats both random initialization and chosen-only BC. Offline accuracy alone cannot pass the gate.
 
@@ -99,8 +99,8 @@ Exit gate: another developer can reproduce the engine tests, train/evaluate a sm
 
 ## Immediate next actions
 
-1. Finish format/lint/test/release-build verification, documentation and the mechanics milestone commit.
-2. Inventory CPU/RAM/GPU resources and implement Phase 4 afterstate heuristic arena plus record schema.
+1. Run `scripts/run-final-solo-bootstrap.ps1` from its clean committed revision and retain the promoted solo checkpoint.
+2. Implement the fixed-cadence two-player afterstate environment, versus observation features and terminal self-play learner initialized from the solo checkpoint.
 3. Keep raw 0.1-subframe and personal handling replay support as an optional validation adapter.
 4. Use the supplied BLITZ replay only as an anonymized input-format/handling regression fixture; it cannot certify TETRA LEAGUE versus rules.
 5. Promote `OBSERVED` mechanics only after external board checkpoints pass differential tests.

@@ -79,6 +79,7 @@ pub struct DatasetManifest {
     pub feature_names: Vec<String>,
     pub teacher: TeacherRecord,
     pub base_seed: u64,
+    pub seed_stride: u64,
     pub requested_matches: u32,
     pub completed_matches: u32,
     pub requested_decisions_per_match: u32,
@@ -93,6 +94,7 @@ pub struct SoloGenerationConfig {
     pub manifest_path: std::path::PathBuf,
     pub engine_revision: String,
     pub base_seed: u64,
+    pub seed_stride: u64,
     pub matches: u32,
     pub decisions_per_match: u32,
 }

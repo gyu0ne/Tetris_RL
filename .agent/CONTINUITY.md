@@ -24,6 +24,7 @@
 - 2026-08-25T17:48:24+09:00 [USER] Estimate the imitation-learning scale required for basic performance and require a separate Korean technical manual under root `Explanation/` whenever a new component or workflow is created.
 - 2026-08-25T17:58:06+09:00 [USER] Clarified that the requested imitation-learning explanation must be a concrete execution method, not primarily a theoretical sample-complexity discussion.
 - 2026-08-25T19:22:56+09:00 [USER] Requested implemented evaluators and the exact procedure for producing a real usable model; clarified that prior datasets/checkpoints were intentionally deleted and should not be reconstructed now.
+- 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
 
@@ -83,6 +84,9 @@
 - 2026-08-25T19:02:53+09:00 [CODE] Supersede the earlier deletion timing: retain the temporary shard through checkpoint loading and tie-aware offline evaluation, then delete it after performance evaluation; closed-loop inference itself needs only the checkpoint.
 - 2026-08-25T19:22:56+09:00 [CODE] Keep the original PyTorch `model.pt` as the only model serialization. Python/PyTorch performs checkpoint loading, normalization and scoring; a narrow PyO3 bridge exposes batched authoritative Rust candidate generation and state transition. JSON is limited to evaluation reports.
 - 2026-08-25T19:22:56+09:00 [CODE] Promote only when offline and closed-loop reports match the source checkpoint SHA-256, dataset ID and engine revision and all gates pass; embed both reports in the promoted checkpoint so external reports and training records can later be deleted.
+- 2026-08-25T20:09:50+09:00 [CODE] Supersede the 100,000-decision/five-epoch plan with at least 1,000,000 teacher decisions from 4,096 distinct scheduled seeds, three independent initialization seeds, maximum 100/minimum 20 epochs, patience 10 and validation-regret best-epoch restoration.
+- 2026-08-25T20:09:50+09:00 [CODE] Define the operational solo-prior gate as zero top-outs across 2,000 previously unused seeds × 10,000 placements. Any failure adds 250,000 teacher labels on learner-visited states and retrains all three candidates from scratch, for at most two aggregation rounds; gates are not lowered automatically.
+- 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
 
@@ -171,9 +175,15 @@
 - 2026-08-25T16:55:29+09:00 [TOOL] Final container gates passed: rustfmt, clippy with `-D warnings`, all 126 tests with 0 failures (including 3 playground tests), optimized workspace release build, and Bun browser-target bundling. The first generic `bun --check` attempt executed browser globals and was replaced by the correct browser-target build check.
 - 2026-08-25T16:55:29+09:00 [TOOL] Live localhost smoke passed: API hard drop changed frame 0→1 and pieces 0→1 with 20 visible rows; browser keyboard testing changed pieces 0→1, preserved `O 고정`, and reported `엔진 연결됨`.
 - 2026-08-25T16:55:29+09:00 [TOOL] Fresh fast non-persistent code-graph indexing found 1,736 nodes and 5,992 edges after adding the manual-playground server/state boundary; static browser assets are excluded from graph extraction.
+- 2026-08-25T20:09:50+09:00 [CODE] Added explicit seed-stride manifests, bounded deterministic epoch shuffling, best-state/early-stop checkpointing, multi-initialization training, paired candidate selection, native teacher-score buffers, learner-state aggregation and provenance-checked promotion using the original PyTorch `.pt` format.
+- 2026-08-25T20:09:50+09:00 [CODE] Added `scripts/run-final-solo-bootstrap.ps1`; one clean-commit command now builds containers, generates at least 1M decisions, trains/selects three candidates, runs the 20M-placement final gate, performs up to two aggregation/retraining rounds and reloads the promoted final checkpoint.
+- 2026-08-25T20:09:50+09:00 [CODE] Replaced the obsolete short-run manuals and synchronized RULE, README, Korean plan, architecture, execution, bootstrap, evaluation and model explanations with the long-run protocol. Generated records/checkpoints/reports remain ignored and are not automatically deleted.
 
 ## [DISCOVERIES]
 
+- 2026-08-25T20:09:50+09:00 [TOOL] The complete reduced pipeline passed in containers: 300 decisions generated on 20 distinct seeds, three independent checkpoints trained with best epochs, one real `.pt` selected through Rust closed loop, promotion reloaded, and 20 learner-state decisions merged into a hash-valid 320-decision dataset. All temporary verification artifacts were then removed from the four exact workspace directories.
+- 2026-08-25T20:09:50+09:00 [TOOL] Final gates passed after the bridge type cleanup: Ruff format/check, 12 Python tests, rustfmt, workspace clippy `-D warnings`, PyO3-feature clippy with its pinned no-Python build flags, all 132 Rust tests, optimized workspace build and training-image build. The first feature-clippy attempt lacked the Dockerfile's `PYO3_NO_PYTHON=1` environment and was superseded by the passing pinned invocation.
+- 2026-08-25T20:09:50+09:00 [CODE] The previous implementation already changed game seeds as `base_seed + index`; the actual overfitting risk was not one reused game seed but the small dataset, fixed per-epoch record order, single initialization and last-epoch-only selection. The new schedule makes the uniqueness explicit and addresses all four training weaknesses.
 - 2026-08-25T19:22:56+09:00 [USER] Empty `datasets/` and `checkpoints/` directories are intentional cleanup, not an evaluator path defect. A newly generated 512-decision evaluator smoke shard was removed immediately after this clarification.
 - 2026-08-25T19:22:56+09:00 [TOOL] Training image build and native bridge import passed; Python Ruff check/format and 8 unit tests passed. Rust fmt, workspace clippy, Python-feature PyO3 clippy, 132 workspace tests and optimized release build passed.
 - 2026-08-25T17:28:17+09:00 [TOOL] The model was never the storage bottleneck: the initial self-contained checkpoint was 15-16 KiB, while verbose 512-decision JSONL was 18,403,935 bytes. Deterministic gzip plus candidate checksum/feature records reduced the temporary shard to approximately 844 KiB before final cleanup.
@@ -217,6 +227,7 @@
 
 ## [OUTCOMES]
 
+- 2026-08-25T20:09:50+09:00 [CODE] Supersede the 100,000-decision handoff: the production-scale solo bootstrap pipeline is implemented and end-to-end verified, but no strength claim is made until the user runs the day-scale command and obtains `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt`. The next implementation phase after that artifact is the fixed-cadence two-player environment and terminal self-play RL.
 - 2026-08-25T19:22:56+09:00 [CODE] Supersede the evaluator-not-implemented status: tie-aware offline, authoritative closed-loop solo and verified checkpoint promotion are implemented. No full-model metric is claimed because the user intentionally deleted the prior records/checkpoint; the documented next run starts by regenerating 100,000 decisions and trains/evaluates the real `model.pt`.
 - 2026-08-25T17:28:17+09:00 [CODE] The first model-construction milestone is complete: deterministic solo heuristic demonstrations can train a small self-contained afterstate scorer in containers. No known core mechanics implementation remains before model work, but external functional conformance, fixed-cadence 1v1 placement adapter, versus teacher/features, closed-loop strength, aggregation and RL remain.
 - 2026-08-25T17:48:24+09:00 [CODE] The imitation-scale forecast and future component-manual convention are documented. The forecast defines a measurable first-run gate but is not an empirical strength result; tie-aware metrics and closed-loop evaluation remain to implement before the 100,000-decision run.

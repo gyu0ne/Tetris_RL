@@ -4,6 +4,7 @@
   "mechanics_status": "OBSERVED_NOT_FUNCTIONALLY_VERIFIED",
   "generation": {
     "base_seed": 1,
+    "seed_stride": 104729,
     "matches": 8,
     "decisions_per_match": 64,
     "records": "datasets/solo-imitation-smoke-v1/records.jsonl.gz",

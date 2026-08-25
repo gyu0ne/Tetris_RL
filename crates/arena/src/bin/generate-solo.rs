@@ -23,6 +23,7 @@ fn run() -> Result<(), String> {
         manifest_path: PathBuf::from(required(&args, "--manifest")?),
         engine_revision: required(&args, "--engine-revision")?,
         base_seed: parse(&args, "--seed", 1_u64)?,
+        seed_stride: parse(&args, "--seed-stride", 104_729_u64)?,
         matches: parse(&args, "--matches", 8_u32)?,
         decisions_per_match: parse(&args, "--decisions-per-match", 128_u32)?,
     };
@@ -59,6 +60,6 @@ fn value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 
 fn print_usage() {
     println!(
-        "Usage: generate-solo --records PATH --manifest PATH --engine-revision REV \\\n+         [--seed N] [--matches N] [--decisions-per-match N]"
+        "Usage: generate-solo --records PATH --manifest PATH --engine-revision REV \\\n         [--seed N] [--seed-stride N] [--matches N] [--decisions-per-match N]"
     );
 }
