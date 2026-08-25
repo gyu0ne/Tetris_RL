@@ -14,6 +14,14 @@ docker compose run --rm rust cargo test --workspace --all-targets
 docker compose run --rm rust cargo build --workspace --release
 ```
 
+Manual solo mechanics testing uses the same containerized Rust engine:
+
+```text
+docker compose up --build playground
+# open http://127.0.0.1:8787
+docker compose stop playground
+```
+
 If the Docker daemon is unavailable, implementation may continue, but verification remains explicitly blocked until the container commands run.
 
 ## Engine boundaries

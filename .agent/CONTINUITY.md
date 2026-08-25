@@ -18,6 +18,7 @@
 - 2026-08-24T20:40:06+09:00 [USER] Continue autonomously and report only after the engine mechanics implementation is complete.
 - 2026-08-25T12:03:46+09:00 [USER] TETR.IO 운영자의 인증은 불필요하며, 동일성의 완료 기준을 mechanics의 기능적 동등성으로 한정한 뒤 다음 단계를 계속 진행하라고 명시했다.
 - 2026-08-25T16:25:47+09:00 [USER] 기능 동등성 gate 다음 단계로 계속 진행하라고 지시했다.
+- 2026-08-25T16:55:29+09:00 [USER] Pixel-level reproduction and excessive formalism are unnecessary; only core engine mechanics must match, and a user-operated test path is now needed.
 
 ## [DECISIONS]
 
@@ -66,6 +67,8 @@
 - 2026-08-25T12:08:47+09:00 [CODE] Prevent small-corpus false completion by distinguishing `Boundary` and `RandomizedBattle` cases; the default functional-conformance policy requires at least 10,000 passing randomized battle cases in addition to complete claim coverage and zero supplied-corpus mismatch.
 - 2026-08-25T16:25:47+09:00 [CODE] Define normalized JSON v1 as a strict manifest/trace pair: preserve the user-owned source artifact SHA-256 separately from the normalized trace SHA-256, reject unknown/defaulted fields, and bind only a matching solo/battle local trace after conversion.
 - 2026-08-25T16:25:47+09:00 [CODE] Project battle frame events into attack, cancellation, insertion and transmitted-packet observations; lock/spawn objects remain out of the wire contract because their observable result is already present in the same canonical game snapshot.
+- 2026-08-25T16:55:29+09:00 [CODE] Explicitly exclude pixel, animation, skin, sound and layout parity. Keep the formal 10,000-case policy only for a final `Conformant` report; manual testing, heuristic arena work and clearly labeled exploratory imitation may proceed after deterministic core tests without waiting for that corpus.
+- 2026-08-25T16:55:29+09:00 [CODE] Manual visualization must forward ordered inputs to the authoritative Rust session and render returned state; implementing mechanics again in JavaScript is prohibited.
 
 ## [PROGRESS]
 
@@ -136,6 +139,11 @@
 - 2026-08-25T16:25:47+09:00 [CODE] Added pinned `serde 1`, `serde_json 1` and `sha2 0.10` dependencies only to `replay-conformance`; exposed finite IEEE multiplier and fixed-capacity packet reconstruction methods in `versus` for the adapter boundary.
 - 2026-08-25T16:25:47+09:00 [TOOL] Final container gates passed: rustfmt check, clippy with `-D warnings`, all 123 tests with 0 failures (engine-core 69, replay-conformance 15, rules-tetrio 10, versus 29), and optimized workspace release build; `git diff --check` passed before continuity synchronization.
 - 2026-08-25T16:25:47+09:00 [TOOL] Fresh fast non-persistent code-graph indexing found 1,639 nodes and 5,708 edges; `load_normalized_fixture` is the public conversion entry and is covered by six structural/integrity tests.
+- 2026-08-25T16:55:29+09:00 [CODE] Added the `manual-playground` crate and loopback-only Compose service. The browser sends ordered key edges, while `FrameSession` computes movement, handling, gravity, rotation/kicks, hold, lock/clear/spin/perfect-clear and top-out; the UI renders 20 visible rows and diagnostic timing/event fields.
+- 2026-08-25T16:55:29+09:00 [CODE] Added `PROJECT_Explain_Manual_Playground.md` and synchronized RULE, AGENTS, README, Korean plan, mechanics scope, architecture and execution plan with the simplified core-mechanics priority and direct-test workflow.
+- 2026-08-25T16:55:29+09:00 [TOOL] Final container gates passed: rustfmt, clippy with `-D warnings`, all 126 tests with 0 failures (including 3 playground tests), optimized workspace release build, and Bun browser-target bundling. The first generic `bun --check` attempt executed browser globals and was replaced by the correct browser-target build check.
+- 2026-08-25T16:55:29+09:00 [TOOL] Live localhost smoke passed: API hard drop changed frame 0→1 and pieces 0→1 with 20 visible rows; browser keyboard testing changed pieces 0→1, preserved `O 고정`, and reported `엔진 연결됨`.
+- 2026-08-25T16:55:29+09:00 [TOOL] Fresh fast non-persistent code-graph indexing found 1,736 nodes and 5,992 edges after adding the manual-playground server/state boundary; static browser assets are excluded from graph extraction.
 
 ## [DISCOVERIES]
 
@@ -172,6 +180,7 @@
 - 2026-08-24T21:04:53+09:00 [TOOL] Although client gravity also uses repeated floating addition, exhaustive frames 0 through 350,000 show its 1e-6-quantized fall amount equals the exact-rational schedule; integer microcell timing therefore preserves observed fall transitions without long-lived floating position state.
 - 2026-08-25T12:03:46+09:00 [CODE] Solo board snapshots cannot detect transient same-frame attack splitting/cancellation that leaves similar later board state. Battle conformance therefore also compares emitted `BattleFrameOutcome`, ordered incoming packets, attack state, sent totals, margin multiplier and round result.
 - 2026-08-25T16:25:47+09:00 [CODE] Raw `BattleFrameOutcome` contains private lock/spawn transition structures that are unnecessary for differential wire compatibility; a smaller public event projection retains every battle-visible transient while avoiding coupling schema v1 to internal session implementation.
+- 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
 
@@ -190,3 +199,4 @@
 - 2026-08-25T12:03:46+09:00 [CODE] Supersede the operator-certification framing and prior status label: the executable functional-conformance gate is implemented and fully verified, while the target profile remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` because no version-pinned reference state/event corpus currently covers the 20 required claims. The next engine-validation step is a normalized reference adapter and boundary corpus; large teacher-record generation remains after that gate.
 - 2026-08-25T12:08:47+09:00 [CODE] The functional-conformance method now enforces all declared completion gates in code: reference evidence, exact solo/battle trace equality, 20-claim coverage and the default 10,000 randomized battle cases. External reference traces remain the only unmet evidence input.
 - 2026-08-25T16:25:47+09:00 [CODE] The normalized reference adapter boundary is implemented and verified. The target remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`: the remaining engine-conformance input is a real version-pinned TETR.IO extractor/capture corpus, beginning with small solo/TL boundary cases and then the 10,000-case randomized battle floor.
+- 2026-08-25T16:55:29+09:00 [CODE] Supersede external-corpus-first execution priority: the authoritative solo mechanics playground is implemented, verified and running at `http://127.0.0.1:8787`. User manual review comes next, followed by a dual-board `BattleSession` view and heuristic teacher/record implementation; formal corpus expansion continues in parallel rather than blocking those phases.

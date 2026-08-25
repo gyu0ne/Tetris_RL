@@ -1,0 +1,18 @@
+[package]
+name = "manual-playground"
+version = "0.1.0"
+description = "Local browser playground backed by the authoritative Rust engine"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+rules-tetrio = { path = "../rules-tetrio" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tiny_http = "0.12"
+
+[lints]
+workspace = true

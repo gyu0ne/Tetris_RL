@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>로컬 테트리스 엔진 테스트</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">AUTHORITATIVE RUST ENGINE</p>
+          <h1>수동 mechanics 테스트</h1>
+          <p>게임 화면 복제가 아니라 현재 Rust 엔진의 20개 visible row를 표시합니다.</p>
+        </div>
+        <div class="run-controls">
+          <button id="pause" type="button">일시정지</button>
+          <button id="single-step" type="button">1 frame</button>
+          <button id="reset" type="button">초기화</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <div class="board-wrap">
+          <div id="board" class="board" aria-label="테트리스 보드"></div>
+          <p id="connection" class="connection">연결 중…</p>
+        </div>
+
+        <aside>
+          <section class="panel queue-panel">
+            <div><span>HOLD</span><strong id="hold">—</strong></div>
+            <div><span>NEXT</span><strong id="preview">—</strong></div>
+          </section>
+
+          <section class="panel stats">
+            <dl>
+              <div><dt>frame</dt><dd id="frame">0</dd></div>
+              <div><dt>pieces</dt><dd id="pieces">0</dd></div>
+              <div><dt>lock</dt><dd id="lock">0 / 30</dd></div>
+              <div><dt>resets</dt><dd id="resets">0 / 15</dd></div>
+              <div><dt>phase</dt><dd id="phase">0</dd></div>
+              <div><dt>last action</dt><dd id="last-action">none</dd></div>
+            </dl>
+          </section>
+
+          <section class="panel event-panel">
+            <span>LAST EVENT</span>
+            <strong id="last-event">준비 중</strong>
+            <p id="top-out"></p>
+          </section>
+
+          <section class="panel controls">
+            <h2>조작</h2>
+            <div class="keys"><kbd>←</kbd><kbd>→</kbd><span>이동</span></div>
+            <div class="keys"><kbd>↓</kbd><span></span><span>소프트 드롭</span></div>
+            <div class="keys"><kbd>Space</kbd><span></span><span>하드 드롭</span></div>
+            <div class="keys"><kbd>Z</kbd><kbd>X</kbd><span>반시계 / 시계 회전</span></div>
+            <div class="keys"><kbd>A</kbd><kbd>C</kbd><span>180° / HOLD</span></div>
+            <div class="keys"><kbd>P</kbd><kbd>N</kbd><span>일시정지 / 1 frame</span></div>
+            <p>기본 handling: DAS 10, ARR 2, DCD 2, SDF 41. 이는 테스트 사용자 설정이며 TL 고정값이 아닙니다.</p>
+          </section>
+        </aside>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

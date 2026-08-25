@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/engine-core",
+    "crates/manual-playground",
     "crates/replay-conformance",
     "crates/rules-tetrio",
     "crates/versus",

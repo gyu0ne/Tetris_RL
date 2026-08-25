@@ -7,3 +7,15 @@ services:
       - .:/workspace
     environment:
       CARGO_TARGET_DIR: /tmp/tetris-target
+
+  playground:
+    build:
+      context: .
+    working_dir: /workspace
+    command: cargo run --release -p manual-playground -- --bind 0.0.0.0:8787
+    volumes:
+      - .:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/tetris-target
+    ports:
+      - "127.0.0.1:8787:8787"

@@ -26,6 +26,7 @@ round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다.
 
 - account/authentication, rating/TR, matchmaking, lobby
 - UI, animation, skin, sound/music, chat, social 기능
+- pixel-perfect board rendering, block skin/color, transition animation and layout parity
 - shop, achievement, profile, moderation, anti-cheat
 - official server/network infrastructure의 비공개 구현
 - 학습과 무관한 match 사이 progression
@@ -57,6 +58,7 @@ round terminal은 강화학습의 `+1/-1/0` 보상을 결정하므로 필수다.
 - `rules-tetrio`는 versioned literal과 실행 순서를 보유한다.
 - `versus`는 attack, garbage와 round terminal을 구현하지만 rating/matchmaking을 구현하지 않는다.
 - `arena`는 latency/time/node budget 같은 실험 변수를 명시하며 upstream conformance와 구분한다.
-- 학습은 target profile의 conformance gate가 끝난 뒤 시작한다.
+- `manual-playground`는 실제 Rust state를 단순 표시하는 진단 도구다. 화면 모양은 동등성 근거가 아니며 JS에서 mechanics를 다시 구현하지 않는다.
+- heuristic/모방학습의 exploratory 단계는 deterministic core test와 수동 mechanics smoke 뒤 시작할 수 있다. formal conformance는 최종 동등성 주장과 release benchmark의 gate다.
 
 상세 근거와 미확정 항목은 `research/TETRIO_MECHANICS_RESEARCH_KO.md` 및 `research/SOURCE_LEDGER.md`를 따른다.

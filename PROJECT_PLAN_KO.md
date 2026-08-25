@@ -20,7 +20,7 @@ TETR.IO의 서버 및 내부 소스 코드는 공개되어 있지 않으므로, 
 
 > 고정된 규칙 프로필, seed, 초기 상태, 프레임 단위 입력 순서가 같을 때, 검증 fixture가 포괄하는 모든 상황에서 로컬 엔진이 기준 TETR.IO와 동일한 관찰 가능 상태와 이벤트를 생성해야 한다.
 
-여기서 동등성은 **학습 가능한 전략, legal action, 상태 전이 또는 terminal reward에 영향을 주는 mechanics**로 한정한다. 내부 코드, UI나 서비스 시스템 전체의 복제를 뜻하지 않는다. 다음 항목이 일치해야 한다.
+여기서 동등성은 **학습 가능한 전략, legal action, 상태 전이 또는 terminal reward에 영향을 주는 mechanics**로 한정한다. 내부 코드, UI나 서비스 시스템 전체의 복제를 뜻하지 않으며 pixel, animation, block skin, sound와 layout은 일치할 필요가 없다. 다음 항목이 일치해야 한다.
 
 - tetromino 형태, spawn 위치, hold 및 next queue
 - seed 기반 7-bag과 piece 순서
@@ -70,6 +70,7 @@ TETR.IO의 서버 및 내부 소스 코드는 공개되어 있지 않으므로, 
 ```text
 crates/
   engine-core/       # 결정론적 board, piece, 이동, timing
+  manual-playground/ # 실제 engine-core를 조작하는 로컬 진단 UI
   rules-tetrio/      # 버전별 TETR.IO 규칙 및 mode profile
   versus/            # attack, garbage queue, round-terminal mechanics
   replay/            # 결정론적 event log와 검증 fixture
@@ -416,9 +417,9 @@ non-learning baseline은 반드시 유지한다.
 - base attack, combo, B2B Charging/Surge, opener 상쇄, garbage-clear bonus를 구현한다.
 - garbage packet transit/cancel/cap/messiness/insertion과 round-terminal rule을 구현한다.
 - 결정론적 2인 scheduling과 명시적인 latency model을 추가한다.
-- 최소화한 사례에 이어 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
+- 최소화한 사례를 우선하고, formal `Conformant` 보고서가 필요할 때 10,000개 이상의 seed 기반 무작위 differential case를 실행한다.
 
-**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 계산한다. TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack hole RNG, packet별 RNG 소비, messiness, 180초 margin 이후 `0.008/s` 증가를 구현했다. `BattleSession`은 양쪽 lock 결과를 먼저 계산한 뒤 같은 tick의 공격을 동시에 전달하고, 상쇄·tank·Clutch·block/garbage out과 동시 terminal을 결정론적으로 처리한다. `Board`의 garbage provenance가 special +1 context를 공급한다. `replay-conformance`는 양쪽 상태·attack·garbage·frame event·terminal의 exact diff와 20개 필수 mechanics claim coverage를 판정한다. 실행 mechanics는 완료됐지만 version-pinned reference corpus가 없어 profile은 아직 기능 동등성 검증 완료 상태가 아니다.
+**현재 진척:** `versus`가 current client에서 다시 생성한 53개 firepower case를 근거로 normal/Mini/Full base attack, multiplier combo, flat B2B, B2B Charging/Surge의 ordered 3분할 packet, separate Perfect Clear 5와 garbage-clear +1을 계산한다. TL `garbagespeed=20`, cap 8, combo blocking, zero passthrough, opener 14, change-on-attack hole RNG, packet별 RNG 소비, messiness, 180초 margin 이후 `0.008/s` 증가를 구현했다. `BattleSession`은 양쪽 lock 결과를 먼저 계산한 뒤 같은 tick의 공격을 동시에 전달하고, 상쇄·tank·Clutch·block/garbage out과 동시 terminal을 결정론적으로 처리한다. `Board`의 garbage provenance가 special +1 context를 공급한다. `replay-conformance`는 양쪽 상태·attack·garbage·frame event·terminal의 exact diff와 mechanics claim coverage를 판정한다. `manual-playground`는 같은 Rust `FrameSession`을 브라우저에서 직접 조작하게 한다. 실행 mechanics는 완료됐지만 version-pinned reference corpus가 없어 formal 기능 동등성 표시는 아직 완료 상태가 아니다.
 
 **통과 조건:** 선언된 corpus에 대해 C2~C5가 통과하고 남은 `UNCONFIRMED` 항목과 coverage가 공개되어야 한다.
 
@@ -499,14 +500,13 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. 기능 동등성 gate 변경을 전체 workspace format/lint/test/release build로 검증하고 commit한다.
-2. replay 재생 UI 없이 version-pinned 기준 capture를 normalized solo/battle trace로 변환하는 adapter를 구현한다.
-3. 필수 mechanics claim별 경계 fixture를 채우고 exact mismatch를 0개로 만든다.
-4. CPU/RAM/GPU 예산을 수치화하고 Phase 4의 afterstate heuristic arena 및 기록 schema를 구현한다. 대량 teacher record 생성은 기능 동등성 gate 통과 뒤 시작한다.
-5. 제공된 BLITZ replay는 식별 정보 없는 입력 형식·handling 회귀 fixture로만 사용하고 TL versus 근거로 사용하지 않는다.
-5. 외부 기준 board checkpoint가 확보되면 `OBSERVED` mechanics를 differential 검증해 `CONFIRMED`로 승격한다.
+1. `manual-playground`에서 이동, 회전/kick, hold, hard/soft drop, lock/reset, line clear, spin, perfect clear와 top-out을 사용자가 직접 확인한다.
+2. 같은 원칙으로 `BattleSession`을 연결한 1대1 dual-board 진단 화면을 추가한다.
+3. Phase 4의 afterstate heuristic arena와 기록 schema를 구현하고 소규모 teacher record를 생성한다.
+4. CPU/RAM/GPU 예산을 수치화한 뒤 heuristic 속도와 기록 품질을 측정한다.
+5. 외부 기준 checkpoint가 확보되면 핵심 mechanics 경계 fixture를 우선 채우고 formal conformance corpus는 병행 확장한다.
 
-현재 가장 중요한 작업은 코드를 빠르게 작성하는 것이 아니라 **무엇을 동일하게 만들어야 하는지 증거로 고정하는 것**이다. 규칙이 틀린 빠른 engine이나 잘못된 보상을 최적화한 강한 모델은 프로젝트 목표를 달성하지 못한다.
+현재 우선순위는 픽셀 단위 복제가 아니라 **사용자가 핵심 mechanics를 직접 확인하고, 같은 엔진으로 heuristic 기록 생성을 시작할 수 있게 하는 것**이다.
 
 ## 16. 주요 연구 및 구현 근거
 

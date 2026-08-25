@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: declared learning-relevant solo/1v1 mechanics and normalized reference loader implemented; external reference capture corpus remains
+Current state: declared learning-relevant solo/1v1 mechanics, normalized reference loader and manual solo playground implemented; manual mechanics review and heuristic arena are prioritized before expanding the external corpus
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -38,11 +38,11 @@ Exit gate: timing boundary fixtures and solo full replays have zero unexplained 
 
 - Implement All-Mini+, base attack, combo, B2B Charging/Surge, opener-phase cancellation, garbage-clear bonus, packet transit/cancel/cap/messiness/insertion, Clutch Clear and round-terminal rules.
 - Add deterministic two-player scheduling and explicit latency models.
-- Differential-test minimized cases, then at least 10,000 randomized seeded cases.
+- Differential-test minimized cases; retain the formal 10,000 randomized seeded policy for a final `Conformant` report without blocking manual/heuristic development.
 
 Exit gate: conformance C2–C5 pass for the declared corpus. Publish coverage and remaining `UNCONFIRMED` cases.
 
-Progress: `crates/versus` implements observed TL attacks, B2B/Surge packet ordering, perfect-clear and garbage-clear bonuses, ordered incoming packets, cancellation, opener 14, transit 20, combo blocking, cap 8, provenance, change-on-attack hole RNG, packet-depletion sample consumption and margin scaling. `BattleSession` performs simultaneous two-player lock/attack/tank/terminal resolution. `crates/replay-conformance` now loads hash-bound normalized JSON v1 solo/battle traces, validates their exact wire structure and binds them to local traces. The profile is executable but remains externally unverified until real version-pinned captures fill the corpus.
+Progress: `crates/versus` implements observed TL attacks, B2B/Surge packet ordering, perfect-clear and garbage-clear bonuses, ordered incoming packets, cancellation, opener 14, transit 20, combo blocking, cap 8, provenance, change-on-attack hole RNG, packet-depletion sample consumption and margin scaling. `BattleSession` performs simultaneous two-player lock/attack/tank/terminal resolution. `crates/replay-conformance` loads hash-bound normalized JSON v1 traces. `crates/manual-playground` now exposes the authoritative solo `FrameSession` for direct keyboard testing; pixel/UI parity is explicitly irrelevant. The profile remains externally unverified, but that label no longer blocks heuristic arena and exploratory imitation implementation.
 
 ## Phase 4 — Bot arena and strong baselines
 

@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-24T20:29:16+09:00
+Last updated: 2026-08-25T16:38:46+09:00
 
 ## 1. Authority and scope
 
@@ -9,6 +9,7 @@ Last updated: 2026-08-24T20:29:16+09:00
 - “TETR.IO-equivalent” means functional/observational conformance to a pinned public TETR.IO version and mode profile. TETR.IO 운영자의 승인·서명·공식 인증은 완료 조건이 아니다. Unpublished server behavior must be labeled `UNCONFIRMED`, never guessed.
 - The initial conformance target is `TETR.IO BETA 1.7.8 / TETRA LEAGUE Season 2`, pending capture of authoritative replay/config fixtures. A later upstream patch does not silently change the target.
 - Equivalence covers only mechanics that can change legal actions/reachability, observable state transitions, attack/garbage behavior, or round-terminal reward. Accounts, rating, matchmaking, UI/audio/cosmetics, anti-cheat, and undisclosed service infrastructure are excluded.
+- Pixel, animation, layout, skin and audiovisual parity are never conformance requirements. A diagnostic UI may use simplified colors and geometry as long as it displays authoritative engine state without reimplementing mechanics.
 - Round/top-out/simultaneous-death/Clutch-Clear semantics remain in scope because they determine terminal reward. Match-level progression stays out of scope unless an explicit learning objective needs it.
 - Solo play is an unscored engine sandbox for survival, transition inspection, and bot smoke tests. 40 LINES, BLITZ, ZEN/custom scoring and goal profiles are excluded unless the user explicitly restores them.
 - The current multiplayer spin target is `All-Mini+`, introduced in BETA 1.5.0. Historical Season 2 `All-Mini` behavior must not be used as the current default.
@@ -20,6 +21,7 @@ Production code must be separated by responsibility:
 ```text
 crates/
   engine-core/       # deterministic board, pieces, movement, timing
+  manual-playground/ # local diagnostic UI backed by engine-core
   rules-tetrio/      # versioned TETR.IO mode/rules profiles
   replay-conformance/# canonical frame snapshots and differential reports
   versus/            # attacks, garbage queues and round-terminal mechanics
@@ -42,6 +44,7 @@ research/            # experiment manifests and generated reports, not code
 ```
 
 - Do not mix rendering/UI, game rules, learning code, or experiment outputs.
+- Manual tools call the same Rust mechanics APIs used by tests/arena; a separately implemented browser/JavaScript rules engine is prohibited.
 - Generated datasets, checkpoints, caches, and benchmark artifacts must not be committed unless explicitly approved.
 - Dependencies and toolchains run in containers by default. Do not install host system packages.
 
@@ -74,6 +77,7 @@ research/            # experiment manifests and generated reports, not code
 - Do not guess undocumented `.ttr`/`.ttrm` fields. Build an upstream adapter only from a version-identified, user-owned sample; keep raw replay exports ignored and commit only anonymized normalized fixtures with provenance and hashes.
 - Replay exports are validation oracles, not product requirements. Do not build a visual replay player/viewer unless the user explicitly requests it; a headless test adapter may reapply input events only to validate engine transitions.
 - Functional conformance uses `Incomplete`/`Divergent`/`Conformant` only. `Conformant` requires all `REQUIRED_MECHANIC_CLAIMS` to be covered by passing reference cases, at least 10,000 passing randomized battle cases under the default policy, and zero mismatch across the supplied corpus; it must never be described as operator certification.
+- The formal `Conformant` label is a confidence report, not a blocker for manual playtesting, arena construction, heuristic teacher development or clearly labeled exploratory imitation runs. Core automated tests and manual smoke checks remain mandatory before those activities; final equivalence claims still require the formal gate.
 - Conformance changes require golden fixtures and differential tests before merge. “Looks/feels the same” is not evidence.
 - Required profiles are staged: common modern core, unscored solo sandbox, and TETRA LEAGUE Season 2 1v1. 40 LINES, BLITZ, ZEN/custom scoring, and QUICK PLAY/ROYALE are out of scope.
 - A candidate feature is in conformance scope when it changes legal action/reachability, observation/transition/RNG, attack/garbage timing, or round terminal. Convenience tooling and service presentation are not conformance features.
@@ -95,6 +99,6 @@ research/            # experiment manifests and generated reports, not code
 ## 6. Verification and completion
 
 - For source changes, attempt format, lint, unit/property tests, type checks, release build, conformance replay suite, and relevant benchmarks. Resolve failures or explicitly record them as out of scope.
-- Rule correctness gates precede RL training. No model may train on an engine that has not passed the deterministic and conformance gates for its profile.
+- Deterministic core tests and manual mechanics checks precede dataset generation. Exploratory heuristic/imitation work may use the `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` profile when prominently labeled; final benchmark claims and release training require the declared conformance gate.
 - Every experiment must be reproducible from a committed config and container image digest.
 - A phase is complete only when its acceptance criteria and evidence are recorded in `CONTINUITY.md` and the corresponding `PROJECT_Explain_*.md`.
