@@ -9,7 +9,7 @@
 - solo trace는 board/garbage bit layer, active piece, hold, preview, typed top-out과 timing을 비교한다.
 - battle trace는 양쪽 solo 상태에 더해 combo/B2B 상태, incoming packet 순서, sent lines, margin multiplier, frame event와 round result를 비교한다.
 - 값은 허용 오차 없이 비교한다. target JavaScript의 부동소수점 누적이 mechanics인 경우에도 engine 내부의 audited compatibility 값 자체가 정확히 일치해야 한다.
-- 하나라도 불일치하면 `Divergent`, 불일치는 없지만 필수 claim이 비어 있으면 `Incomplete`, 모든 claim이 하나 이상의 통과 case로 덮이고 전체 corpus의 불일치가 0개일 때만 `Conformant`다.
+- 하나라도 불일치하면 `Divergent`다. 불일치는 없지만 필수 claim이 비어 있거나 기본 하한인 10,000개 randomized battle case가 채워지지 않으면 `Incomplete`다. 모든 claim이 하나 이상의 통과 case로 덮이고 무작위 하한과 전체 corpus 0-diff를 함께 만족할 때만 `Conformant`다.
 - `Conformant`는 선언한 fixture corpus에 대한 기능 동등성이고 TETR.IO 운영자의 승인이라는 뜻이 아니다.
 
 ## 필요한 기준 자료
@@ -29,5 +29,6 @@
 - 한 case가 여러 claim을 덮을 수 있으나, 실제 trace에서 그 mechanics가 발동하지 않았다면 claim을 붙이지 않는다.
 - 원본 `.ttr`/`.ttrm`과 개인 식별 정보는 Git에 넣지 않는다. 익명화 normalized fixture만 원본 SHA-256과 함께 커밋한다.
 - 내부 unit/property test는 회귀 방지 근거이지만 reference claim coverage로 세지 않는다.
+- `Boundary`와 `RandomizedBattle` case를 구분한다. 무작위 하한에는 서로 다른 seed의 통과 `RandomizedBattle` case만 센다.
 
 현재 Rust 계약의 필수 claim 목록은 `replay_conformance::REQUIRED_MECHANIC_CLAIMS`가 단일 기준이다. 외부 adapter가 추가되면 adapter는 normalized trace를 이 crate의 `FrameSnapshot` 또는 `BattleSnapshot`으로 변환해야 한다.

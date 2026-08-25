@@ -247,10 +247,11 @@ pub fn compare_snapshot(
 mod tests {
     use super::{
         BattlePlayerSnapshot, BattleSnapshot, BattleSnapshotDifference, ConformanceMismatch,
-        FrameSnapshot, FunctionalCaseFailure, FunctionalConformanceCase,
-        FunctionalConformanceStatus, InvalidCaseReason, MechanicClaim, REQUIRED_MECHANIC_CLAIMS,
-        ReferenceEvidence, ReferenceTrace, SnapshotDifference, TimingSnapshot,
-        compare_battle_traces, compare_traces, evaluate_functional_conformance,
+        FrameSnapshot, FunctionalCaseFailure, FunctionalCaseKind, FunctionalConformanceCase,
+        FunctionalConformancePolicy, FunctionalConformanceStatus, InvalidCaseReason, MechanicClaim,
+        REQUIRED_MECHANIC_CLAIMS, ReferenceEvidence, ReferenceTrace, SnapshotDifference,
+        TimingSnapshot, compare_battle_traces, compare_traces, evaluate_functional_conformance,
+        evaluate_functional_conformance_with_policy,
     };
     use engine_core::{GameConfig, GameState, LastAction};
     use versus::{AttackMultiplier, AttackState, BattleResult, IncomingGarbagePacket};
@@ -396,6 +397,7 @@ mod tests {
         let cases = vec![
             FunctionalConformanceCase {
                 id: "solo-reference".to_owned(),
+                kind: FunctionalCaseKind::Boundary,
                 evidence: evidence(target),
                 claims: solo_claims,
                 trace: ReferenceTrace::Solo {
@@ -405,6 +407,7 @@ mod tests {
             },
             FunctionalConformanceCase {
                 id: "battle-reference".to_owned(),
+                kind: FunctionalCaseKind::RandomizedBattle,
                 evidence: evidence(target),
                 claims: battle_claims,
                 trace: ReferenceTrace::Battle {
@@ -414,7 +417,13 @@ mod tests {
             },
         ];
 
-        let report = evaluate_functional_conformance(target, &cases);
+        let report = evaluate_functional_conformance_with_policy(
+            target,
+            &cases,
+            FunctionalConformancePolicy {
+                minimum_randomized_battle_cases: 1,
+            },
+        );
         assert_eq!(report.status, FunctionalConformanceStatus::Conformant);
         assert_eq!(report.compared_cases, 2);
         assert_eq!(report.compared_frames, 2);
@@ -430,6 +439,7 @@ mod tests {
         actual[0].board_rows[0] = 1;
         let cases = vec![FunctionalConformanceCase {
             id: "geometry-reference".to_owned(),
+            kind: FunctionalCaseKind::Boundary,
             evidence: evidence(target),
             claims: vec![MechanicClaim::BoardAndClearGeometry],
             trace: ReferenceTrace::Solo {
@@ -457,6 +467,7 @@ mod tests {
         let trace = vec![snapshot(0)];
         let cases = vec![FunctionalConformanceCase {
             id: "wrong-trace-kind".to_owned(),
+            kind: FunctionalCaseKind::Boundary,
             evidence: evidence(target),
             claims: vec![MechanicClaim::GarbageTransitAndCancellation],
             trace: ReferenceTrace::Solo {
@@ -476,5 +487,26 @@ mod tests {
                 ..
             }]
         ));
+    }
+
+    #[test]
+    fn default_policy_requires_ten_thousand_randomized_battle_cases() {
+        let target = "tetrio-beta-1.7.8-tl-s2";
+        let battle = vec![battle_snapshot(0)];
+        let cases = vec![FunctionalConformanceCase {
+            id: "one-random-seed".to_owned(),
+            kind: FunctionalCaseKind::RandomizedBattle,
+            evidence: evidence(target),
+            claims: REQUIRED_MECHANIC_CLAIMS.to_vec(),
+            trace: ReferenceTrace::Battle {
+                expected: &battle,
+                actual: &battle,
+            },
+        }];
+
+        let report = evaluate_functional_conformance(target, &cases);
+        assert_eq!(report.status, FunctionalConformanceStatus::Incomplete);
+        assert_eq!(report.randomized_battle_cases, 1);
+        assert_eq!(report.required_randomized_battle_cases, 10_000);
     }
 }

@@ -62,6 +62,7 @@
 - 2026-08-24T20:40:06+09:00 [CODE] Permit guarded IEEE-754 only where pinned JavaScript floating evaluation itself is transition-relevant, including `Math.log1p` combo and repeated garbage-multiplier `+=`; board, timing phase, RNG, packet and counter state remains integer/fixed-point.
 - 2026-08-25T12:03:46+09:00 [CODE] Supersede operator-certification wording: `Conformant` means all 20 required mechanics claims are covered by version-pinned passing reference traces with zero exact mismatch across the supplied corpus; it does not require or imply TETR.IO operator approval.
 - 2026-08-25T12:03:46+09:00 [CODE] A replay file is optional transport for seed/input/checkpoints, not a product or certification requirement. A pinned client capture is equally valid when it supplies the same observable solo/battle state and event oracle; input-only replays do not count as claim coverage.
+- 2026-08-25T12:08:47+09:00 [CODE] Prevent small-corpus false completion by distinguishing `Boundary` and `RandomizedBattle` cases; the default functional-conformance policy requires at least 10,000 passing randomized battle cases in addition to complete claim coverage and zero supplied-corpus mismatch.
 
 ## [PROGRESS]
 
@@ -125,6 +126,8 @@
 - 2026-08-25T12:03:46+09:00 [CODE] Added the Korean functional-conformance design and fixture contract, updated repository rules/plans/README, and renamed the profile evidence state from `OBSERVED_NOT_CONFORMANCE_CERTIFIED` to `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` to match the user-set completion meaning.
 - 2026-08-25T12:03:46+09:00 [TOOL] Container gates passed after the conformance refactor: rustfmt check, clippy with `-D warnings`, 114 tests with 0 failures (engine-core 69, replay-conformance 8, rules-tetrio 10, versus 27), and optimized workspace release build.
 - 2026-08-25T12:03:46+09:00 [TOOL] Fresh fast code-graph indexing found 1,457 nodes and 5,068 edges after separating solo, battle and suite conformance responsibilities.
+- 2026-08-25T12:08:47+09:00 [CODE] Added a configurable `FunctionalConformancePolicy`, randomized battle counters/report fields, trace-kind validation and a regression proving the one-case corpus remains `Incomplete` under the 10,000-case default.
+- 2026-08-25T12:08:47+09:00 [TOOL] Supersede the 114-test verification count: final container gates passed with rustfmt, clippy `-D warnings`, 115 tests and optimized release build after enforcing the randomized-corpus floor.
 
 ## [DISCOVERIES]
 
@@ -176,3 +179,4 @@
 - 2026-08-24T19:24:10+09:00 [CODE] Supersede the incoming-garbage/opener-not-started status: ordered queueing, zero-passthrough cancellation, 14-piece packet-level opener cancellation, 20-frame ready gating, combo blocking, 8-line insertion and garbage-clear provenance now execute as an observed local pipeline. Change-on-attack hole RNG, margin scaling, two-player scheduling, Clutch/top-out ordering and round terminal remain before heuristic data generation.
 - 2026-08-24T21:06:28+09:00 [CODE] Supersede the remaining-engine-mechanics status: the declared learning-relevant score-free solo and TETRA LEAGUE Season 2 1v1 mechanics are implemented and locally verified, including current-client RNG/fall/kick/lock boundaries, attack/garbage/Clutch and simultaneous round terminal. The profile remains `OBSERVED_NOT_CONFORMANCE_CERTIFIED` until external board checkpoints pass differential gates; Phase 4 heuristic arena and imitation-record generation are next, and model training has not started.
 - 2026-08-25T12:03:46+09:00 [CODE] Supersede the operator-certification framing and prior status label: the executable functional-conformance gate is implemented and fully verified, while the target profile remains `OBSERVED_NOT_FUNCTIONALLY_VERIFIED` because no version-pinned reference state/event corpus currently covers the 20 required claims. The next engine-validation step is a normalized reference adapter and boundary corpus; large teacher-record generation remains after that gate.
+- 2026-08-25T12:08:47+09:00 [CODE] The functional-conformance method now enforces all declared completion gates in code: reference evidence, exact solo/battle trace equality, 20-claim coverage and the default 10,000 randomized battle cases. External reference traces remain the only unmet evidence input.

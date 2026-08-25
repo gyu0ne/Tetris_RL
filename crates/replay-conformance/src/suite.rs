@@ -104,6 +104,25 @@ pub struct ReferenceEvidence {
     pub artifact_sha256: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FunctionalCaseKind {
+    Boundary,
+    RandomizedBattle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FunctionalConformancePolicy {
+    pub minimum_randomized_battle_cases: usize,
+}
+
+impl Default for FunctionalConformancePolicy {
+    fn default() -> Self {
+        Self {
+            minimum_randomized_battle_cases: 10_000,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ReferenceTrace<'a> {
     Solo {
@@ -119,6 +138,7 @@ pub enum ReferenceTrace<'a> {
 #[derive(Clone, Debug)]
 pub struct FunctionalConformanceCase<'a> {
     pub id: String,
+    pub kind: FunctionalCaseKind,
     pub evidence: ReferenceEvidence,
     pub claims: Vec<MechanicClaim>,
     pub trace: ReferenceTrace<'a>,
@@ -141,6 +161,7 @@ pub enum InvalidCaseReason {
     NoClaims,
     EmptyTrace,
     BattleClaimRequiresBattleTrace(MechanicClaim),
+    RandomizedCaseRequiresBattleTrace,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,6 +192,8 @@ pub struct FunctionalConformanceReport {
     pub status: FunctionalConformanceStatus,
     pub compared_cases: usize,
     pub compared_frames: usize,
+    pub randomized_battle_cases: usize,
+    pub required_randomized_battle_cases: usize,
     pub coverage: Vec<ClaimCoverage>,
     pub missing_claims: Vec<MechanicClaim>,
     pub failures: Vec<FunctionalCaseFailure>,
@@ -179,17 +202,31 @@ pub struct FunctionalConformanceReport {
 /// Evaluates exact observable equivalence for a declared fixture corpus.
 ///
 /// `Conformant` means every required mechanics claim has at least one passing,
-/// version-pinned reference case and the entire supplied corpus has zero
-/// mismatch. It deliberately does not mean approval by TETR.IO's operator.
+/// version-pinned reference case, the randomized-battle floor is met, and the
+/// entire supplied corpus has zero mismatch. It deliberately does not mean
+/// approval by TETR.IO's operator.
 pub fn evaluate_functional_conformance(
     target_profile: &str,
     cases: &[FunctionalConformanceCase<'_>],
+) -> FunctionalConformanceReport {
+    evaluate_functional_conformance_with_policy(
+        target_profile,
+        cases,
+        FunctionalConformancePolicy::default(),
+    )
+}
+
+pub fn evaluate_functional_conformance_with_policy(
+    target_profile: &str,
+    cases: &[FunctionalConformanceCase<'_>],
+    policy: FunctionalConformancePolicy,
 ) -> FunctionalConformanceReport {
     let mut seen_ids = HashSet::new();
     let mut passing_claims: Vec<(MechanicClaim, String)> = Vec::new();
     let mut failures = Vec::new();
     let mut compared_cases = 0;
     let mut compared_frames = 0;
+    let mut randomized_battle_cases = 0;
 
     for case in cases {
         if let Some(reason) = validate_case(target_profile, case, &mut seen_ids) {
@@ -223,12 +260,17 @@ pub fn evaluate_functional_conformance(
         compared_cases += 1;
 
         match comparison {
-            Ok(()) => passing_claims.extend(
-                case.claims
-                    .iter()
-                    .copied()
-                    .map(|claim| (claim, case.id.clone())),
-            ),
+            Ok(()) => {
+                if case.kind == FunctionalCaseKind::RandomizedBattle {
+                    randomized_battle_cases += 1;
+                }
+                passing_claims.extend(
+                    case.claims
+                        .iter()
+                        .copied()
+                        .map(|claim| (claim, case.id.clone())),
+                );
+            }
             Err(failure) => failures.push(failure),
         }
     }
@@ -255,7 +297,9 @@ pub fn evaluate_functional_conformance(
         .collect::<Vec<_>>();
     let status = if !failures.is_empty() {
         FunctionalConformanceStatus::Divergent
-    } else if !missing_claims.is_empty() {
+    } else if !missing_claims.is_empty()
+        || randomized_battle_cases < policy.minimum_randomized_battle_cases
+    {
         FunctionalConformanceStatus::Incomplete
     } else {
         FunctionalConformanceStatus::Conformant
@@ -266,6 +310,8 @@ pub fn evaluate_functional_conformance(
         status,
         compared_cases,
         compared_frames,
+        randomized_battle_cases,
+        required_randomized_battle_cases: policy.minimum_randomized_battle_cases,
         coverage,
         missing_claims,
         failures,
@@ -310,6 +356,9 @@ fn validate_case(
                 .find(|claim| claim.requires_battle_trace())
             {
                 return Some(InvalidCaseReason::BattleClaimRequiresBattleTrace(claim));
+            }
+            if case.kind == FunctionalCaseKind::RandomizedBattle {
+                return Some(InvalidCaseReason::RandomizedCaseRequiresBattleTrace);
             }
         }
         ReferenceTrace::Battle { expected, actual } => {

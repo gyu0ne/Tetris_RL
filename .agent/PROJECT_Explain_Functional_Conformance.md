@@ -35,13 +35,13 @@ client-derived 상수와 순서마다 최소 반례를 만든다. 임계값은 `
 - `compare_battle_traces`: 1대1 trace의 최초 불일치 component와 frame을 반환
 - `MechanicClaim`: solo와 battle을 합친 20개 필수 mechanics coverage label
 - `ReferenceEvidence`: target profile, reference build, 수집 출처, artifact SHA-256
-- `evaluate_functional_conformance`: evidence 유효성, trace 종류, exact diff와 claim coverage를 한 번에 판정
+- `evaluate_functional_conformance`: evidence 유효성, boundary/randomized trace 종류, exact diff, claim coverage와 기본 10,000개 randomized battle case 하한을 한 번에 판정
 
 상태는 다음 셋뿐이다.
 
-- `Incomplete`: 비교한 case에는 차이가 없지만 필수 claim이 비어 있음
+- `Incomplete`: 비교한 case에는 차이가 없지만 필수 claim 또는 10,000개 randomized battle case 하한이 비어 있음
 - `Divergent`: 잘못된 evidence/case 또는 하나 이상의 exact mismatch가 있음
-- `Conformant`: 필수 claim 전체가 통과 case로 덮이고 supplied corpus 전체의 mismatch가 0개임
+- `Conformant`: 필수 claim 전체가 통과 case로 덮이고 10,000개 randomized battle case와 supplied corpus 전체의 mismatch 0개를 만족함
 
 attack·garbage·battle claim을 solo trace로 채우는 것은 코드에서 거부한다. 입력만 들어 있는 replay나 내부 unit test는 reference coverage로 승격하지 않는다.
 
