@@ -1,7 +1,7 @@
 # TETR.IO 동등 엔진 및 강화학습 1 대 1 봇 통합 개발 계획서
 
 > 기준일: 2026-08-24
-> 현재 상태: 학습에 영향을 주는 선언 범위의 deterministic solo/1대1 mechanics와 기능 동등성 판정 gate 구현 완료, version-pinned reference corpus 검증은 미완료
+> 현재 상태: 선언 범위의 deterministic solo/1대1 mechanics와 기능 동등성 판정 gate 구현 완료, placement-level heuristic 기록 및 첫 소형 imitation scorer smoke 완료, version-pinned reference corpus와 1대1 학습 환경은 미완료
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 
@@ -151,13 +151,13 @@ fixture로 입증되지 않은 필수 값은 임의의 기본값으로 채우지
 
 각 piece 의사결정 시 native engine이 hold 분기를 포함한 모든 도달 가능한 고정 상태, 즉 **reachable locked afterstate**를 열거한다. 학습기는 가변 길이 action set의 각 후보를 평가해 하나를 선택한다.
 
-선택 후 결정론적 movement planner가 정확한 frame 입력 sequence로 변환하고, engine이 실제 도달 가능성을 다시 검사한다. 이 방식은 다음 문제를 줄인다.
+학습 arena에서는 선택된 afterstate를 authoritative engine transition으로 직접 적용한다. policy action은 `hold + piece + orientation + x/y`뿐이며 이동 경로와 finesse를 학습하지 않는다. 사람 조작이나 protocol 실행 시에만 별도 movement planner가 frame 입력 sequence로 변환하고 도달 가능성을 다시 검사한다. 이 방식은 다음 문제를 줄인다.
 
 - 학습기가 불가능한 배치를 악용하는 문제
 - key 단위 장기 credit assignment에 학습 자원을 낭비하는 문제
 - 학습 환경과 실제 실행 환경의 이동 판정이 서로 달라지는 문제
 
-frame 단위 직접 조작은 향후 oracle movement planner를 모방하거나 RL로 학습하는 2단계 문제로 추가할 수 있다. 첫 번째 강한 전략 봇의 필수 조건은 아니다.
+frame 단위 직접 조작은 향후 oracle movement planner를 모방하거나 RL로 학습하는 2단계 문제로 추가할 수 있다. 첫 번째 강한 전략 봇의 필수 조건은 아니다. placement-level 1대1 arena는 양쪽에 같은 고정 cadence를 적용하며 첫 기본값은 60 Hz 기준 12 frame/piece(5 PPS)다. 8/12/15 frame 민감도 검증 전에는 cadence에 독립적인 성능이라고 주장하지 않는다.
 
 ## 7. 기술 선택
 
@@ -174,7 +174,7 @@ Rust는 결정론적 저수준 제어, bit 연산, 안전한 병렬 simulation �
 - 하나의 Python grid engine에 게임과 학습을 모두 구현
 - 근거 없이 pixel-only CNN과 raw key action을 기본값으로 선택
 - 팬 제작 공격 공식을 현재 TETR.IO의 확정 규칙으로 복사
-- conformance fixture를 통과하기 전에 학습 시작
+- mechanics 상태를 숨기거나 `OBSERVED` 탐색 결과를 최종 conformance·성능 결과로 승격
 
 ## 8. TETR.IO 규칙 동등성 검증 전략
 
@@ -443,6 +443,8 @@ non-learning baseline은 반드시 유지한다.
 - learner가 방문한 상태에 teacher를 다시 질의하는 dataset aggregation을 수행한다.
 - `100k` smoke, `1M` pilot, `10M` medium decision 순서로 strength-per-byte/second를 확인한 뒤 larger dataset을 승인한다.
 
+**현재 진척:** `arena`가 hold 분기를 포함한 geometric locked afterstate 전체를 열거하고, 10개 정수 board feature와 milli-scaled Dellacherie teacher score/rank/top-two margin을 deterministic gzip shard로 생성한다. Python loader는 SHA-256, rules/engine/action schema, `OBSERVED` opt-in, seed/match split과 rank permutation을 검증한다. CPU PyTorch 2.8.0의 공유 `10→64→32→1` scorer(2,817 parameter)는 candidate score soft target을 listwise distill한다. 512-decision smoke에서 3 epoch 뒤 held-out 64 decisions top-1 59.375%를 기록했지만, 이는 pipeline 동작 확인일 뿐 strength 통과 결과가 아니다. checkpoint는 manifest와 feature normalization을 포함하며 shard는 학습 뒤 삭제 가능한 임시 산출물이다. 1대1 versus feature/teacher, fixed-cadence placement arena, closed-loop 평가와 dataset aggregation은 아직 미구현이다.
+
 **통과 조건:** imitation checkpoint가 같은 latency budget의 random initialization과 chosen-only BC보다 held-out closed-loop 대국에서 강하고 illegal action이 0개여야 한다. offline accuracy만으로는 통과하지 못한다.
 
 ### Phase 5 — RL environment 및 보상 검증
@@ -500,10 +502,10 @@ non-learning baseline은 반드시 유지한다.
 
 ## 15. 즉시 수행할 작업
 
-1. `manual-playground`에서 이동, 회전/kick, hold, hard/soft drop, lock/reset, line clear, spin, perfect clear와 top-out을 사용자가 직접 확인한다.
-2. 같은 원칙으로 `BattleSession`을 연결한 1대1 dual-board 진단 화면을 추가한다.
-3. Phase 4의 afterstate heuristic arena와 기록 schema를 구현하고 소규모 teacher record를 생성한다.
-4. CPU/RAM/GPU 예산을 수치화한 뒤 heuristic 속도와 기록 품질을 측정한다.
+1. 12 frame/piece 기본 cadence와 8/12/15 민감도 설정을 가진 placement-level `BattleSession` adapter를 구현한다.
+2. incoming/attack/B2B/Surge/상대 danger feature와 여러 style의 1대1 teacher를 추가한다.
+3. `100k` decision smoke를 생성-학습-삭제하며 generation decisions/s, bytes/decision, inference latency와 closed-loop strength를 측정한다.
+4. 같은 원칙으로 `BattleSession`을 연결한 1대1 dual-board 진단 화면을 추가하고 사용자가 핵심 mechanics를 직접 확인한다.
 5. 외부 기준 checkpoint가 확보되면 핵심 mechanics 경계 fixture를 우선 채우고 formal conformance corpus는 병행 확장한다.
 
 현재 우선순위는 픽셀 단위 복제가 아니라 **사용자가 핵심 mechanics를 직접 확인하고, 같은 엔진으로 heuristic 기록 생성을 시작할 수 있게 하는 것**이다.
@@ -572,4 +574,4 @@ GitHub와 Reddit 자료는 구현 아이디어와 edge case를 찾는 데 사용
 - 오류와 경고를 해결했거나 범위 밖으로 합의한 사유를 기록했다.
 - 결과와 영향, 남은 제한을 `.agent/CONTINUITY.md`와 관련 `PROJECT_Explain_*` 문서에 반영했다.
 
-규칙 정확성 gate가 강화학습보다 먼저다. 결정론 및 conformance 검증을 통과하지 않은 profile에서는 모델 학습을 시작하지 않는다.
+결정론적 core test와 수동 smoke가 학습보다 먼저다. formal `Conformant` corpus가 아직 비어 있는 `OBSERVED` profile은 상태를 명시하고 opt-in한 탐색·모방 smoke에만 사용할 수 있으며, 최종 benchmark·release training과 TETR.IO 동등성 주장은 conformance gate를 통과해야 한다.

@@ -1,0 +1,18 @@
+[package]
+name = "arena"
+version = "0.1.0"
+description = "Placement-level heuristic teachers and imitation record generation"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+flate2 = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+[lints]
+workspace = true

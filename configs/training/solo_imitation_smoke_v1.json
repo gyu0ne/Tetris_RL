@@ -1,0 +1,25 @@
+{
+  "schema_version": "solo-imitation-experiment-v1",
+  "purpose": "schema, determinism, loader and CPU training smoke only",
+  "mechanics_status": "OBSERVED_NOT_FUNCTIONALLY_VERIFIED",
+  "generation": {
+    "base_seed": 1,
+    "matches": 8,
+    "decisions_per_match": 64,
+    "records": "datasets/solo-imitation-smoke-v1/records.jsonl.gz",
+    "manifest": "datasets/solo-imitation-smoke-v1/manifest.json",
+    "engine_revision": "required CLI value"
+  },
+  "training": {
+    "model": "afterstate-scorer-v1",
+    "hidden": [64, 32],
+    "epochs": 3,
+    "batch_decisions": 32,
+    "learning_rate": 0.0003,
+    "teacher_temperature": 1.0,
+    "teacher_score_scale": 1000.0,
+    "seed": 2026,
+    "threads": 2,
+    "output": "checkpoints/solo-imitation-smoke-v1/model.pt"
+  }
+}

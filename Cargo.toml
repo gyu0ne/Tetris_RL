@@ -1,8 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/arena",
     "crates/engine-core",
     "crates/manual-playground",
+    "crates/py-bridge",
     "crates/replay-conformance",
     "crates/rules-tetrio",
     "crates/versus",

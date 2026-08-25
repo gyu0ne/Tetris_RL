@@ -1,0 +1,11 @@
+{
+  "schema_version": "placement-arena-cadence-v1",
+  "status": "adapter-not-yet-implemented",
+  "frame_rate_hz": 60,
+  "default_frames_per_placement": 12,
+  "default_placements_per_second": 5.0,
+  "sensitivity_frames_per_placement": [8, 12, 15],
+  "policy_action": ["hold", "piece", "orientation", "x", "y"],
+  "movement_path_is_policy_input": false,
+  "claim_boundary": "local shared arena budget; not a TETR.IO mechanics literal"
+}

@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-25T16:38:46+09:00
+Last updated: 2026-08-25T17:48:24+09:00
 
 ## 1. Authority and scope
 
@@ -40,6 +40,7 @@ tests/
   unit/ property/ differential/ replay/ golden/ fuzz/
 benchmarks/          # reproducible engine/training throughput benchmarks
 research/            # experiment manifests and generated reports, not code
+Explanation/         # Korean standalone explanations for implemented components/workflows
 .agent/              # rules, continuity, plans and design explanations
 ```
 
@@ -54,6 +55,7 @@ research/            # experiment manifests and generated reports, not code
 - Log meaningful creates, edits, moves, deletions, dependency changes, rules changes, design decisions, failed verification, and project-wide effects in `.agent/CONTINUITY.md` with ISO timestamp, source tag, reason, and evidence.
 - Keep continuity factual and compact. Use only `[USER]`, `[CODE]`, `[TOOL]`, or `[ASSUMPTION]`; mark unknowns `UNCONFIRMED`.
 - After a major design is approved or completed, create or update `.agent/PROJECT_Explain_<detail>.md`. These documents explain settled decisions, alternatives, constraints, interfaces, and verification gates.
+- Every newly implemented engine, model, training, evaluation, or operational workflow must also have a separate Korean standalone explanation under `Explanation/`. Use one topic per file, update the same file when that topic changes, and keep `Explanation/README.md` as the index. `.agent/PROJECT_Explain_*.md` remains the internal design-decision record; `Explanation/` is the user-readable technical manual.
 - Use small patch-style edits. Preserve unrelated user changes. Deletion or replacement requires an exact target check and a continuity entry.
 
 ## 4. TETR.IO conformance rules
@@ -87,6 +89,8 @@ research/            # experiment manifests and generated reports, not code
 - Do not select a CNN, algorithm, reward term, or hyperparameter solely by convention.
 - Maintain non-learning baselines: random legal, linear Dellacherie/Thiery-style evaluator, beam/MCTS bot, and an archived external-bot protocol baseline where licensing permits.
 - The primary action abstraction is selection among reachable locked afterstates. A separate deterministic movement planner converts the selection into legal frame inputs and can reject unreachable actions.
+- The learning policy selects only `hold + piece + orientation + x/y`; movement paths and finesse are diagnostics/execution concerns, never policy inputs. Placement-level arena time advances by an explicit shared cadence rather than pretending that a direct afterstate choice was a raw TETR.IO input sequence.
+- The first versus cadence default is 12 frames per placement (5 PPS at 60 Hz), with 8/12/15-frame sensitivity tests required before treating a result as cadence-robust. This is a local arena budget, not a TETR.IO mechanics claim.
 - The default learning candidate is a small shared afterstate scorer plus actor-critic value head, tested against linear and small spatial encoders. The final model is selected only by held-out match strength, sample efficiency, inference latency, and ablation evidence.
 - The unshaped objective is zero-sum terminal round outcome. Dense shaping is allowed only when it is potential-based, `F(s,a,s') = gamma*Phi(s') - Phi(s)`, antisymmetric across players, bounded, terminal-normalized, and accompanied by an MDP/stochastic-game policy or Nash-equilibrium invariance check.
 - Every proposed potential feature must define units, normalization, bound, expected causal effect, failure mode, and an ablation with confidence intervals. Correlation alone is not causation.
@@ -94,6 +98,7 @@ research/            # experiment manifests and generated reports, not code
 - Before RL, bootstrap candidates from versioned heuristic/search demonstrations. Store every legal candidate score/rank plus rules, engine, seed, opponent and teacher hashes; split datasets by match/seed, not individual rows.
 - One-shot behavior cloning is not sufficient evidence. Compare chosen-only cloning, full-score distillation, learner-state dataset aggregation, and terminal-objective RL fine-tuning in closed-loop matches.
 - Generated datasets/checkpoints stay outside version control; commit schemas, manifests, configs and reports only.
+- Demonstration shards are ephemeral by default. A retained checkpoint must embed the dataset/config hash, rules and engine provenance, feature normalization, teacher identity and training settings so deterministic shards can be deleted and regenerated.
 - Training performance work follows measurement: profile first, then optimize. Prefer bitboards, batched native simulation, zero-copy observations, vectorized environments, mixed precision where numerically safe, and bounded opponent pools.
 
 ## 6. Verification and completion

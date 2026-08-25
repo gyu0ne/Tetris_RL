@@ -1,8 +1,22 @@
 # 휴리스틱 기록 기반 모방학습 Bootstrap
 
-상태: 조사 기반 설계 완료, 구현 미착수
+상태: solo bootstrap foundation 구현 및 smoke 완료, 1대1 teacher/aggregation/RL 미착수
 
 결정일: `2026-08-24`
+
+구현 갱신일: `2026-08-25`
+
+## 구현된 첫 단계
+
+- `arena` crate가 hold 분기를 포함한 모든 geometric locked afterstate를 열거한다.
+- policy action은 `hold + piece + orientation + x/y`이며 movement path는 모델 입력이 아닌 진단용 길이만 남긴다.
+- 10개 정수 feature와 milli-scaled Dellacherie 계열 linear teacher를 사용한다.
+- 모든 후보의 action, board checksum, feature, teacher score/rank와 immediate clear event를 deterministic gzip JSONL에 저장한다.
+- manifest와 record의 SHA-256/rules/engine/status/action schema를 Python loader가 검증하며 `OBSERVED` 데이터는 명시적 opt-in 없이는 거부한다.
+- CPU PyTorch 2.8.0의 `10→64→32→1` 공유 scorer가 후보 score soft target을 listwise distill한다.
+- checkpoint는 dataset manifest, feature mean/std, model/training config와 smoke 평가를 포함한다. 대용량 shard는 임시 산출물이며 학습과 offline 평가 후 삭제한다.
+
+512-decision smoke는 448 train/64 held-out decision으로 분리됐고 3 epoch 뒤 held-out top-1 59.375%, mean teacher regret 1,961.234375 milli-score를 기록했다. 이는 end-to-end 연결과 학습 감소를 확인한 결과일 뿐, 1대1 strength나 architecture 채택 근거가 아니다.
 
 ## 결정
 

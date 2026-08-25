@@ -1,0 +1,43 @@
+{
+  "schema_version": "solo-imitation-experiment-v1",
+  "purpose": "first practical solo bootstrap checkpoint before versus imitation",
+  "mechanics_status": "OBSERVED_NOT_FUNCTIONALLY_VERIFIED",
+  "generation": {
+    "base_seed": 10001,
+    "matches": 512,
+    "decisions_per_match": 200,
+    "target_decisions": 102400,
+    "minimum_accepted_decisions": 100000,
+    "fallback_matches": 600,
+    "records": "datasets/solo-imitation-bootstrap-v1/records.jsonl.gz",
+    "manifest": "datasets/solo-imitation-bootstrap-v1/manifest.json",
+    "engine_revision": "clean committed Git revision required"
+  },
+  "training": {
+    "model": "afterstate-scorer-v1",
+    "hidden": [64, 32],
+    "epochs": 5,
+    "batch_decisions": 64,
+    "learning_rate": 0.0003,
+    "teacher_temperature": 1.0,
+    "teacher_score_scale": 1000.0,
+    "seed": 2026,
+    "threads": 2,
+    "output": "checkpoints/solo-imitation-bootstrap-v1/model.pt"
+  },
+  "evaluation": {
+    "offline": "python -m tetris_rl.evaluation.offline",
+    "closed_loop": "python -m tetris_rl.evaluation.closed_loop",
+    "promotion": "python -m tetris_rl.evaluation.promote",
+    "threshold_config": "configs/evaluation/solo_imitation_promotion_v1.json"
+  },
+  "retention": {
+    "keep": ["checkpoints/solo-imitation-v1/model.pt"],
+    "delete_after_promotion_and_reload": [
+      "records",
+      "manifest",
+      "bootstrap checkpoint",
+      "external evaluation reports"
+    ]
+  }
+}

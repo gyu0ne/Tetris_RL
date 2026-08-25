@@ -19,3 +19,16 @@ services:
       CARGO_TARGET_DIR: /tmp/tetris-target
     ports:
       - "127.0.0.1:8787:8787"
+
+  training:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    working_dir: /workspace
+    command: python -m unittest discover -s python/tests -v
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace/python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"

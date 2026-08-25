@@ -22,6 +22,17 @@ docker compose up --build playground
 docker compose stop playground
 ```
 
+Python learning code uses the pinned CPU training image; no host Python packages are required:
+
+```text
+docker compose build training
+docker compose run --rm training ruff format --check --config python/pyproject.toml python
+docker compose run --rm training ruff check --config python/pyproject.toml python
+docker compose run --rm training python -m unittest discover -s python/tests -v
+```
+
+Demonstration shards under `datasets/` are temporary and ignored. Retained checkpoints must contain the manifest and normalization needed to regenerate then delete those shards.
+
 If the Docker daemon is unavailable, implementation may continue, but verification remains explicitly blocked until the container commands run.
 
 ## Engine boundaries

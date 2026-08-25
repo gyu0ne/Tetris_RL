@@ -26,6 +26,8 @@ TETR.IO의 학습 관련 mechanics를 독립적으로 재현하고 1 대 1 bot�
 - change-on-attack garbage hole RNG, transit/cancel/cap/combo-blocking/instant insertion과 margin multiplier
 - lock→상쇄→동시 zero-passthrough→garbage→spawn 순서를 보존하는 결정론적 2인 `BattleSession`
 - BlockOut/GarbageOut, Clutch Clear, 단독 승패와 동시 사망 draw
+- hold 분기를 포함한 모든 geometric locked afterstate를 평가하고 Dellacherie 계열 정수 feature/점수/순위를 생성하는 `arena` crate
+- 후보마다 공유되는 CPU용 `10→64→32→1` afterstate scorer, match/seed split 검증 loader와 listwise teacher-score distillation
 
 선언된 학습 mechanics의 실행 경로는 `TETR.IO BETA 1.7.8 / TL S2` current client asset을 기준으로 구현되어 있다. 여기에는 `0.02G`, 120초 이후 gravity 증가, client의 `locking > locktime`/reset-cap 경계, 공격·garbage·Clutch·round terminal 순서가 포함된다. version-pinned capture를 strict JSON과 정확한 SHA-256으로 읽는 adapter 경계도 구현했다. 다만 실제 기준 board/attack/garbage checkpoint corpus가 없으므로 profile 표기는 계속 `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`다. 이 표시는 픽셀이나 UI가 다르다는 뜻이 아니라 아직 외부 mechanics corpus를 모두 채우지 않았다는 뜻이다. 운영자의 승인이나 공식 인증은 요구하지 않는다. formal report에서는 같은 조건·입력의 version-pinned reference trace와 exact diff가 0이고 필수 mechanics claim 및 기본 randomized battle 하한이 모두 통과하면 `Conformant`로 판정한다. 이 formal label은 수동 테스트와 heuristic/모방학습 도구 개발을 막지 않는다. TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 공급한다. 브라우저 OS event의 0.1 subframe 재생은 검증 adapter 범위이며, 주 학습 action인 reachable locked afterstate와 1 대 1 상태 전이는 raw keyboard timestamp에 의존하지 않는다.
 
@@ -45,6 +47,20 @@ docker compose up --build playground
 docker compose stop playground
 ```
 
+## 첫 모방학습 smoke
+
+학습 action은 key sequence가 아니라 `hold + piece + orientation + x/y` 착지점이다. 이동 경로 길이는 진단 정보일 뿐 모델 입력이 아니다. 다음 명령은 512개 결정의 임시 teacher shard를 만들고 2,817-parameter scorer를 학습한다. `OBSERVED` mechanics로 하는 탐색 실행이므로 `--allow-observed`를 명시해야 한다.
+
+```text
+docker compose run --rm rust cargo run --release -p arena --bin generate-solo -- --records datasets/solo-imitation-smoke-v1/records.jsonl.gz --manifest datasets/solo-imitation-smoke-v1/manifest.json --engine-revision <GIT_REVISION> --seed 1 --matches 8 --decisions-per-match 64
+docker compose build training
+docker compose run --rm training python -m tetris_rl.training.imitation --manifest datasets/solo-imitation-smoke-v1/manifest.json --output checkpoints/solo-imitation-smoke-v1/model.pt --epochs 3 --batch-decisions 32 --allow-observed
+```
+
+dataset shard는 deterministic gzip 임시 파일이며 저장소에 commit하지 않는다. 체크포인트가 manifest, feature 정규화, rules/engine/teacher hash와 학습 설정을 자체 포함하므로 학습과 offline 평가 후 shard는 삭제하고 같은 config/seed로 재생성할 수 있다. 현재 solo teacher는 board feature bootstrap용이고 1대1 base policy 성능을 뜻하지 않는다.
+
+약 10만 decision의 첫 본학습은 `Explanation/Imitation_Learning_Runbook.md`의 고정 설정과 명령을 따른다. tie-aware offline 평가와 실제 `model.pt`를 권위 Rust 엔진에 연결하는 closed-loop solo 평가, 통과 보고서를 내장하는 checkpoint 승격 절차는 `Explanation/Imitation_Model_Evaluation_and_Promotion.md`에 있다. 모델 가중치용 휴대용 JSON은 사용하지 않는다.
+
 ## 컨테이너 검증
 
 ```text
@@ -53,6 +69,10 @@ docker compose run --rm rust cargo fmt --all --check
 docker compose run --rm rust cargo clippy --workspace --all-targets -- -D warnings
 docker compose run --rm rust cargo test --workspace --all-targets
 docker compose run --rm rust cargo build --workspace --release
+docker compose build training
+docker compose run --rm training ruff format --check --config python/pyproject.toml python
+docker compose run --rm training ruff check --config python/pyproject.toml python
+docker compose run --rm training python -m unittest discover -s python/tests -v
 ```
 
-설계와 조사 자료는 `PROJECT_PLAN_KO.md`, `.agent/`와 `research/`에서 확인할 수 있다.
+구현된 기능별 한국어 설명서는 `Explanation/`에서 확인할 수 있다. 설계 결정과 조사 자료는 `PROJECT_PLAN_KO.md`, `.agent/`와 `research/`에 보관한다.

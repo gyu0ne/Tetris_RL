@@ -19,6 +19,11 @@
 - 2026-08-25T12:03:46+09:00 [USER] TETR.IO 운영자의 인증은 불필요하며, 동일성의 완료 기준을 mechanics의 기능적 동등성으로 한정한 뒤 다음 단계를 계속 진행하라고 명시했다.
 - 2026-08-25T16:25:47+09:00 [USER] 기능 동등성 gate 다음 단계로 계속 진행하라고 지시했다.
 - 2026-08-25T16:55:29+09:00 [USER] Pixel-level reproduction and excessive formalism are unnecessary; only core engine mechanics must match, and a user-operated test path is now needed.
+- 2026-08-25T17:28:17+09:00 [USER] Proceed directly to model construction when no learning-relevant mechanics implementation is missing; use only landing destinations as policy actions and let the arena supply a sufficiently fast shared placement rate.
+- 2026-08-25T17:28:17+09:00 [USER] Retain the trained model rather than accumulating large training-record archives; demonstration records may be temporary.
+- 2026-08-25T17:48:24+09:00 [USER] Estimate the imitation-learning scale required for basic performance and require a separate Korean technical manual under root `Explanation/` whenever a new component or workflow is created.
+- 2026-08-25T17:58:06+09:00 [USER] Clarified that the requested imitation-learning explanation must be a concrete execution method, not primarily a theoretical sample-complexity discussion.
+- 2026-08-25T19:22:56+09:00 [USER] Requested implemented evaluators and the exact procedure for producing a real usable model; clarified that prior datasets/checkpoints were intentionally deleted and should not be reconstructed now.
 
 ## [DECISIONS]
 
@@ -69,9 +74,31 @@
 - 2026-08-25T16:25:47+09:00 [CODE] Project battle frame events into attack, cancellation, insertion and transmitted-packet observations; lock/spawn objects remain out of the wire contract because their observable result is already present in the same canonical game snapshot.
 - 2026-08-25T16:55:29+09:00 [CODE] Explicitly exclude pixel, animation, skin, sound and layout parity. Keep the formal 10,000-case policy only for a final `Conformant` report; manual testing, heuristic arena work and clearly labeled exploratory imitation may proceed after deterministic core tests without waiting for that corpus.
 - 2026-08-25T16:55:29+09:00 [CODE] Manual visualization must forward ordered inputs to the authoritative Rust session and render returned state; implementing mechanics again in JavaScript is prohibited.
+- 2026-08-25T17:28:17+09:00 [CODE] Supersede frame-input conversion as the learning transition: the policy action is only `hold + piece + orientation + x/y`; paths/finesse remain diagnostics or an external execution concern. Placement-level versus will use an explicit shared 12-frame default cadence with 8/12/15-frame sensitivity tests.
+- 2026-08-25T17:28:17+09:00 [CODE] Start with a CPU `10→64→32→1` shared afterstate scorer and full-score listwise imitation, not a CNN. The solo Dellacherie teacher is a board-feature bootstrap only and cannot establish 1v1 strength.
+- 2026-08-25T17:28:17+09:00 [CODE] Treat demonstration shards as deterministic ephemeral inputs. The self-contained checkpoint embeds manifest, rules/engine/teacher provenance, feature normalization and training settings so records can be deleted and regenerated.
+- 2026-08-25T17:48:24+09:00 [CODE] Use 100,000 teacher decisions and at most five epochs as the first serious solo-imitation run; after the offline and closed-loop gates, prefer two 50,000-decision learner-state aggregation rounds over expanding same-distribution teacher data beyond 300,000 decisions.
+- 2026-08-25T17:48:24+09:00 [CODE] Preserve `.agent/PROJECT_Explain_*.md` as internal design records and add one standalone Korean `Explanation/*.md` manual plus index entry for every new engine/model/training/evaluation/operations topic.
+- 2026-08-25T17:58:06+09:00 [CODE] Fix the first practical run at 512 seeds × at most 200 decisions, accept only a manifest with at least 100,000 decisions, train five epochs at batch 64, verify self-contained checkpoint loading, then delete the exact temporary dataset directory; performance promotion remains gated on tie-aware and closed-loop evaluators.
+- 2026-08-25T19:02:53+09:00 [CODE] Supersede the earlier deletion timing: retain the temporary shard through checkpoint loading and tie-aware offline evaluation, then delete it after performance evaluation; closed-loop inference itself needs only the checkpoint.
+- 2026-08-25T19:22:56+09:00 [CODE] Keep the original PyTorch `model.pt` as the only model serialization. Python/PyTorch performs checkpoint loading, normalization and scoring; a narrow PyO3 bridge exposes batched authoritative Rust candidate generation and state transition. JSON is limited to evaluation reports.
+- 2026-08-25T19:22:56+09:00 [CODE] Promote only when offline and closed-loop reports match the source checkpoint SHA-256, dataset ID and engine revision and all gates pass; embed both reports in the promoted checkpoint so external reports and training records can later be deleted.
 
 ## [PROGRESS]
 
+- 2026-08-25T17:28:17+09:00 [CODE] Added the `arena` crate with hold-aware geometric afterstate enumeration, ten integer features, checked milli-scaled Dellacherie scoring, full candidate rank/margin records and deterministic mtime-zero gzip generation.
+- 2026-08-25T17:28:17+09:00 [CODE] Added the Python `tetris_rl` loader, 2,817-parameter scorer and listwise imitation trainer plus pinned CPU PyTorch 2.8.0/NumPy/Ruff container workflow. Loader gates SHA-256, schema, mechanics status, match-level split and rank integrity.
+- 2026-08-25T17:28:17+09:00 [CODE] Added `PROJECT_Explain_Placement_Level_Imitation_Model.md`, updated the bootstrap design/RULE/README/Korean plan, and committed versioned smoke/cadence configs while leaving datasets/checkpoints ignored.
+- 2026-08-25T17:28:17+09:00 [TOOL] End-to-end smoke generated 512 decisions with 68..72 candidates, trained on 448 and validated on 64; epoch-3 validation top-1 was 59.375% and mean teacher regret 1,961.234375 milli-score. The checkpoint contains 2,817 parameters and all regeneration provenance; this is pipeline evidence, not strength evidence.
+- 2026-08-25T17:48:24+09:00 [CODE] Added `Explanation/README.md` and `Explanation/Imitation_Learning_Scale_Estimate.md`; the latter defines the 100,000-decision first run, sample-complexity proxy, tie-aware/offline/closed-loop gates, storage estimate and dataset-aggregation transition.
+- 2026-08-25T17:48:24+09:00 [TOOL] Explanation verification passed for five affected Markdown files: required sections, final newlines, trailing whitespace and `git diff --check` all passed; the scale explanation contains 156 lines.
+- 2026-08-25T17:58:06+09:00 [CODE] Added `configs/training/solo_imitation_bootstrap_v1.json` and `Explanation/Imitation_Learning_Runbook.md` with exact PowerShell/container commands for preflight, 10,240-decision benchmark, 102,400-target generation, five-epoch training, checkpoint verification, safe record cleanup and failure routing.
+- 2026-08-25T17:58:06+09:00 [TOOL] Runbook verification passed: the new experiment JSON parsed with target 102,400 decisions, five epochs and batch 64; five affected files passed required-marker, final-newline, trailing-whitespace and `git diff --check` validation. The concrete runbook contains 225 lines.
+- 2026-08-25T19:02:53+09:00 [CODE] Corrected the checkpoint verification command to read `LoadedScorer.metadata`; the previous runbook incorrectly named this existing field `payload` even though checkpoint loading itself had succeeded.
+- 2026-08-25T19:02:53+09:00 [TOOL] The corrected command loaded `checkpoints/solo-imitation-bootstrap-v1/model.pt` successfully: 2,817 parameters, engine revision `b51bf363fac3a2802ff40a71342b6eb93be646ad`, dataset ID `4540a6b0c99c18ccf57aab9ebce55bec311e0153da3f3e7d958f98600f265db9`.
+- 2026-08-25T19:02:53+09:00 [CODE] Corrected the runbook order so temporary records remain through tie-aware offline and closed-loop evaluation; deletion occurs only after performance promotion because offline evaluation needs the validation records.
+- 2026-08-25T19:22:56+09:00 [CODE] Added tie-aware offline evaluation, actual-checkpoint closed-loop solo evaluation, checkpoint promotion validation, Rust `arena::SoloBatch`, the PyO3 `tetris_engine` bridge, training-image bridge build, evaluation tests and fixed promotion configuration.
+- 2026-08-25T19:22:56+09:00 [CODE] Added `Explanation/Imitation_Model_Evaluation_and_Promotion.md` and `.agent/PROJECT_Explain_Imitation_Evaluation.md`; updated the runbook, index, README and training retention policy with the exact generation-to-promotion procedure.
 - 2026-08-24T14:18:08+09:00 [CODE] Created the initial governance, architecture, conformance, RL/reward, sources, and execution-plan documents under `.agent/`.
 - 2026-08-24T14:18:08+09:00 [TOOL] Verified all 7 required documents and 361 lines: required sections/topics present, no missing files, placeholders, trailing whitespace, or missing final newlines.
 - 2026-08-24T14:35:07+09:00 [CODE] Created `tetris_project_report_ko.html`, a 13-page Korean A4 report containing the translated project scope, architecture, conformance strategy, RL/reward design, roadmap, governance, risks, and source ledger.
@@ -147,6 +174,12 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-25T19:22:56+09:00 [USER] Empty `datasets/` and `checkpoints/` directories are intentional cleanup, not an evaluator path defect. A newly generated 512-decision evaluator smoke shard was removed immediately after this clarification.
+- 2026-08-25T19:22:56+09:00 [TOOL] Training image build and native bridge import passed; Python Ruff check/format and 8 unit tests passed. Rust fmt, workspace clippy, Python-feature PyO3 clippy, 132 workspace tests and optimized release build passed.
+- 2026-08-25T17:28:17+09:00 [TOOL] The model was never the storage bottleneck: the initial self-contained checkpoint was 15-16 KiB, while verbose 512-decision JSONL was 18,403,935 bytes. Deterministic gzip plus candidate checksum/feature records reduced the temporary shard to approximately 844 KiB before final cleanup.
+- 2026-08-25T17:28:17+09:00 [TOOL] Host hardware enumeration through CIM was access-denied and `nvidia-smi` was unavailable, so GPU presence is UNCONFIRMED; the verified training path is intentionally CPU-only with two threads.
+- 2026-08-25T17:48:24+09:00 [TOOL] The 512-decision smoke has 68.5996 candidates per state and exact zero top-two teacher margin on 274 decisions (53.515625%); raw chosen-index top-1 is therefore not a sufficient quality gate, and tie-aware optimality plus teacher regret are required.
+- 2026-08-25T19:02:53+09:00 [USER] The documented standalone checkpoint command raised `AttributeError: 'LoadedScorer' object has no attribute 'payload'` only after `load_scorer` returned; the runtime type exposes the checkpoint dictionary as `metadata`.
 - 2026-08-24T14:18:08+09:00 [TOOL] The workspace was empty and `.agent/CONTINUITY.md` was absent at task start.
 - 2026-08-24T14:18:08+09:00 [TOOL] Persistent full code-graph indexing crashed; non-persistent fast indexing succeeded with 2 nodes and 1 edge, confirming no implementation code is present.
 - 2026-08-24T14:18:08+09:00 [TOOL] `git diff --check` and `git status` were unavailable because the workspace is not initialized as a Git repository; no repository initialization was inferred or performed.
@@ -184,6 +217,10 @@
 
 ## [OUTCOMES]
 
+- 2026-08-25T19:22:56+09:00 [CODE] Supersede the evaluator-not-implemented status: tie-aware offline, authoritative closed-loop solo and verified checkpoint promotion are implemented. No full-model metric is claimed because the user intentionally deleted the prior records/checkpoint; the documented next run starts by regenerating 100,000 decisions and trains/evaluates the real `model.pt`.
+- 2026-08-25T17:28:17+09:00 [CODE] The first model-construction milestone is complete: deterministic solo heuristic demonstrations can train a small self-contained afterstate scorer in containers. No known core mechanics implementation remains before model work, but external functional conformance, fixed-cadence 1v1 placement adapter, versus teacher/features, closed-loop strength, aggregation and RL remain.
+- 2026-08-25T17:48:24+09:00 [CODE] The imitation-scale forecast and future component-manual convention are documented. The forecast defines a measurable first-run gate but is not an empirical strength result; tie-aware metrics and closed-loop evaluation remain to implement before the 100,000-decision run.
+- 2026-08-25T17:58:06+09:00 [CODE] Supersede the theory-first handoff: the primary imitation guide is now an executable runbook. The source generator and trainer already cover data generation and fixed-epoch training; best-checkpoint selection, tie-aware offline evaluation, closed-loop solo evaluation and learner-state aggregation remain explicit implementation work.
 - 2026-08-24T14:18:08+09:00 [CODE] Initial pre-development analysis and document verification are complete. No engine or model implementation has begun; Phase 0 evidence capture is the next gate.
 - 2026-08-24T14:55:50+09:00 [CODE] The requested Korean Markdown integration is complete. The planning status remains unchanged: implementation has not begun and Phase 0 evidence capture is next.
 - 2026-08-24T15:22:13+09:00 [CODE] Initial evidence research and mechanics-scope consolidation are complete. Implementation remains gated on current replay/config capture, exact rules records, hardware budget declaration, and executable fixture manifests.

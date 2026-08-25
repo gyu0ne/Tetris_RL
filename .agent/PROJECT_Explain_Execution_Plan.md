@@ -1,7 +1,7 @@
 # Execution Plan
 
 Baseline date: 2026-08-24T15:05:44+09:00
-Current state: declared learning-relevant solo/1v1 mechanics, normalized reference loader and manual solo playground implemented; manual mechanics review and heuristic arena are prioritized before expanding the external corpus
+Current state: declared learning-relevant solo/1v1 mechanics, normalized reference loader, manual solo playground and first placement-level heuristic/imitation pipeline implemented; fixed-cadence 1v1 arena and versus teacher are next while external corpus expansion remains parallel
 
 ## Phase 0 — Evidence and specification freeze
 
@@ -54,10 +54,12 @@ Exit gate: repeatable ratings with confidence intervals; no training system yet.
 
 ## Phase 4.5 — Heuristic demonstration bootstrap
 
-- Generate versioned trajectories from diverse linear/search teachers and the frozen opponent pool only after the target mechanics profile passes conformance.
+- Generate versioned trajectories from diverse linear/search teachers and the frozen opponent pool. `OBSERVED` exploratory shards require explicit labeling/opt-in; release training remains conformance-gated.
 - Store all legal afterstate scores/ranks, teacher margin/budget/style, rules/engine hashes, seeds and outcomes in sharded records.
 - Train chosen-action BC, full-score/rank distillation and value initialization; then aggregate teacher labels on learner-visited states.
 - Compare smoke 100k, pilot 1M and medium 10M decision budgets before approving a larger dataset.
+
+Progress: `crates/arena` implements hold-aware geometric candidates, ten integer features, a Dellacherie linear teacher and deterministic compressed full-score records. `python/tetris_rl` validates provenance/integrity and trains a CPU `10→64→32→1` shared scorer with listwise score distillation. A 512-decision end-to-end smoke passed; its 59.375% held-out top-1 is pipeline evidence only. Records are ephemeral and checkpoints embed regeneration metadata. Fixed-cadence `BattleSession`, versus features/teachers, 100k smoke, closed-loop comparison and aggregation remain.
 
 Exit gate: the imitation checkpoint improves held-out closed-loop strength under a fixed latency budget, has zero illegal actions, and beats both random initialization and chosen-only BC. Offline accuracy alone cannot pass the gate.
 

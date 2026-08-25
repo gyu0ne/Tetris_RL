@@ -1,0 +1,23 @@
+[package]
+name = "py-bridge"
+version = "0.1.0"
+description = "Narrow batched Python bridge to the authoritative Rust arena"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "tetris_engine"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+python-extension = ["dep:pyo3"]
+
+[dependencies]
+arena = { path = "../arena" }
+pyo3 = { version = "0.29.2", features = ["abi3-py313"], optional = true }
+
+[lints]
+workspace = true
