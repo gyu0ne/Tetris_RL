@@ -61,6 +61,8 @@
 
 - 세 초기화 seed를 같은 train/validation 분할에서 독립 학습한다.
 - 매 epoch bounded-memory shuffle을 사용하고 마지막 epoch가 아니라 validation regret 최저 checkpoint를 보존한다.
+- 매 epoch 종료 시 현재 모델·optimizer·best 모델·early-stopping 상태를 원자적으로 저장하며, 중단 후 정확히 다음 epoch부터 재개한다. 완료된 독립 seed 후보는 호환성 검증 후 건너뛴다.
+- `light`, `balanced`, `max`는 독립 seed 병렬도와 native thread 수만 조절한다. 학습 의미를 바꾸는 batch·learning rate·seed·epoch 설정은 프로필과 무관하게 고정한다.
 - 모델 크기는 현재 2,817 parameters를 유지한다. 장기 실행 결과가 구조적 한계를 보여주기 전에는 CNN이나 대형 모델로 확장하지 않는다.
 
 완료 조건: 세 개의 load 가능한 `.pt` 후보와 학습 metadata 생성.
@@ -102,7 +104,7 @@
 CPU thread 수만 조정하려면 다음처럼 실행한다.
 
 ```powershell
-./scripts/run-final-solo-bootstrap.ps1 -TrainingThreads 4
+./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max -ReuseDataset
 ```
 
 실행은 수 시간에서 하루 규모를 허용한다. 임의의 짧은 epoch나 적은 게임으로 완료 판정을 대신하지 않는다. 정확한 wall time은 현재 장비와 aggregation 발생 여부에 따라 달라지므로 실행 전에는 확정값으로 약속하지 않는다.

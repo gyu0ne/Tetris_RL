@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-26T09:00:54+09:00 [USER] Divide solo-pipeline compute use into selectable light, balanced and maximum profiles; add intermediate saving and resume; assess whether the currently unfinished roughly 10-epoch candidate can be discarded.
+
 - 2026-08-25T20:26:31+09:00 [USER] Freeze the current completion boundary at solo learning: prepare the implementation/execution plan only, retain the implemented solo pipeline, and defer 1v1 learning code until a later explicit request.
 
 - 2026-08-24T14:18:08+09:00 [USER] Build a local TETR.IO-equivalent engine first, then a compute-efficient reinforcement-learning 1v1 bot; keep features separated and document major changes and settled designs.
@@ -29,6 +31,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-26T09:00:54+09:00 [CODE] Resource profiles change only independent-run workers, native threads and evaluation/aggregation parallelism: light `1×2`, balanced `2×4`, max `3×5`. Batch size, learning rate, seed schedule and epoch/early-stop semantics remain fixed, and resource-profile changes are resume-compatible.
+- 2026-08-26T09:00:54+09:00 [CODE] Preserve the completed seed-2026 candidate and 1,024,000-decision dataset, but discard the old trainer's unsaved seed-2027 work through epoch 11. It had no resumable optimizer/model state, while continuing dirty source during later pipeline stages would make code/checkpoint provenance inconsistent.
 
 - 2026-08-25T20:26:31+09:00 [CODE] Make `PROJECT_Explain_Solo_Learning_Completion_Plan.md` the current plan of record: completion requires the promoted solo checkpoint, independent reload, and zero top-outs over 2,000 held-out seeds × 10,000 placements; fixed-cadence 1v1 learning and self-play are deferred.
 - 2026-08-25T20:26:31+09:00 [CODE] Remove every uncommitted partial 1v1 placement-adapter edit and preserve the committed solo baseline `82f845f`; no 1v1 source code remains from the interrupted work.
@@ -94,6 +99,10 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-26T09:00:54+09:00 [CODE] Added process-parallel multi-initialization training, validated reuse of completed seed checkpoints, and epoch-atomic progress checkpoints containing current/best model, optimizer, early-stop state and history. Resume fails closed on dataset, feature or learning-semantic configuration mismatch.
+- 2026-08-26T09:00:54+09:00 [CODE] Added selectable resource profiles and `-ReuseDataset` to `run-final-solo-bootstrap.ps1`; synchronized the versioned training config, repository rules, internal design explanations and Korean runbook with restart and retention behavior.
+- 2026-08-26T09:00:54+09:00 [TOOL] Container verification passed: Ruff format/check, all 14 Python tests including exact interrupted-versus-uninterrupted tensor equality and two-worker three-seed reuse, training-image build, PowerShell/JSON parsing, and actual compatibility validation of the retained seed-2026 checkpoint.
 
 - 2026-08-25T20:38:58+09:00 [CODE] Updated `Dockerfile.training` to set `RUSTUP_TOOLCHAIN=1.89.0` for the PyO3 builder, preventing the repository's development-only `clippy/rustfmt` component declaration from triggering an unnecessary download. Added the failure distinction and safe retry procedure to `Explanation/Imitation_Learning_Runbook.md`.
 - 2026-08-25T20:38:58+09:00 [TOOL] `docker compose build training` completed successfully after the fix, compiling the release PyO3 bridge without downloading clippy. The rebuilt image then passed all 12 Python dataset/model/training/evaluation/closed-loop bridge tests.
@@ -191,6 +200,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-26T09:00:54+09:00 [TOOL] The old training container had 18 logical CPUs available with no CPU quota but ran `--threads 2`, using roughly 110-145% CPU and 256-346 MB RAM; independent initialization runs are therefore the safe coarse-grained parallelism opportunity.
+- 2026-08-26T09:00:54+09:00 [TOOL] Seed 2026 completed 20 epochs with best validation regret `0.00032234432234432237`; seed 2027 reached epoch 11 with best observed regret `0.0024713064713064712` at epoch 9 but had no checkpoint under the old trainer. The old container was intentionally stopped before edits.
+
 - 2026-08-25T20:38:58+09:00 [TOOL] The submitted final-solo run stopped before dataset generation: the training builder read `rust-toolchain.toml`, attempted to install missing clippy, and failed DNS lookup of `static.rust-lang.org`. A network-disabled `rust:1.89.0-slim-bookworm` probe with `RUSTUP_TOOLCHAIN=1.89.0` successfully parsed the workspace, proving the installed compiler can bypass optional component resolution.
 - 2026-08-25T20:38:58+09:00 [TOOL] No `datasets/solo-imitation-bootstrap-v1`, round-0 candidate checkpoint, or promoted solo checkpoint directory exists after the failed run; rerunning after the clean fix does not overwrite partial learning artifacts.
 - 2026-08-25T20:09:50+09:00 [TOOL] The complete reduced pipeline passed in containers: 300 decisions generated on 20 distinct seeds, three independent checkpoints trained with best epochs, one real `.pt` selected through Rust closed loop, promotion reloaded, and 20 learner-state decisions merged into a hash-valid 320-decision dataset. All temporary verification artifacts were then removed from the four exact workspace directories.
@@ -238,6 +250,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-26T09:00:54+09:00 [CODE] The solo pipeline can now be restarted safely at epoch boundaries with selectable compute use. The next recommended execution is `./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max -ReuseDataset`; it reuses the existing dataset and seed-2026 candidate, then retrains pending seeds 2027/2028 concurrently and saves each completed epoch.
 
 - 2026-08-25T20:38:58+09:00 [CODE] The submitted Docker failure is fixed and verified. After this change is committed, the user can safely rerun `scripts/run-final-solo-bootstrap.ps1`; the actual long solo training remains pending.
 - 2026-08-25T20:26:31+09:00 [CODE] The current handoff is plan-only: the production-scale solo pipeline remains implemented, but its day-scale run and final `checkpoints/solo-imitation-versus-bootstrap-v1/model.pt` are still pending. The sole operational next step is `scripts/run-final-solo-bootstrap.ps1`; 1v1 learning is out of current scope.

@@ -54,12 +54,14 @@ def main() -> None:
     parser.add_argument("--teacher-score-scale", type=float, default=1_000.0)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--progress-checkpoint", type=Path)
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--allow-observed", action="store_true")
     args = parser.parse_args()
     train(args)
 
 
-def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None) -> None:
+def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None) -> Path:
     if (
         args.epochs <= 0
         or args.min_epochs <= 0
@@ -88,6 +90,7 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
     model = AfterstateScorer(ModelConfig(input_features=len(FEATURE_NAMES))).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1.0e-4)
 
+    progress_path = _progress_path(args)
     best_validation: EpochMetrics | None = None
     best_state: dict[str, Tensor] | None = None
     best_epoch = 0
@@ -95,7 +98,34 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
     stale_epochs = 0
     completed_epochs = 0
     history: list[dict[str, object]] = []
-    for epoch in range(1, args.epochs + 1):
+    if getattr(args, "resume", False) and progress_path.is_file():
+        progress = torch.load(progress_path, map_location=device, weights_only=True)
+        _validate_progress(progress, args, dataset)
+        model.load_state_dict(progress["model_state"], strict=True)
+        optimizer.load_state_dict(progress["optimizer_state"])
+        best_state = progress["best_state"]
+        best_validation = EpochMetrics(**progress["best_validation"])
+        best_epoch = int(progress["best_epoch"])
+        significant_regret = progress["significant_regret"]
+        stale_epochs = int(progress["stale_epochs"])
+        completed_epochs = int(progress["completed_epochs"])
+        history = list(progress["training_history"])
+        print(
+            json.dumps(
+                {
+                    "event": "training_resumed",
+                    "seed": args.seed,
+                    "completed_epochs": completed_epochs,
+                    "progress_checkpoint": str(progress_path),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+    elif progress_path.exists():
+        progress_path.unlink()
+
+    for epoch in range(completed_epochs + 1, args.epochs + 1):
         model.train()
         training = _run_epoch(
             model,
@@ -141,17 +171,38 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
         completed_epochs = epoch
         epoch_record = {
             "epoch": epoch,
+            "seed": args.seed,
             "train": asdict(training),
             "validation": asdict(validation),
             "selected": selected,
             "stale_epochs": stale_epochs,
         }
         history.append(epoch_record)
+        _atomic_torch_save(
+            {
+                "checkpoint_schema": "afterstate-training-progress-v1",
+                "dataset_schema": SCHEMA_VERSION,
+                "dataset_id": dataset.manifest["dataset_id"],
+                "feature_names": FEATURE_NAMES,
+                "training_config": _training_config(args),
+                "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
+                "best_state": best_state,
+                "best_validation": asdict(best_validation),
+                "best_epoch": best_epoch,
+                "significant_regret": significant_regret,
+                "stale_epochs": stale_epochs,
+                "completed_epochs": completed_epochs,
+                "training_history": history,
+            },
+            progress_path,
+        )
         print(
             json.dumps(
                 epoch_record,
                 sort_keys=True,
-            )
+            ),
+            flush=True,
         )
         if epoch >= args.min_epochs and stale_epochs >= args.patience:
             break
@@ -161,8 +212,7 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
     model.load_state_dict(best_state, strict=True)
     early_stopped = completed_epochs < args.epochs
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
+    _atomic_torch_save(
         {
             "checkpoint_schema": "afterstate-scorer-v1",
             "dataset_schema": SCHEMA_VERSION,
@@ -196,6 +246,7 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
         },
         args.output,
     )
+    progress_path.unlink(missing_ok=True)
     print(
         json.dumps(
             {
@@ -207,8 +258,64 @@ def train(args: argparse.Namespace, prepared: PreparedTrainingData | None = None
                 "early_stopped": early_stopped,
             },
             sort_keys=True,
-        )
+        ),
+        flush=True,
     )
+    return args.output
+
+
+def _progress_path(args: argparse.Namespace) -> Path:
+    configured = getattr(args, "progress_checkpoint", None)
+    if configured is not None:
+        return Path(configured)
+    return args.output.with_name(f"{args.output.stem}.progress.pt")
+
+
+def _training_config(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "max_epochs": args.epochs,
+        "min_epochs": args.min_epochs,
+        "patience": args.patience,
+        "min_improvement": args.min_improvement,
+        "shuffle_buffer": args.shuffle_buffer,
+        "batch_decisions": args.batch_decisions,
+        "learning_rate": args.learning_rate,
+        "teacher_temperature": args.teacher_temperature,
+        "teacher_score_scale": args.teacher_score_scale,
+        "seed": args.seed,
+    }
+
+
+def _validate_progress(
+    progress: dict[str, object],
+    args: argparse.Namespace,
+    dataset: ValidatedDataset,
+) -> None:
+    if progress.get("checkpoint_schema") != "afterstate-training-progress-v1":
+        raise ValueError("unsupported training progress checkpoint")
+    if progress.get("dataset_schema") != SCHEMA_VERSION:
+        raise ValueError("training progress dataset schema mismatch")
+    if progress.get("dataset_id") != dataset.manifest["dataset_id"]:
+        raise ValueError("training progress dataset mismatch")
+    if tuple(progress.get("feature_names", ())) != FEATURE_NAMES:
+        raise ValueError("training progress feature contract mismatch")
+    if progress.get("training_config") != _training_config(args):
+        raise ValueError("training progress configuration mismatch")
+    completed_epochs = progress.get("completed_epochs")
+    history = progress.get("training_history")
+    if not isinstance(completed_epochs, int) or completed_epochs < 1:
+        raise ValueError("training progress epoch is invalid")
+    if not isinstance(history, list) or len(history) != completed_epochs:
+        raise ValueError("training progress history is incomplete")
+    if progress.get("best_state") is None or progress.get("best_validation") is None:
+        raise ValueError("training progress has no best model")
+
+
+def _atomic_torch_save(payload: dict[str, object], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    torch.save(payload, temporary)
+    temporary.replace(path)
 
 
 def prepare_training_data(manifest: Path, *, allow_observed: bool) -> PreparedTrainingData:

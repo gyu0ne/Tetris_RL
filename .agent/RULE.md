@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-25T20:09:50+09:00
+Last updated: 2026-08-26T09:00:54+09:00
 
 ## 1. Authority and scope
 
@@ -101,6 +101,8 @@ Explanation/         # Korean standalone explanations for implemented components
 - Demonstration shards are ephemeral by default. A retained checkpoint must embed the dataset/config hash, rules and engine provenance, feature normalization, teacher identity and training settings so deterministic shards can be deleted and regenerated.
 - Every generated game in one training dataset must have a distinct recorded seed. A fixed `base_seed` identifies a reproducible schedule; it must never mean reusing one game seed across matches.
 - The final solo bootstrap uses independent initialization runs, validation-selected best epochs and actual engine closed-loop selection. Any top-out in its final zero-top-out gate routes to learner-state aggregation; it must not be hidden by lowering the gate.
+- Long-running trainers must save an atomic progress checkpoint after every completed epoch and support exact continuation of model, optimizer, shuffle epoch, early-stopping state and history. A completed candidate checkpoint supersedes and removes its progress checkpoint.
+- Resource profiles may change independent-run concurrency, native thread counts and evaluation parallelism only. They must not silently change batch size, learning rate, epoch budget, seed schedule or any other learning-semantic setting. Resuming with a different resource profile is allowed; resuming with incompatible data or semantic settings must fail closed.
 - Training performance work follows measurement: profile first, then optimize. Prefer bitboards, batched native simulation, zero-copy observations, vectorized environments, mixed precision where numerically safe, and bounded opponent pools.
 
 ## 6. Verification and completion

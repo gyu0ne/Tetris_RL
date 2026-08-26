@@ -4,7 +4,7 @@
 
 결정일: `2026-08-24`
 
-구현 갱신일: `2026-08-25`
+구현 갱신일: `2026-08-26`
 
 ## 구현된 첫 단계
 
@@ -18,6 +18,8 @@
 - 매 게임 seed는 `base_seed + seed_stride × match_index`이며 같은 dataset 안에서 중복되지 않는다.
 - 장기 trainer는 bounded-memory deterministic shuffle, minimum epoch, patience early stopping과 validation regret best-epoch 복원을 사용한다.
 - 세 초기화 seed의 후보를 실제 Rust closed loop에서 고르고, top-out이 있으면 learner가 방문한 상태 250,000개에 같은 Rust teacher label을 붙여 scratch 재학습한다.
+- 독립 초기화 run은 프로세스 단위로 병렬 실행한다. `light=1×2`, `balanced=2×4`, `max=3×5`는 각각 `동시 run 수 × run당 native thread 수`이며 배치 크기·학습률·seed·epoch 예산은 바꾸지 않는다.
+- 각 epoch 종료 후 현재 모델, optimizer, best 모델, early-stopping 상태와 history를 같은 디렉터리의 임시 파일에 쓴 뒤 원자적으로 교체한다. 재실행 시 dataset/feature/학습 의미 설정이 일치할 때만 다음 epoch부터 이어가고, 이미 완료된 seed checkpoint는 검증 후 건너뛴다.
 
 512-decision smoke는 448 train/64 held-out decision으로 분리됐고 3 epoch 뒤 held-out top-1 59.375%, mean teacher regret 1,961.234375 milli-score를 기록했다. 이는 end-to-end 연결과 학습 감소를 확인한 결과일 뿐, 1대1 strength나 architecture 채택 근거가 아니다.
 

@@ -27,8 +27,30 @@
     "learning_rate": 0.0003,
     "teacher_temperature": 1.0,
     "teacher_score_scale": 1000.0,
-    "threads": 2,
+    "default_resource_profile": "balanced",
+    "resource_profiles": {
+      "light": {
+        "training_workers": 1,
+        "threads_per_worker": 2,
+        "evaluation_threads": 2,
+        "aggregation_parallel_games": 128
+      },
+      "balanced": {
+        "training_workers": 2,
+        "threads_per_worker": 4,
+        "evaluation_threads": 6,
+        "aggregation_parallel_games": 256
+      },
+      "max": {
+        "training_workers": 3,
+        "threads_per_worker": 5,
+        "evaluation_threads": 10,
+        "aggregation_parallel_games": 512
+      }
+    },
     "candidate_pattern": "checkpoints/solo-imitation-bootstrap-r{round}/seed-{seed}.pt",
+    "progress_pattern": "checkpoints/solo-imitation-bootstrap-r{round}/seed-{seed}.progress.pt",
+    "resume_completed_candidates": true,
     "selected_output": "checkpoints/solo-imitation-bootstrap-r{round}/selected.pt"
   },
   "evaluation": {
@@ -49,6 +71,11 @@
     "retrain_from_scratch_after_each_round": true
   },
   "retention": {
+    "keep_during_training": [
+      "dataset records and manifest",
+      "completed seed checkpoints",
+      "per-epoch progress checkpoints"
+    ],
     "keep": ["checkpoints/solo-imitation-versus-bootstrap-v1/model.pt"],
     "delete_after_promotion_and_reload": [
       "records",

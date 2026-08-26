@@ -1,6 +1,6 @@
 # 최종 솔로 모방학습 실행 절차
 
-작성일: `2026-08-25`
+작성일: `2026-08-26`
 
 이 문서는 짧은 smoke 모델이 아니라 1대1 강화학습의 초기 정책으로 사용할 장기 솔로 부트스트랩을 만드는 절차다. 권위 설정은 `configs/training/solo_imitation_bootstrap_v1.json`과 `configs/evaluation/solo_imitation_promotion_v1.json`이다.
 
@@ -18,7 +18,40 @@ clean commit에서 다음을 실행하면 이 문서의 1~5단계를 순서대�
 ./scripts/run-final-solo-bootstrap.ps1
 ```
 
+기본값은 `balanced`다. PC 사용 상황에 따라 다음 셋 중 하나를 고를 수 있다.
+
+| 프로필 | 독립 학습 병렬도 | 평가 자원 | 용도 |
+|---|---:|---:|---|
+| `light` | 1 worker × 2 threads | 2 threads | 다른 작업을 병행할 때 |
+| `balanced` | 2 workers × 4 threads | 6 threads | 기본 권장값 |
+| `max` | 3 workers × 5 threads | 10 threads | 학습 중 PC를 거의 사용하지 않을 때 |
+
+```powershell
+./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile light
+./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile balanced
+./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max
+```
+
+이 값은 `18 logical CPU / 8 GB RAM` 환경을 기준으로 정한 상한이다. gzip/JSON 해석 구간에는 CPU 사용률이 낮아질 수 있어 실제 사용률이 항상 표의 thread 합계와 같지는 않다. 프로필은 동시 run 수와 native thread 수만 바꾸며 배치 크기, 학습률, seed와 epoch 예산은 동일하다.
+
 스크립트는 컨테이너를 build하고 100만 결정을 생성한 뒤 세 모델을 학습한다. 최종 생존 평가에서 top-out이 발생하면 25만 learner-state를 추가하고 세 모델을 처음부터 재학습하며, 이를 최대 두 번 수행한다. 라운드마다 선택·최종 평가 seed 집합도 바꾼다. 중간 데이터를 자동 삭제하지는 않는다.
+
+이미 현재 dataset과 일부 seed 모델이 있다면 다음처럼 생성 단계를 생략하고 이어간다.
+
+```powershell
+./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max -ReuseDataset
+```
+
+`-ReuseDataset`은 records/manifest 존재 여부와 최소 결정 수를 먼저 확인한다. 이후 Python loader가 schema와 hash를 다시 검증한다. 완료된 `seed-2026.pt` 같은 후보는 dataset ID와 학습 설정이 맞을 때 재사용하며, 미완료 seed는 `seed-2027.progress.pt` 같은 파일의 다음 epoch부터 이어간다.
+
+progress checkpoint는 매 epoch가 완전히 끝난 뒤 원자적으로 저장되며 다음을 포함한다.
+
+- 현재 모델과 optimizer 상태
+- validation 기준 best 모델과 best epoch
+- early-stopping 누적 상태
+- 완료 epoch와 전체 history
+
+정상 완료되면 최종 `seed-*.pt`를 원자적으로 저장한 뒤 해당 progress 파일을 지운다. 중단 후 같은 명령을 다시 실행하면 된다. 프로필 변경은 허용되지만 dataset, batch 크기, 학습률, seed, early-stopping 설정 등이 달라지면 잘못 이어붙이지 않고 오류로 중단한다. 실행 중 소스 파일은 수정하지 않는다.
 
 후보 선택을 통과하지 못하거나 learner-state 재학습 2회 후에도 top-out이 발생하면 비정상 종료한다. 성능 기준을 낮춰 약한 모델을 실사용 파일로 승격하지 않는다.
 
@@ -76,7 +109,7 @@ $manifest | Select-Object decisions, requested_matches, base_seed, seed_stride, 
 ## 2. 세 초기화로 장기 학습
 
 ```powershell
-docker compose run --rm training python -m tetris_rl.training.multiseed --manifest datasets/solo-imitation-bootstrap-v1/manifest.json --output-dir checkpoints/solo-imitation-bootstrap-v2 --seeds 2026 2027 2028 --epochs 100 --min-epochs 20 --patience 10 --min-improvement 0.1 --shuffle-buffer 4096 --batch-decisions 64 --learning-rate 0.0003 --teacher-temperature 1.0 --teacher-score-scale 1000 --threads 2 --allow-observed
+docker compose run --rm training python -m tetris_rl.training.multiseed --manifest datasets/solo-imitation-bootstrap-v1/manifest.json --output-dir checkpoints/solo-imitation-bootstrap-v2 --seeds 2026 2027 2028 --epochs 100 --min-epochs 20 --patience 10 --min-improvement 0.1 --shuffle-buffer 4096 --batch-decisions 64 --learning-rate 0.0003 --teacher-temperature 1.0 --teacher-score-scale 1000 --workers 2 --threads 4 --resume --allow-observed
 ```
 
 `100 epoch`는 반드시 모두 실행한다는 뜻이 아니라 최대 예산이다. 각 run은 다음처럼 동작한다.
@@ -86,6 +119,8 @@ docker compose run --rm training python -m tetris_rl.training.multiseed --manife
 - validation mean teacher regret가 10 epoch 동안 의미 있게 개선되지 않으면 멈춘다.
 - 마지막 epoch가 아니라 validation regret가 가장 낮은 epoch의 가중치를 저장한다.
 - 세 run은 같은 데이터와 validation을 사용하므로 초기화 차이를 직접 비교할 수 있다.
+- `--workers`는 동시에 실행할 초기화 run 수, `--threads`는 각 run이 사용할 native thread 수다.
+- `--resume`은 호환되는 완료 후보와 epoch progress를 검증 후 재사용한다.
 
 ## 3. 후보 하나 선택
 

@@ -1,11 +1,15 @@
 import argparse
 import gzip
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from hashlib import sha256
 from pathlib import Path
+from unittest import mock
 
+import tetris_rl.training.imitation as imitation
 import torch
 from tetris_rl.features import ACTION_SPACE_ID, FEATURE_NAMES, MECHANICS_STATUS, SCHEMA_VERSION
 from tetris_rl.training.dataset import Decision
@@ -54,6 +58,91 @@ class ImitationTrainingTest(unittest.TestCase):
             self.assertTrue(checkpoint["training"]["early_stopped"])
             self.assertEqual(len(checkpoint["training_history"]), 3)
             self.assertIn(checkpoint["training"]["selected_epoch"], (1, 2, 3))
+
+    def test_training_resumes_exactly_from_last_completed_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self._write_dataset(root)
+            resumed_output = root / "resumed.pt"
+            resumed_args = self._training_args(manifest, resumed_output, resume=True)
+            original_run_epoch = imitation._run_epoch
+            calls = 0
+
+            def interrupt_second_epoch(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+                nonlocal calls
+                calls += 1
+                if calls == 3:
+                    raise RuntimeError("simulated interruption")
+                return original_run_epoch(*args, **kwargs)
+
+            with (
+                mock.patch.object(imitation, "_run_epoch", side_effect=interrupt_second_epoch),
+                self.assertRaisesRegex(RuntimeError, "simulated interruption"),
+            ):
+                train(resumed_args)
+
+            progress = root / "resumed.progress.pt"
+            progress_payload = torch.load(progress, map_location="cpu", weights_only=True)
+            self.assertEqual(progress_payload["completed_epochs"], 1)
+            self.assertFalse(resumed_output.exists())
+
+            train(resumed_args)
+            self.assertFalse(progress.exists())
+            resumed = torch.load(resumed_output, map_location="cpu", weights_only=True)
+            self.assertEqual([item["epoch"] for item in resumed["training_history"]], [1, 2, 3, 4])
+
+            uninterrupted_output = root / "uninterrupted.pt"
+            train(self._training_args(manifest, uninterrupted_output, resume=False))
+            uninterrupted = torch.load(
+                uninterrupted_output,
+                map_location="cpu",
+                weights_only=True,
+            )
+            for name, tensor in resumed["model_state"].items():
+                self.assertTrue(torch.equal(tensor, uninterrupted["model_state"][name]))
+
+    def test_parallel_multiseed_reuses_completed_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self._write_dataset(root)
+            output = root / "candidates"
+            command = [
+                sys.executable,
+                "-m",
+                "tetris_rl.training.multiseed",
+                "--manifest",
+                str(manifest),
+                "--output-dir",
+                str(output),
+                "--seeds",
+                "31",
+                "32",
+                "33",
+                "--epochs",
+                "2",
+                "--min-epochs",
+                "2",
+                "--patience",
+                "2",
+                "--min-improvement",
+                "1000000000",
+                "--shuffle-buffer",
+                "3",
+                "--batch-decisions",
+                "2",
+                "--threads",
+                "1",
+                "--workers",
+                "2",
+                "--resume",
+                "--allow-observed",
+            ]
+            first = subprocess.run(command, check=True, capture_output=True, text=True)
+            self.assertIn('"workers": 2', first.stdout)
+            self.assertEqual(len(list(output.glob("seed-*.pt"))), 3)
+
+            second = subprocess.run(command, check=True, capture_output=True, text=True)
+            self.assertEqual(second.stdout.count('"event": "completed_candidate_reused"'), 3)
 
     @staticmethod
     def _decision(seed: int) -> Decision:
@@ -110,6 +199,31 @@ class ImitationTrainingTest(unittest.TestCase):
         manifest_path = root / "manifest.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest_path
+
+    @staticmethod
+    def _training_args(
+        manifest: Path,
+        output: Path,
+        *,
+        resume: bool,
+    ) -> argparse.Namespace:
+        return argparse.Namespace(
+            manifest=manifest,
+            output=output,
+            epochs=4,
+            min_epochs=4,
+            patience=10,
+            min_improvement=1.0e9,
+            shuffle_buffer=3,
+            batch_decisions=2,
+            learning_rate=3.0e-4,
+            teacher_temperature=1.0,
+            teacher_score_scale=1_000.0,
+            seed=2026,
+            threads=1,
+            resume=resume,
+            allow_observed=True,
+        )
 
 
 if __name__ == "__main__":
