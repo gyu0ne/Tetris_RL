@@ -102,7 +102,7 @@ checkpoints/versus-selfplay-r0/model.pt    # 솔로 파일 없이 로드되는 �
 checkpoints/versus-selfplay-r0/snapshots/ # 상대 풀과 사후 평가용 과거 모델
 ```
 
-진행 중인 32경기는 update가 끝나도 초기화하지 않는다. `latest.pt`에는 각 경기의 현재 seed와 지금까지 선택한 양쪽 candidate index가 함께 들어간다. Resume 시 Rust 엔진이 이 선택 이력을 다시 실행하여 보드·bag·공격·가비지·margin frame을 복원한다. 따라서 한 경기가 600수 이후의 가비지 배율 구간까지 이어지면서도 update 경계 체크포인트에서 정확히 재개된다.
+진행 중인 32경기는 update가 끝나도 초기화하지 않는다. `latest.pt`에는 각 경기의 현재 seed와 지금까지 선택한 양쪽 candidate index가 함께 들어간다. Resume 시 Rust 엔진이 경기별 선택 이력을 병렬로 다시 실행하여 보드·bag·공격·가비지·margin frame을 복원한다. 따라서 한 경기가 600수 이후의 가비지 배율 구간까지 이어지면서도 update 경계 체크포인트에서 정확히 재개된다.
 
 개발용 1 update만 확인하려면 `-MaxUpdates 1`을 사용할 수 있지만, 이는 성능 학습이 아니라 배선 검증이다.
 

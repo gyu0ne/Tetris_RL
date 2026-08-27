@@ -77,19 +77,28 @@ impl VersusBatch {
             });
         }
         let mut batch = Self::new(seeds, frames_per_placement)?;
-        for (match_index, history) in histories.iter().enumerate() {
-            for (step, &(one, two)) in history.iter().enumerate() {
-                if batch.matches[match_index].battle.result() != BattleResult::Ongoing {
-                    return Err(VersusClosedLoopError::HistoryAfterTerminal { match_index, step });
+        batch
+            .matches
+            .par_iter_mut()
+            .zip(histories.par_iter())
+            .enumerate()
+            .try_for_each(|(match_index, (match_state, history))| {
+                for (step, &(one, two)) in history.iter().enumerate() {
+                    if match_state.battle.result() != BattleResult::Ongoing {
+                        return Err(VersusClosedLoopError::HistoryAfterTerminal {
+                            match_index,
+                            step,
+                        });
+                    }
+                    step_match(
+                        match_state,
+                        [Some(one), Some(two)],
+                        frames_per_placement,
+                        match_index * 2,
+                    )?;
                 }
-                step_match(
-                    &mut batch.matches[match_index],
-                    [Some(one), Some(two)],
-                    frames_per_placement,
-                    match_index * 2,
-                )?;
-            }
-        }
+                Ok(())
+            })?;
         Ok(batch)
     }
 

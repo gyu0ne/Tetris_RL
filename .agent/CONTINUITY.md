@@ -218,6 +218,7 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-27T16:19:56+09:00 [TOOL] A real 32-match checkpoint retained 256 paired choices for every ongoing battle. The first restore attempt exposed sequential per-match replay as unnecessarily slow; ordered Rayon replay restored all 8,192 paired placement steps in approximately 94 seconds, retained update 1 and exact 256-step histories, and left the standalone 4,515-parameter model loadable.
 - 2026-08-27T16:19:56+09:00 [TOOL] The first full 32-match x 256-placement update completed 16,384 decisions in 130.480 seconds but had zero terminal matches; resetting at that boundary would starve terminal learning, which motivated persistent battles and exact history replay.
 - 2026-08-27T16:19:56+09:00 [TOOL] Full Rust workspace clippy with `-D warnings`, all-target tests and release build passed; Python Ruff and 24 unittest cases passed. Real-checkpoint PPO smoke reached update 3, produced a reloadable 4,515-parameter standalone model and completed paired evaluator smoke.
 - 2026-08-27T16:19:56+09:00 [TOOL] A 16-match, four-placement candidate benchmark produced 9,134 candidates in 3.496 seconds with one Rayon thread and 0.741 seconds with eight threads on this host; deterministic ordered collection retained batch order.
