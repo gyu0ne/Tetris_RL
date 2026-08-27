@@ -4,7 +4,12 @@ from pathlib import Path
 
 import torch
 from tetris_rl.features import FEATURE_NAMES, MECHANICS_STATUS, SCHEMA_VERSION
-from tetris_rl.models import AfterstateScorer, load_scorer
+from tetris_rl.models import (
+    AfterstateScorer,
+    VersusActorCritic,
+    load_scorer,
+    load_versus_actor,
+)
 
 
 class AfterstateScorerTest(unittest.TestCase):
@@ -46,6 +51,53 @@ class AfterstateScorerTest(unittest.TestCase):
             scores = loaded.score(torch.zeros((3, len(FEATURE_NAMES))))
 
             self.assertEqual(tuple(scores.shape), (3,))
+
+    def test_versus_bootstrap_initially_matches_solo_logits_and_has_odd_value(self) -> None:
+        model = AfterstateScorer()
+        from tetris_rl.models.checkpoint import LoadedScorer
+
+        solo = LoadedScorer(
+            model=model,
+            feature_mean=torch.arange(10, dtype=torch.float32),
+            feature_std=torch.arange(1, 11, dtype=torch.float32),
+            metadata={},
+        )
+        versus = VersusActorCritic(solo)
+        candidates = torch.randn((11, 20))
+        state = torch.tensor([[8, 14, 2, 6, 3, 11, 1, 5, 4, 1, 7, 2]], dtype=torch.float32)
+        swapped = state.reshape(1, 6, 2).flip(-1).reshape(1, 12)
+
+        expected = model((candidates[:, :10] - solo.feature_mean) / solo.feature_std)
+        torch.testing.assert_close(versus.actor_logits(candidates), expected)
+        torch.testing.assert_close(versus.value(state), -versus.value(swapped))
+
+    def test_self_contained_versus_checkpoint_loads_without_solo_file(self) -> None:
+        from dataclasses import asdict
+
+        from tetris_rl.models.checkpoint import LoadedScorer
+
+        solo = LoadedScorer(
+            model=AfterstateScorer(),
+            feature_mean=torch.zeros(10),
+            feature_std=torch.ones(10),
+            metadata={},
+        )
+        model = VersusActorCritic(solo)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "versus.pt"
+            torch.save(
+                {
+                    "checkpoint_schema": "versus-actor-critic-v1",
+                    "mechanics_status": MECHANICS_STATUS,
+                    "model_config": asdict(model.config),
+                    "solo_model_config": model.solo_model.config.to_dict(),
+                    "model_state": model.state_dict(),
+                },
+                path,
+            )
+
+            loaded = load_versus_actor(path, allow_observed=True)
+            self.assertEqual(loaded.model.parameter_count(), model.parameter_count())
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ use super::{
     IncomingGarbageQueue, cancel_attack_packets, resolve_attack,
 };
 use engine_core::{
-    Board, FrameSession, GameConfig, HandlingRules, InputEdge, LockedPlacement,
-    SessionLockFrameOutcome, SessionSpawnOutcome, SessionStepError, TimingSchedule,
+    Board, FrameSession, GameConfig, HandlingRules, InputEdge, LastAction, LockedPlacement,
+    PieceState, SessionLockFrameOutcome, SessionSpawnOutcome, SessionStepError, TimingSchedule,
     TimingScheduleError,
 };
 use std::fmt;
@@ -56,6 +56,13 @@ pub enum BattleResult {
     PlayerOneWin,
     PlayerTwoWin,
     Draw,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlacementAction {
+    pub used_hold: bool,
+    pub placement: PieceState,
+    pub last_action: LastAction,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -197,6 +204,160 @@ impl BattleSession {
                 Err(error)
             }
         }
+    }
+
+    /// Applies one simultaneous reachable afterstate per player and advances
+    /// the battle clock by a shared fixed cadence. This local learning adapter
+    /// preserves attack, cancellation, garbage travel/insertion, spawn and
+    /// terminal order while deliberately omitting raw movement timing.
+    pub fn step_placements(
+        &mut self,
+        actions: [PlacementAction; 2],
+        frames_per_placement: u32,
+    ) -> Result<BattlePlacementOutcome, BattleError> {
+        let checkpoint = self.clone();
+        match self.step_placements_inner(actions, frames_per_placement) {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                *self = checkpoint;
+                Err(error)
+            }
+        }
+    }
+
+    fn step_placements_inner(
+        &mut self,
+        actions: [PlacementAction; 2],
+        frames_per_placement: u32,
+    ) -> Result<BattlePlacementOutcome, BattleError> {
+        if frames_per_placement == 0 {
+            return Err(BattleError::ZeroPlacementCadence);
+        }
+        if self.result != BattleResult::Ongoing {
+            return Err(BattleError::RoundOver(self.result));
+        }
+        if self.players[0].session.frame() != self.frame
+            || self.players[1].session.frame() != self.frame
+        {
+            return Err(BattleError::FrameDesync {
+                battle: self.frame,
+                player_one: self.players[0].session.frame(),
+                player_two: self.players[1].session.frame(),
+            });
+        }
+
+        let frame = self.frame;
+        let cadence = u64::from(frames_per_placement);
+        let next_frame = frame
+            .checked_add(cadence)
+            .ok_or(BattleError::FrameOverflow)?;
+        let [one_handling, two_handling] = self.rules.handling;
+        let attack_rules = self.rules.attack;
+        let garbage_rules = self.rules.garbage;
+        let multiplier = self.garbage_multiplier.current();
+        let [one, two] = &mut self.players;
+
+        let (one_hold, one_locked) = one
+            .session
+            .lock_afterstate_deferred(
+                actions[0].used_hold,
+                actions[0].placement,
+                actions[0].last_action,
+            )
+            .map_err(|source| BattleError::Session {
+                player: PlayerId::One,
+                source,
+            })?;
+        let (two_hold, two_locked) = two
+            .session
+            .lock_afterstate_deferred(
+                actions[1].used_hold,
+                actions[1].placement,
+                actions[1].last_action,
+            )
+            .map_err(|source| BattleError::Session {
+                player: PlayerId::Two,
+                source,
+            })?;
+
+        let (one_attack, one_cancel) = resolve_player_attack(
+            PlayerId::One,
+            one,
+            Some(one_locked),
+            multiplier,
+            attack_rules,
+            garbage_rules,
+        )?;
+        let (two_attack, two_cancel) = resolve_player_attack(
+            PlayerId::Two,
+            two,
+            Some(two_locked),
+            multiplier,
+            attack_rules,
+            garbage_rules,
+        )?;
+        let one_outgoing = one_cancel.map_or_else(AttackPackets::empty, |value| value.outgoing);
+        let two_outgoing = two_cancel.map_or_else(AttackPackets::empty, |value| value.outgoing);
+        let (one_transmitted, two_transmitted) =
+            cross_cancel_simultaneous(one_outgoing, two_outgoing)?;
+        enqueue_generated_packets(
+            PlayerId::Two,
+            &mut two.incoming,
+            one_transmitted,
+            frame,
+            garbage_rules,
+        )?;
+        enqueue_generated_packets(
+            PlayerId::One,
+            &mut one.incoming,
+            two_transmitted,
+            frame,
+            garbage_rules,
+        )?;
+
+        let one_insertion =
+            insert_for_player(PlayerId::One, one, Some(one_locked), frame, garbage_rules)?;
+        let two_insertion =
+            insert_for_player(PlayerId::Two, two, Some(two_locked), frame, garbage_rules)?;
+        let one_spawn = finish_player_spawn(PlayerId::One, one, Some(one_locked), one_handling)?;
+        let two_spawn = finish_player_spawn(PlayerId::Two, two, Some(two_locked), two_handling)?;
+
+        self.result = result_from_terminals(one.session.is_terminal(), two.session.is_terminal());
+        for elapsed in 0..cadence {
+            self.garbage_multiplier
+                .advance_end_of_frame(frame + elapsed, garbage_rules.multiplier)
+                .map_err(|source| BattleError::Garbage {
+                    player: PlayerId::One,
+                    source,
+                })?;
+        }
+        one.session.advance_placement_clock(cadence);
+        two.session.advance_placement_clock(cadence);
+        self.frame = next_frame;
+
+        Ok(BattlePlacementOutcome {
+            frame,
+            frames_per_placement,
+            player_one: BattlePlacementPlayerOutcome {
+                locked: one_locked,
+                hold_applied: one_hold,
+                attack: one_attack.expect("placement always resolves attack"),
+                cancellation: one_cancel.expect("placement always resolves cancellation"),
+                insertion: one_insertion.expect("placement always checks insertion"),
+                spawn: one_spawn,
+                transmitted: one_transmitted,
+            },
+            player_two: BattlePlacementPlayerOutcome {
+                locked: two_locked,
+                hold_applied: two_hold,
+                attack: two_attack.expect("placement always resolves attack"),
+                cancellation: two_cancel.expect("placement always resolves cancellation"),
+                insertion: two_insertion.expect("placement always checks insertion"),
+                spawn: two_spawn,
+                transmitted: two_transmitted,
+            },
+            result: self.result,
+        })
     }
 
     fn step_inner(
@@ -505,6 +666,26 @@ pub struct BattleFrameOutcome {
     pub result: BattleResult,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BattlePlacementPlayerOutcome {
+    pub locked: LockedPlacement,
+    pub hold_applied: bool,
+    pub attack: AttackOutcome,
+    pub cancellation: GarbageCancellationOutcome,
+    pub insertion: GarbageInsertionOutcome,
+    pub spawn: Option<SessionSpawnOutcome>,
+    pub transmitted: AttackPackets,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BattlePlacementOutcome {
+    pub frame: u64,
+    pub frames_per_placement: u32,
+    pub player_one: BattlePlacementPlayerOutcome,
+    pub player_two: BattlePlacementPlayerOutcome,
+    pub result: BattleResult,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BattleError {
     AttackConfiguration(AttackConfigError),
@@ -528,6 +709,8 @@ pub enum BattleError {
         player_two: u64,
     },
     RoundOver(BattleResult),
+    ZeroPlacementCadence,
+    FrameOverflow,
 }
 
 impl fmt::Display for BattleError {
@@ -560,6 +743,10 @@ impl fmt::Display for BattleError {
                 "battle frame {battle} differs from player frames {player_one}/{player_two}"
             ),
             Self::RoundOver(result) => write!(formatter, "battle round already ended: {result:?}"),
+            Self::ZeroPlacementCadence => {
+                formatter.write_str("placement cadence must be at least one frame")
+            }
+            Self::FrameOverflow => formatter.write_str("battle frame counter overflowed"),
         }
     }
 }
@@ -568,7 +755,10 @@ impl std::error::Error for BattleError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{BattleResult, BattleRules, BattleSession, PlayerId, cross_cancel_simultaneous};
+    use super::{
+        BattleError, BattleResult, BattleRules, BattleSession, PlacementAction, PlayerId,
+        cross_cancel_simultaneous,
+    };
     use crate::{
         AttackPacketKind, AttackPackets, AttackRules, ComboRule, GarbageMessinessRules,
         GarbageMultiplierSchedule, GarbageRules, IncomingGarbagePacket,
@@ -618,6 +808,69 @@ mod tests {
 
     fn hard_drop() -> [InputEdge; 1] {
         [InputEdge::press(InputButton::HardDrop)]
+    }
+
+    fn first_placement(battle: &BattleSession, player: PlayerId) -> PlacementAction {
+        let placement = battle
+            .player(player)
+            .session()
+            .game()
+            .reachable_placements()
+            .into_iter()
+            .next()
+            .expect("reachable placement");
+        PlacementAction {
+            used_hold: false,
+            placement: placement.state,
+            last_action: placement.last_action,
+        }
+    }
+
+    #[test]
+    fn placement_adapter_advances_both_players_by_shared_cadence() {
+        let mut battle = BattleSession::new(73, rules()).expect("valid battle");
+        let actions = [
+            first_placement(&battle, PlayerId::One),
+            first_placement(&battle, PlayerId::Two),
+        ];
+
+        let outcome = battle.step_placements(actions, 12).expect("placement step");
+
+        assert_eq!(outcome.frame, 0);
+        assert_eq!(outcome.frames_per_placement, 12);
+        assert_eq!(battle.frame(), 12);
+        assert_eq!(
+            battle
+                .player(PlayerId::One)
+                .session()
+                .game()
+                .pieces_placed(),
+            1
+        );
+        assert_eq!(
+            battle
+                .player(PlayerId::Two)
+                .session()
+                .game()
+                .pieces_placed(),
+            1
+        );
+    }
+
+    #[test]
+    fn zero_placement_cadence_is_rejected_transactionally() {
+        let mut battle = BattleSession::new(79, rules()).expect("valid battle");
+        let before = battle.clone();
+        let actions = [
+            first_placement(&battle, PlayerId::One),
+            first_placement(&battle, PlayerId::Two),
+        ];
+
+        assert_eq!(
+            battle.step_placements(actions, 0),
+            Err(BattleError::ZeroPlacementCadence)
+        );
+        assert_eq!(battle, before);
     }
 
     #[test]

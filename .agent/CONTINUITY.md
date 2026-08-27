@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-27T16:19:56+09:00 [USER] Resume the deferred 1v1 learning phase: implement a runnable placement-level reinforcement-learning path and explain the exact auxiliary reward.
+
 - 2026-08-27T10:21:14+09:00 [USER] Continue after the completed solo promotion by implementing a real-checkpoint spectator and reducing closed-loop evaluation time before later 1v1 work.
 
 - 2026-08-26T09:00:54+09:00 [USER] Divide solo-pipeline compute use into selectable light, balanced and maximum profiles; add intermediate saving and resume; assess whether the currently unfinished roughly 10-epoch candidate can be discarded.
@@ -33,6 +35,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-27T16:19:56+09:00 [CODE] The v1 learner uses the promoted solo scorer as an exact zero-context actor bootstrap, a 4,515-parameter actor-critic, fixed 12-frame simultaneous placements, PPO/GAE, and a current/historical/frozen-bootstrap opponent mix of 50/30/20.
+- 2026-08-27T16:19:56+09:00 [CODE] Dense reward is limited to `0.1 * (0.997*Phi(s') - Phi(s))`; `Phi` is a bounded weighted difference of max height, holes, pending/ready garbage, combo and B2B, is zero at terminals and negates under player swap.
 
 - 2026-08-27T10:21:14+09:00 [CODE] Keep placement-level model actions for observation: the spectator renders authoritative Rust board snapshots after each selected reachable lock and does not invent frame-path animation.
 - 2026-08-27T10:21:14+09:00 [CODE] Split inference candidate generation from teacher labeling. Inference retains only feature, placement and hold flag; learner-state aggregation retains teacher score, checksum/path and event records through `labeled_candidates`.
@@ -105,6 +110,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-27T16:19:56+09:00 [CODE] Added deterministic final-rotation provenance, direct placement lock and fixed-cadence battle transitions; exposed a parallel Rust `VersusBatch` through `py-bridge` and added Python vector environment, standalone versus checkpoints, PPO trainer, opponent pool, atomic update resume, scripts/configs and paired evaluator.
+- 2026-08-27T16:19:56+09:00 [CODE] Added `.agent/PROJECT_Explain_Versus_Self_Play_RL.md` and `Explanation/Versus_Self_Play_Reinforcement_Learning.md` with the settled architecture, exact reward equation and run/evaluation procedures.
 
 - 2026-08-27T10:21:14+09:00 [CODE] Added the Rust inference-only candidate path, PyO3 snapshots, process-sharded checkpoint evaluation, updated resource profiles, and a localhost spectator under `python/tetris_rl/spectator` plus `compose.yaml` service `spectator`.
 - 2026-08-27T10:21:14+09:00 [CODE] Added `Explanation/Solo_Model_Spectator_and_Fast_Evaluation.md`, `.agent/PROJECT_Explain_Solo_Inference_and_Spectator.md`, Hallmark tokens/audit records, and updated README/runbook/evaluation design documentation.
@@ -209,6 +217,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-27T16:19:56+09:00 [TOOL] Full Rust workspace clippy with `-D warnings`, all-target tests and release build passed; Python Ruff and 24 unittest cases passed. Real-checkpoint PPO smoke reached update 3, produced a reloadable 4,515-parameter standalone model and completed paired evaluator smoke.
+- 2026-08-27T16:19:56+09:00 [TOOL] A 16-match, four-placement candidate benchmark produced 9,134 candidates in 3.496 seconds with one Rayon thread and 0.741 seconds with eight threads on this host; deterministic ordered collection retained batch order.
+
 - 2026-08-27T10:21:14+09:00 [TOOL] Final verification passed: Rust fmt, workspace clippy, Python-feature PyO3 clippy, 135 workspace tests, release build, training image build, Ruff format/check, 17 Python tests, Compose config, real-checkpoint API smoke and browser console checks. Fresh graph indexing recorded 2,430 nodes and 8,681 edges.
 - 2026-08-27T10:21:14+09:00 [TOOL] The promoted 2,817-parameter checkpoint loaded in the spectator; seed 1 advanced three authoritative placements and reported 68 candidates on the latest decision, selected index 67, and an updated Rust board snapshot.
 - 2026-08-27T10:21:14+09:00 [TOOL] Identical 24-seed×300-placement evaluations with 1 and 4 workers both returned 24/24 survival and mean 300; Docker-inclusive wall time was 9.409 s versus 6.865 s, a 1.37× short-run speedup limited by process/model startup overhead.
@@ -264,6 +275,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-27T16:19:56+09:00 [CODE] The repository can now start and resume actual 1v1 PPO self-play from the promoted solo checkpoint using `scripts/run-versus-selfplay.ps1`; long training and held-out champion selection remain experiment execution, not missing implementation.
 
 - 2026-08-27T10:21:14+09:00 [CODE] The completed solo model can now be watched at `http://127.0.0.1:8788` through `docker compose up --build spectator`, and future closed-loop gates can select an explicit evaluation worker count without changing deterministic results. The remaining project milestone is the separately authorized 1v1 learning environment and self-play RL.
 

@@ -4,7 +4,9 @@ use crate::{
     ObservationRecord, RULES_CANONICAL, RULES_ID, SoloGenerationConfig, SoloGenerationSummary,
     TeacherError, TeacherRecord, extract_afterstate_features,
 };
-use engine_core::{GameConfig, GameError, GameState, Orientation, PieceKind, PieceState};
+use engine_core::{
+    GameConfig, GameError, GameState, LastAction, Orientation, PieceKind, PieceState,
+};
 use flate2::{Compression, GzBuilder};
 use sha2::{Digest, Sha256};
 use std::cmp::Reverse;
@@ -136,6 +138,7 @@ pub fn generate_solo_dataset(
 pub(crate) struct CandidateChoice {
     pub(crate) record: CandidateRecord,
     pub(crate) placement: PieceState,
+    pub(crate) last_action: LastAction,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -143,6 +146,7 @@ pub(crate) struct InferenceChoice {
     pub(crate) features: [i32; crate::FEATURE_COUNT],
     pub(crate) placement: PieceState,
     pub(crate) used_hold: bool,
+    pub(crate) last_action: LastAction,
 }
 
 pub(crate) fn enumerate_inference_candidates(
@@ -166,6 +170,7 @@ pub(crate) fn enumerate_inference_candidates(
                 features: extract_afterstate_features(&board, placement.state, lock.cleared),
                 placement: placement.state,
                 used_hold,
+                last_action: placement.last_action,
             });
         }
     }
@@ -217,6 +222,7 @@ pub(crate) fn enumerate_candidates(
                     },
                 },
                 placement: placement.state,
+                last_action: placement.last_action,
             });
         }
     }

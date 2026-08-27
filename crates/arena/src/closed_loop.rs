@@ -84,6 +84,7 @@ impl SoloBatch {
                             features: choice.record.features,
                             placement: choice.placement,
                             used_hold: choice.record.action.hold,
+                            last_action: choice.last_action,
                         })
                         .collect(),
                 );
@@ -138,7 +139,7 @@ impl SoloBatch {
             if choice.used_hold {
                 game.hold_active().map_err(GenerationError::from)?;
             }
-            game.lock_placement(choice.placement)
+            game.lock_placement_with_action(choice.placement, choice.last_action)
                 .map_err(GenerationError::from)?;
             *cached = None;
         }

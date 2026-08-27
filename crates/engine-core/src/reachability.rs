@@ -1,4 +1,4 @@
-use crate::{Board, PieceState, RotationDirection, try_rotate};
+use crate::{Board, LastAction, PieceState, RotationDirection, try_rotate};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Geometry-level inputs. Timing-aware reachability is layered above this core.
@@ -16,6 +16,7 @@ pub enum Movement {
 pub struct GeometricPlacement {
     pub state: PieceState,
     pub path: Vec<Movement>,
+    pub last_action: LastAction,
 }
 
 /// Enumerates every grounded state reachable by successful unit translations
@@ -28,29 +29,59 @@ pub fn reachable_locks(board: &Board, spawn: PieceState) -> Vec<GeometricPlaceme
 
     let mut frontier = VecDeque::from([(spawn, Vec::new())]);
     let mut visited = BTreeSet::from([spawn]);
-    let mut placements = BTreeMap::<PieceState, Vec<Movement>>::new();
+    let mut placements = BTreeMap::<PieceState, (Vec<Movement>, LastAction)>::new();
+    let mut rotation_finishes = BTreeMap::<PieceState, (Vec<Movement>, LastAction)>::new();
 
     while let Some((state, path)) = frontier.pop_front() {
         if try_movement(board, state, Movement::Down).is_none() {
-            placements.entry(state).or_insert_with(|| path.clone());
+            placements
+                .entry(state)
+                .or_insert_with(|| (path.clone(), last_action_for_path(&path)));
         }
 
         for movement in Movement::ALL {
-            let Some(next) = try_movement(board, state, movement) else {
+            let Some((next, last_action)) = try_movement_with_action(board, state, movement) else {
                 continue;
             };
+            let mut next_path = path.clone();
+            next_path.push(movement);
+            if matches!(last_action, LastAction::Rotation { .. })
+                && try_movement(board, next, Movement::Down).is_none()
+            {
+                rotation_finishes
+                    .entry(next)
+                    .or_insert_with(|| (next_path.clone(), last_action));
+            }
             if visited.insert(next) {
-                let mut next_path = path.clone();
-                next_path.push(movement);
                 frontier.push_back((next, next_path));
             }
         }
     }
 
+    for (state, rotation_path) in rotation_finishes {
+        if placements.contains_key(&state) {
+            placements.insert(state, rotation_path);
+        }
+    }
+
     placements
         .into_iter()
-        .map(|(state, path)| GeometricPlacement { state, path })
+        .map(|(state, (path, last_action))| GeometricPlacement {
+            state,
+            path,
+            last_action,
+        })
         .collect()
+}
+
+fn last_action_for_path(path: &[Movement]) -> LastAction {
+    match path.last() {
+        None => LastAction::None,
+        Some(Movement::Down | Movement::Left | Movement::Right) => LastAction::Translation,
+        Some(
+            Movement::RotateClockwise | Movement::RotateCounterclockwise | Movement::RotateHalf,
+        ) => LastAction::None,
+    }
 }
 
 impl Movement {
@@ -65,18 +96,48 @@ impl Movement {
 }
 
 pub fn try_movement(board: &Board, state: PieceState, movement: Movement) -> Option<PieceState> {
+    try_movement_with_action(board, state, movement).map(|(state, _)| state)
+}
+
+fn try_movement_with_action(
+    board: &Board,
+    state: PieceState,
+    movement: Movement,
+) -> Option<(PieceState, LastAction)> {
     match movement {
-        Movement::Down => try_translation(board, state, 0, -1),
-        Movement::Left => try_translation(board, state, -1, 0),
-        Movement::Right => try_translation(board, state, 1, 0),
+        Movement::Down => {
+            try_translation(board, state, 0, -1).map(|state| (state, LastAction::Translation))
+        }
+        Movement::Left => {
+            try_translation(board, state, -1, 0).map(|state| (state, LastAction::Translation))
+        }
+        Movement::Right => {
+            try_translation(board, state, 1, 0).map(|state| (state, LastAction::Translation))
+        }
         Movement::RotateClockwise => {
-            try_rotate(board, state, RotationDirection::Clockwise).map(|r| r.state)
+            rotation_with_action(board, state, RotationDirection::Clockwise)
         }
         Movement::RotateCounterclockwise => {
-            try_rotate(board, state, RotationDirection::Counterclockwise).map(|r| r.state)
+            rotation_with_action(board, state, RotationDirection::Counterclockwise)
         }
-        Movement::RotateHalf => try_rotate(board, state, RotationDirection::Half).map(|r| r.state),
+        Movement::RotateHalf => rotation_with_action(board, state, RotationDirection::Half),
     }
+}
+
+fn rotation_with_action(
+    board: &Board,
+    state: PieceState,
+    direction: RotationDirection,
+) -> Option<(PieceState, LastAction)> {
+    try_rotate(board, state, direction).map(|rotation| {
+        (
+            rotation.state,
+            LastAction::Rotation {
+                direction,
+                kick_index: rotation.kick_index,
+            },
+        )
+    })
 }
 
 pub fn hard_drop(board: &Board, state: PieceState) -> Option<PieceState> {
@@ -136,5 +197,19 @@ mod tests {
             });
             assert_eq!(replayed, Some(placement.state));
         }
+    }
+
+    #[test]
+    fn grounded_rotation_destinations_retain_rotation_provenance() {
+        let board = Board::empty();
+        let spawn = PieceState::new(PieceKind::T, Orientation::Spawn, 3, 18);
+        let placements = reachable_locks(&board, spawn);
+
+        assert!(
+            placements.iter().any(|placement| matches!(
+                placement.last_action,
+                crate::LastAction::Rotation { .. }
+            ))
+        );
     }
 }

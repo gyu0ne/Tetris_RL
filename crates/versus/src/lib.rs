@@ -9,8 +9,9 @@
 mod battle;
 
 pub use battle::{
-    BattleError, BattleFrameOutcome, BattlePlayerFrameOutcome, BattlePlayerState, BattleResult,
-    BattleRules, BattleSession, PlayerId,
+    BattleError, BattleFrameOutcome, BattlePlacementOutcome, BattlePlacementPlayerOutcome,
+    BattlePlayerFrameOutcome, BattlePlayerState, BattleResult, BattleRules, BattleSession,
+    PlacementAction, PlayerId,
 };
 
 use engine_core::{

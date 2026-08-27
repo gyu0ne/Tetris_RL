@@ -10,6 +10,7 @@ mod features;
 mod record;
 mod solo;
 mod teacher;
+mod versus_arena;
 
 pub use closed_loop::{CandidateBatch, ClosedLoopError, SoloBatch, SoloSnapshot};
 pub use features::{FEATURE_COUNT, FEATURE_NAMES, extract_afterstate_features};
@@ -19,6 +20,10 @@ pub use record::{
 };
 pub use solo::{GenerationError, generate_solo_dataset};
 pub use teacher::{DELLACHERIE_SCALED_WEIGHTS, LinearTeacher, TeacherError};
+pub use versus_arena::{
+    VERSUS_CANDIDATE_FEATURE_COUNT, VERSUS_STATE_FEATURE_COUNT, VersusBatch, VersusCandidateBatch,
+    VersusClosedLoopError,
+};
 
 pub const DATASET_SCHEMA_VERSION: &str = "solo-afterstate-imitation-v1";
 pub const ACTION_SPACE_ID: &str = "geometric-locked-afterstate-v1";

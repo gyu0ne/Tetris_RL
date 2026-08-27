@@ -45,6 +45,18 @@ pub fn extract_afterstate_features(
     ]
 }
 
+pub(crate) fn board_summary(board: &Board) -> [i32; 4] {
+    let heights = column_heights(board);
+    let aggregate_height = heights.iter().sum::<i32>();
+    let max_height = heights.iter().copied().max().unwrap_or(0);
+    let holes = buried_holes(board, &heights);
+    let bumpiness = heights
+        .windows(2)
+        .map(|pair| (pair[0] - pair[1]).abs())
+        .sum();
+    [aggregate_height, max_height, holes, bumpiness]
+}
+
 fn landing_height_x2(placement: PieceState) -> i32 {
     let cells = placement.cells();
     let min_y = cells.iter().map(|(_, y)| *y).min().unwrap_or(0);

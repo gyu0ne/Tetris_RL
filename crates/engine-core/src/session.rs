@@ -66,6 +66,41 @@ impl FrameSession {
         self.frame
     }
 
+    /// Locks an engine-enumerated afterstate without replaying raw inputs.
+    /// This narrow boundary is reserved for placement-level local arenas.
+    pub fn lock_afterstate_deferred(
+        &mut self,
+        used_hold: bool,
+        placement: crate::PieceState,
+        last_action: LastAction,
+    ) -> Result<(bool, LockedPlacement), SessionStepError> {
+        if self.is_terminal() {
+            return Err(SessionStepError::Game(GameError::GameOver));
+        }
+        if self.is_awaiting_spawn() {
+            return Err(SessionStepError::Game(GameError::AwaitingSpawn));
+        }
+
+        let hold_applied = if used_hold {
+            self.game.hold_active()?;
+            true
+        } else {
+            false
+        };
+        if self.is_terminal() {
+            return Err(SessionStepError::Game(GameError::GameOver));
+        }
+        let locked = self.game.lock_placement_deferred(placement, last_action)?;
+        self.timing = None;
+        Ok((hold_applied, locked))
+    }
+
+    /// Advances the shared placement-arena clock without simulating gravity.
+    /// A round must not mix this abstraction with frame-input stepping.
+    pub fn advance_placement_clock(&mut self, frames: u64) {
+        self.frame = self.frame.saturating_add(frames);
+    }
+
     pub const fn is_terminal(&self) -> bool {
         self.game.is_top_out()
     }
