@@ -102,6 +102,8 @@ checkpoints/versus-selfplay-r0/model.pt    # 솔로 파일 없이 로드되는 �
 checkpoints/versus-selfplay-r0/snapshots/ # 상대 풀과 사후 평가용 과거 모델
 ```
 
+진행 중인 32경기는 update가 끝나도 초기화하지 않는다. `latest.pt`에는 각 경기의 현재 seed와 지금까지 선택한 양쪽 candidate index가 함께 들어간다. Resume 시 Rust 엔진이 이 선택 이력을 다시 실행하여 보드·bag·공격·가비지·margin frame을 복원한다. 따라서 한 경기가 600수 이후의 가비지 배율 구간까지 이어지면서도 update 경계 체크포인트에서 정확히 재개된다.
+
 개발용 1 update만 확인하려면 `-MaxUpdates 1`을 사용할 수 있지만, 이는 성능 학습이 아니라 배선 검증이다.
 
 ## 4. 짝지은 평가
@@ -129,6 +131,7 @@ docker compose run --rm training python -m tetris_rl.evaluation.versus `
 - 종료 상태 정규화와 할인 보조 보상의 telescoping 단위 테스트
 - 1대1 Rust 배치 → Python actor → PPO 역전파 → `latest.pt`/`model.pt` 저장 smoke
 - 완료 update 단위 resume와 의미 설정 hash 불일치 차단
+- seed/action history 재연을 통한 진행 중 1대1 경기의 정확 상태 복원
 - 자기대전·과거 모델·고정 초기 모델 상대 풀 smoke
 - 동일 모델의 좌우 교대 closed-loop 평가 smoke
 - 16경기 후보 생성 4회 benchmark: Rayon 1 thread 3.496초, 8 thread 0.741초

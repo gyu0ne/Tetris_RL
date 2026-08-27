@@ -34,6 +34,18 @@ mod python {
             })
         }
 
+        #[staticmethod]
+        fn restore(
+            seeds: Vec<u64>,
+            histories: Vec<Vec<(usize, usize)>>,
+            frames_per_placement: u32,
+        ) -> PyResult<Self> {
+            Ok(Self {
+                inner: VersusBatch::restore(&seeds, &histories, frames_per_placement)
+                    .map_err(value_error)?,
+            })
+        }
+
         fn candidates<'py>(
             &mut self,
             py: Python<'py>,

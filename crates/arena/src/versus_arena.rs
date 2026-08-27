@@ -65,6 +65,34 @@ impl VersusBatch {
         })
     }
 
+    pub fn restore(
+        seeds: &[u64],
+        histories: &[Vec<(usize, usize)>],
+        frames_per_placement: u32,
+    ) -> Result<Self, VersusClosedLoopError> {
+        if histories.len() != seeds.len() {
+            return Err(VersusClosedLoopError::HistoryCount {
+                expected: seeds.len(),
+                actual: histories.len(),
+            });
+        }
+        let mut batch = Self::new(seeds, frames_per_placement)?;
+        for (match_index, history) in histories.iter().enumerate() {
+            for (step, &(one, two)) in history.iter().enumerate() {
+                if batch.matches[match_index].battle.result() != BattleResult::Ongoing {
+                    return Err(VersusClosedLoopError::HistoryAfterTerminal { match_index, step });
+                }
+                step_match(
+                    &mut batch.matches[match_index],
+                    [Some(one), Some(two)],
+                    frames_per_placement,
+                    match_index * 2,
+                )?;
+            }
+        }
+        Ok(batch)
+    }
+
     pub fn candidates(&mut self) -> Result<VersusCandidateBatch, VersusClosedLoopError> {
         let matches = self
             .matches
@@ -114,12 +142,12 @@ impl VersusBatch {
                 }
                 continue;
             }
-            let one = selected_action(&match_state.choices[0], selections[base], base)?;
-            let two = selected_action(&match_state.choices[1], selections[base + 1], base + 1)?;
-            match_state
-                .battle
-                .step_placements([one, two], self.frames_per_placement)?;
-            match_state.choices = [None, None];
+            step_match(
+                match_state,
+                [selections[base], selections[base + 1]],
+                self.frames_per_placement,
+                base,
+            )?;
         }
         Ok(())
     }
@@ -148,6 +176,28 @@ impl VersusBatch {
     pub fn match_count(&self) -> usize {
         self.matches.len()
     }
+}
+
+fn step_match(
+    match_state: &mut MatchState,
+    selections: [Option<usize>; 2],
+    frames_per_placement: u32,
+    decision_base: usize,
+) -> Result<(), VersusClosedLoopError> {
+    for player in [PlayerId::One, PlayerId::Two] {
+        let index = player_index(player);
+        if match_state.choices[index].is_none() {
+            match_state.choices[index] =
+                Some(enumerate_player_candidates(&match_state.battle, player)?);
+        }
+    }
+    let one = selected_action(&match_state.choices[0], selections[0], decision_base)?;
+    let two = selected_action(&match_state.choices[1], selections[1], decision_base + 1)?;
+    match_state
+        .battle
+        .step_placements([one, two], frames_per_placement)?;
+    match_state.choices = [None, None];
+    Ok(())
 }
 
 fn match_candidate_data(
@@ -352,6 +402,14 @@ pub enum VersusClosedLoopError {
         expected: usize,
         actual: usize,
     },
+    HistoryCount {
+        expected: usize,
+        actual: usize,
+    },
+    HistoryAfterTerminal {
+        match_index: usize,
+        step: usize,
+    },
     Profile(String),
     Generation(GenerationError),
     Battle(BattleError),
@@ -391,6 +449,13 @@ impl fmt::Display for VersusClosedLoopError {
             Self::ResetSeedCount { expected, actual } => {
                 write!(formatter, "expected {expected} reset seeds, got {actual}")
             }
+            Self::HistoryCount { expected, actual } => {
+                write!(formatter, "expected {expected} histories, got {actual}")
+            }
+            Self::HistoryAfterTerminal { match_index, step } => write!(
+                formatter,
+                "history for match {match_index} continues after terminal at step {step}"
+            ),
             Self::Profile(error) => write!(formatter, "rules profile activation failed: {error}"),
             Self::Generation(error) => write!(formatter, "candidate generation failed: {error}"),
             Self::Battle(error) => write!(formatter, "battle transition failed: {error}"),
@@ -459,5 +524,25 @@ mod tests {
             assert_eq!(one[pair * 2], two[pair * 2 + 1]);
             assert_eq!(one[pair * 2 + 1], two[pair * 2]);
         }
+    }
+
+    #[test]
+    fn action_history_restores_the_exact_candidate_batch() {
+        let mut original = VersusBatch::new(&[5, 7], 12).unwrap();
+        for _ in 0..3 {
+            original.candidates().unwrap();
+            original
+                .step(&[Some(0), Some(1), Some(2), Some(3)])
+                .unwrap();
+        }
+        let expected = original.candidates().unwrap();
+        let mut restored = VersusBatch::restore(
+            &[5, 7],
+            &[vec![(0, 1), (0, 1), (0, 1)], vec![(2, 3), (2, 3), (2, 3)]],
+            12,
+        )
+        .unwrap();
+
+        assert_eq!(restored.candidates().unwrap(), expected);
     }
 }

@@ -32,6 +32,7 @@ class VersusVectorEnvTest(unittest.TestCase):
         self.assertEqual(tuple(observation.state_features.shape), (2, 12))
         env.step([0, 0])
         self.assertTrue(bridge.stepped)
+        self.assertEqual(env.state_dict()["histories"], [[(0, 0)]])
 
 
 if __name__ == "__main__":

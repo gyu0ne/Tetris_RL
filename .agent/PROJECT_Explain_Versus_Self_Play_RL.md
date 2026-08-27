@@ -10,7 +10,7 @@
 - terminal objective는 `win=1, loss=-1, draw=0`인 zero-sum 결과다.
 - dense reward는 `0.1 * (0.997*Phi(s') - Phi(s))`만 허용하며 `Phi(terminal)=0`, `Phi(swap)=-Phi(s)`, `|Phi|<=1`이다.
 - 상대 풀은 current 50%, historical 30%, frozen bootstrap 20%다.
-- update 경계에서 새 seed batch를 시작하므로 progress checkpoint는 Rust 내부 상태 직렬화 없이도 정확히 재개된다. rollout 끝의 미종료 경기는 value bootstrap으로 time-limit truncation 처리한다.
+- 진행 중인 경기는 update 경계를 넘어 유지한다. progress checkpoint는 각 현재 경기의 seed와 양쪽 action-index 이력을 저장하고, resume 시 Rust가 후보를 다시 열거해 이력을 재연하여 정확한 전투 상태를 복구한다. rollout 경계의 advantage는 현재 value로 bootstrap한다.
 - 자원 프로필은 Torch/Rayon thread만 바꾸며 committed semantic config를 바꾸지 않는다.
 
 ## 구현 경계

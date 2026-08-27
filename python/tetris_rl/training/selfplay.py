@@ -109,6 +109,8 @@ def main() -> None:
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
     config = SelfPlayConfig.load(args.config)
+    torch.manual_seed(config.base_seed)
+    random.seed(config.base_seed)
     solo = load_scorer(args.bootstrap, allow_observed=args.allow_observed)
     model = VersusActorCritic(solo)
     bootstrap_opponent = VersusActorCritic(solo)
@@ -136,10 +138,15 @@ def main() -> None:
         history = list(payload.get("history", []))
         torch.set_rng_state(payload["torch_rng_state"])
         random.setstate(_as_random_state(payload["python_rng_state"]))
+        env = VersusVectorEnv.restore(payload["environment_state"])
     else:
-        torch.manual_seed(config.base_seed)
-        random.seed(config.base_seed)
+        initial_seeds = [
+            _scheduled_seed(config, offset) for offset in range(config.parallel_matches)
+        ]
+        seed_index = config.parallel_matches
+        env = VersusVectorEnv(initial_seeds, config.frames_per_placement)
 
+    observation = env.observe()
     reward_config = PotentialConfig(gamma=config.gamma, shaping_scale=config.shaping_scale)
     deadline = time.monotonic() + args.hours * 3600.0
 
@@ -151,25 +158,22 @@ def main() -> None:
             torch_rng_before = torch.get_rng_state()
             python_rng_before = random.getstate()
             seed_index_before = seed_index
+            environment_before = env.state_dict()
             try:
-                batch_seeds = [
-                    _scheduled_seed(config, seed_index + offset)
-                    for offset in range(config.parallel_matches)
-                ]
-                seed_index += config.parallel_matches
-                env = VersusVectorEnv(batch_seeds, config.frames_per_placement)
                 historical = _load_opponent_pool(
                     args.output_dir, config.opponent_pool_limit, args.allow_observed
                 )
                 assignments = _opponent_assignments(config, update, bootstrap_opponent, historical)
-                transitions, completed, seed_index, simulated_decisions = _collect_rollout(
-                    env,
-                    env.observe(),
-                    model,
-                    assignments,
-                    config,
-                    reward_config,
-                    seed_index,
+                transitions, observation, completed, seed_index, simulated_decisions = (
+                    _collect_rollout(
+                        env,
+                        observation,
+                        model,
+                        assignments,
+                        config,
+                        reward_config,
+                        seed_index,
+                    )
                 )
                 metrics = _ppo_update(model, optimizer, transitions, config)
             except BaseException:
@@ -178,6 +182,8 @@ def main() -> None:
                 torch.set_rng_state(torch_rng_before)
                 random.setstate(python_rng_before)
                 seed_index = seed_index_before
+                env = VersusVectorEnv.restore(environment_before)
+                observation = env.observe()
                 raise
             update += 1
             environment_steps += simulated_decisions
@@ -202,6 +208,7 @@ def main() -> None:
                 environment_steps,
                 seed_index,
                 history,
+                env.state_dict(),
             )
             if update % config.snapshot_interval_updates == 0:
                 snapshot = args.output_dir / "snapshots" / f"update-{update:06d}.pt"
@@ -216,6 +223,7 @@ def main() -> None:
                     environment_steps,
                     seed_index,
                     history,
+                    env.state_dict(),
                 )
                 _save_inference(
                     args.output_dir / "snapshots" / f"update-{update:06d}-model.pt",
@@ -239,6 +247,7 @@ def main() -> None:
             environment_steps,
             seed_index,
             history,
+            env.state_dict(),
         )
         _save_inference(
             args.output_dir / "model.pt",
@@ -259,7 +268,7 @@ def _collect_rollout(
     config: SelfPlayConfig,
     reward_config: PotentialConfig,
     seed_index: int,
-) -> tuple[list[DecisionTransition], int, int, int]:
+) -> tuple[list[DecisionTransition], VersusObservation, int, int, int]:
     by_time: list[list[DecisionTransition]] = []
     completed_matches = 0
     decision_count = config.parallel_matches * 2
@@ -342,7 +351,7 @@ def _collect_rollout(
         for index, record in enumerate(flattened)
         if actor_assignments[index % decision_count] is None
     ]
-    return learner_transitions, completed_matches, seed_index, len(flattened)
+    return learner_transitions, observation, completed_matches, seed_index, len(flattened)
 
 
 def _ppo_update(
@@ -461,6 +470,7 @@ def _save_progress(
     environment_steps: int,
     seed_index: int,
     history: list[dict[str, float | int]],
+    environment_state: dict[str, object],
 ) -> None:
     payload = {
         "checkpoint_schema": CHECKPOINT_SCHEMA,
@@ -475,6 +485,7 @@ def _save_progress(
         "torch_rng_state": torch.get_rng_state(),
         "python_rng_state": random.getstate(),
         "history": history,
+        "environment_state": environment_state,
     }
     _atomic_torch_save(payload, path)
 
@@ -517,6 +528,8 @@ def _validate_resume(
         raise ValueError("self-play config changed; refusing semantic resume")
     if payload.get("bootstrap_sha256") != bootstrap_hash:
         raise ValueError("solo bootstrap changed; refusing resume")
+    if "environment_state" not in payload:
+        raise ValueError("progress checkpoint lacks exact environment state")
 
 
 def _atomic_torch_save(payload: dict[str, object], path: Path) -> None:

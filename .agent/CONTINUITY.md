@@ -36,6 +36,7 @@
 
 ## [DECISIONS]
 
+- 2026-08-27T16:19:56+09:00 [CODE] Supersede update-boundary environment resets: ongoing battles persist across PPO updates; progress stores current seeds and paired candidate-index histories, and Rust deterministically replays them on resume so matches reach margin/terminal phases without serializing private engine state.
 - 2026-08-27T16:19:56+09:00 [CODE] The v1 learner uses the promoted solo scorer as an exact zero-context actor bootstrap, a 4,515-parameter actor-critic, fixed 12-frame simultaneous placements, PPO/GAE, and a current/historical/frozen-bootstrap opponent mix of 50/30/20.
 - 2026-08-27T16:19:56+09:00 [CODE] Dense reward is limited to `0.1 * (0.997*Phi(s') - Phi(s))`; `Phi` is a bounded weighted difference of max height, holes, pending/ready garbage, combo and B2B, is zero at terminals and negates under player swap.
 
@@ -217,6 +218,7 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-27T16:19:56+09:00 [TOOL] The first full 32-match x 256-placement update completed 16,384 decisions in 130.480 seconds but had zero terminal matches; resetting at that boundary would starve terminal learning, which motivated persistent battles and exact history replay.
 - 2026-08-27T16:19:56+09:00 [TOOL] Full Rust workspace clippy with `-D warnings`, all-target tests and release build passed; Python Ruff and 24 unittest cases passed. Real-checkpoint PPO smoke reached update 3, produced a reloadable 4,515-parameter standalone model and completed paired evaluator smoke.
 - 2026-08-27T16:19:56+09:00 [TOOL] A 16-match, four-placement candidate benchmark produced 9,134 candidates in 3.496 seconds with one Rayon thread and 0.741 seconds with eight threads on this host; deterministic ordered collection retained batch order.
 

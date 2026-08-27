@@ -48,6 +48,26 @@ class VersusVectorEnv:
             extension = import_module("tetris_engine")
             bridge = extension.VersusBatch(seeds, frames_per_placement)
         self._bridge = bridge
+        self._frames_per_placement = frames_per_placement
+        self._seeds = list(seeds)
+        self._histories: list[list[tuple[int, int]]] = [[] for _ in seeds]
+        self._last_done = [False] * (len(seeds) * 2)
+
+    @classmethod
+    def restore(cls, state: dict[str, object]) -> "VersusVectorEnv":
+        if state.get("schema_version") != "versus-vector-env-history-v1":
+            raise ValueError("unsupported versus environment state")
+        seeds = [int(seed) for seed in state["seeds"]]  # type: ignore[index]
+        histories = [
+            [(int(one), int(two)) for one, two in history]
+            for history in state["histories"]  # type: ignore[index]
+        ]
+        frames_per_placement = int(state["frames_per_placement"])
+        extension = import_module("tetris_engine")
+        bridge = extension.VersusBatch.restore(seeds, histories, frames_per_placement)
+        env = cls(seeds, frames_per_placement, bridge=bridge)
+        env._histories = histories
+        return env
 
     @property
     def match_count(self) -> int:
@@ -63,22 +83,52 @@ class VersusVectorEnv:
             raise ValueError("state feature count differs from decision count")
         if offsets[-1] != candidate_features.shape[0]:
             raise ValueError("candidate offsets do not cover the feature buffer")
-        return VersusObservation(
+        observation = VersusObservation(
             candidate_features=candidate_features,
             state_features=state_features,
             offsets=tuple(int(value) for value in offsets),
             done=torch.tensor(done, dtype=torch.bool),
             results=torch.tensor(results, dtype=torch.float32),
         )
+        self._last_done = [bool(value) for value in done]
+        return observation
 
     def step(self, selections: list[int | None]) -> VersusObservation:
+        if len(selections) != self.match_count * 2:
+            raise ValueError("selection count differs from environment decisions")
+        active_pairs: list[tuple[int, tuple[int, int]]] = []
+        for match_index in range(self.match_count):
+            one, two = selections[match_index * 2 : match_index * 2 + 2]
+            if self._last_done[match_index * 2]:
+                if one is not None or two is not None:
+                    raise ValueError("completed match received a selection")
+            else:
+                if one is None or two is None:
+                    raise ValueError("active match is missing a selection")
+                active_pairs.append((match_index, (int(one), int(two))))
         encoded = [-1 if selection is None else int(selection) for selection in selections]
         self._bridge.step(encoded)
+        for match_index, pair in active_pairs:
+            self._histories[match_index].append(pair)
         return self.observe()
 
     def reset_done(self, seeds: list[int]) -> VersusObservation:
+        completed = [index for index in range(self.match_count) if self._last_done[index * 2]]
+        if len(seeds) != len(completed):
+            raise ValueError("reset seed count differs from completed matches")
         self._bridge.reset_done([int(seed) for seed in seeds])
+        for match_index, seed in zip(completed, seeds, strict=True):
+            self._seeds[match_index] = int(seed)
+            self._histories[match_index] = []
         return self.observe()
+
+    def state_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": "versus-vector-env-history-v1",
+            "frames_per_placement": self._frames_per_placement,
+            "seeds": list(self._seeds),
+            "histories": [list(history) for history in self._histories],
+        }
 
 
 def _decode_i32(payload: bytes, width: int) -> Tensor:
