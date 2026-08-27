@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-27T22:17:59+09:00 [USER] Resume the stopped r0 entropy analysis, find an improvement direction, and add performance/learning diagnostics to the training log.
+
 - 2026-08-27T16:19:56+09:00 [USER] Resume the deferred 1v1 learning phase: implement a runnable placement-level reinforcement-learning path and explain the exact auxiliary reward.
 
 - 2026-08-27T10:21:14+09:00 [USER] Continue after the completed solo promotion by implementing a real-checkpoint spectator and reducing closed-loop evaluation time before later 1v1 work.
@@ -35,6 +37,10 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-27T22:17:59+09:00 [CODE] Supersede r0 raw-entropy PPO for new runs: r1 uses candidate-count-normalized entropy and a committed linear coefficient schedule `0.0005 -> 0.00005` over 100 updates; r0 remains an immutable diagnostic artifact and is not progress-resumed.
+- 2026-08-27T22:17:59+09:00 [CODE] Persist opponent kind, historical checkpoint and learner side for every active match until terminal. Resume restores these assignments with seed/action replay so an update boundary cannot change the opponent or terminal-credit owner.
+- 2026-08-27T22:17:59+09:00 [CODE] Use r0 update 50 as the preferred r1 warm start when that ignored local artifact exists, based on replicated short-horizon attack efficiency and lower entropy than update 70; fall back to the promoted solo bootstrap in a clean checkout. This is an initialization decision, not final champion promotion.
 
 - 2026-08-27T16:19:56+09:00 [CODE] Supersede update-boundary environment resets: ongoing battles persist across PPO updates; progress stores current seeds and paired candidate-index histories, and Rust deterministically replays them on resume so matches reach margin/terminal phases without serializing private engine state.
 - 2026-08-27T16:19:56+09:00 [CODE] The v1 learner uses the promoted solo scorer as an exact zero-context actor bootstrap, a 4,515-parameter actor-critic, fixed 12-frame simultaneous placements, PPO/GAE, and a current/historical/frozen-bootstrap opponent mix of 50/30/20.
@@ -111,6 +117,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-27T22:17:59+09:00 [CODE] Added Rust/Python candidate technique diagnostics, paired-evaluator completion/attack/technique metrics, normalized-entropy PPO with decay, persistent match assignments, warm-start/reference checkpoints, and rich per-update PPO/rollout/opponent logs. Added v2 production/smoke configs and updated the PowerShell runner, Korean manual, project plan, README, rules and internal design record.
+- 2026-08-27T22:17:59+09:00 [TOOL] Fresh v2 smoke advanced updates `1 -> 2`, resumed exactly to update 3 with environment steps `16 -> 32 -> 48`, coefficient `0.0005 -> 0.0004775 -> 0.000455`, progress schema v2, two persisted assignments, initialization SHA-256 and a reloadable 4,515-parameter inference model.
 
 - 2026-08-27T16:19:56+09:00 [CODE] Added deterministic final-rotation provenance, direct placement lock and fixed-cadence battle transitions; exposed a parallel Rust `VersusBatch` through `py-bridge` and added Python vector environment, standalone versus checkpoints, PPO trainer, opponent pool, atomic update resume, scripts/configs and paired evaluator.
 - 2026-08-27T16:19:56+09:00 [CODE] Added `.agent/PROJECT_Explain_Versus_Self_Play_RL.md` and `Explanation/Versus_Self_Play_Reinforcement_Learning.md` with the settled architecture, exact reward equation and run/evaluation procedures.
@@ -218,6 +227,10 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-27T22:17:59+09:00 [TOOL] On the same 32 fixed states, r0 update 1 to 70 changed raw entropy `1.2090 -> 2.8197`, effective choices `3.35 -> 16.77`, and mean maximum probability `0.486 -> 0.189`; the old fixed raw-entropy coefficient was flattening the policy rather than merely observing harder states.
+- 2026-08-27T22:17:59+09:00 [TOOL] Independent confirmation of r0 update 50 used 8 paired seeds and 300 placements per side: 4,800 candidate placements, attack/piece `0.1054167`, outgoing/piece `0.0945833`, Tetris/100 `0.375`; all 16 games were unfinished, so these are technique-efficiency signals and not a win-rate claim.
+- 2026-08-27T22:17:59+09:00 [TOOL] Python format/lint and 27 unit tests passed; Rust format, clippy with denied warnings, 141 workspace tests and release build passed. One initial Docker Hub metadata request timed out and one nested login-shell command lost Cargo PATH; the documented container commands succeeded on retry.
+
 - 2026-08-27T16:19:56+09:00 [TOOL] A real 32-match checkpoint retained 256 paired choices for every ongoing battle. The first restore attempt exposed sequential per-match replay as unnecessarily slow; ordered Rayon replay restored all 8,192 paired placement steps in approximately 94 seconds, retained update 1 and exact 256-step histories, and left the standalone 4,515-parameter model loadable.
 - 2026-08-27T16:19:56+09:00 [TOOL] The first full 32-match x 256-placement update completed 16,384 decisions in 130.480 seconds but had zero terminal matches; resetting at that boundary would starve terminal learning, which motivated persistent battles and exact history replay.
 - 2026-08-27T16:19:56+09:00 [TOOL] Full Rust workspace clippy with `-D warnings`, all-target tests and release build passed; Python Ruff and 24 unittest cases passed. Real-checkpoint PPO smoke reached update 3, produced a reloadable 4,515-parameter standalone model and completed paired evaluator smoke.
@@ -278,6 +291,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-27T22:17:59+09:00 [CODE] The entropy failure has a reproduced cause and a verified r1 implementation path. The next real experiment is `scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24`, followed by paired held-out/cadence evaluation; no final 1v1 champion is claimed yet.
 
 - 2026-08-27T16:19:56+09:00 [CODE] The repository can now start and resume actual 1v1 PPO self-play from the promoted solo checkpoint using `scripts/run-versus-selfplay.ps1`; long training and held-out champion selection remain experiment execution, not missing implementation.
 

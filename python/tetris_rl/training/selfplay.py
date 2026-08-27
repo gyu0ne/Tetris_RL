@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import time
@@ -17,7 +18,7 @@ from tetris_rl.features import MECHANICS_STATUS
 from tetris_rl.models import VersusActorCritic, load_scorer, load_versus_actor
 from tetris_rl.training.reward import PotentialConfig, transition_reward
 
-CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v1"
+CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v2"
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,9 @@ class SelfPlayConfig:
     self_play_fraction: float
     historical_fraction: float
     opponent_pool_limit: int
+    entropy_coefficient_final: float | None = None
+    entropy_decay_updates: int = 1
+    normalize_entropy: bool = False
 
     @classmethod
     def load(cls, path: Path) -> "SelfPlayConfig":
@@ -51,7 +55,7 @@ class SelfPlayConfig:
         return config
 
     def validate(self) -> None:
-        if self.schema_version != "versus-selfplay-ppo-v1":
+        if self.schema_version not in {"versus-selfplay-ppo-v1", "versus-selfplay-ppo-v2"}:
             raise ValueError("unsupported self-play config schema")
         positive = (
             self.frames_per_placement,
@@ -73,6 +77,36 @@ class SelfPlayConfig:
             raise ValueError("historical_fraction must be in [0, 1]")
         if self.self_play_fraction + self.historical_fraction > 1.0:
             raise ValueError("opponent fractions exceed one")
+        if self.entropy_coefficient < 0.0:
+            raise ValueError("entropy coefficient must be nonnegative")
+        if self.schema_version == "versus-selfplay-ppo-v2":
+            if self.entropy_coefficient_final is None or self.entropy_coefficient_final < 0.0:
+                raise ValueError("v2 requires a nonnegative final entropy coefficient")
+            if self.entropy_decay_updates <= 0 or not self.normalize_entropy:
+                raise ValueError("v2 requires normalized entropy and positive decay updates")
+
+
+@dataclass(frozen=True)
+class OpponentPoolEntry:
+    checkpoint: str
+    model: VersusActorCritic
+
+
+@dataclass(frozen=True)
+class MatchAssignment:
+    kind: str
+    learner_side: int | None
+    opponent_checkpoint: str | None = None
+
+    def validate(self) -> None:
+        if self.kind == "self_play":
+            if self.learner_side is not None or self.opponent_checkpoint is not None:
+                raise ValueError("self-play assignment cannot name one learner side or opponent")
+            return
+        if self.kind not in {"bootstrap", "historical"} or self.learner_side not in {0, 1}:
+            raise ValueError("invalid fixed-opponent assignment")
+        if (self.kind == "historical") != (self.opponent_checkpoint is not None):
+            raise ValueError("historical assignment checkpoint mismatch")
 
 
 @dataclass
@@ -85,6 +119,7 @@ class DecisionTransition:
     reward: float
     next_value: float
     terminal: bool
+    is_learner: bool
     advantage: float = 0.0
     return_target: float = 0.0
 
@@ -98,6 +133,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--max-updates", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--initialize-from", type=Path)
     parser.add_argument("--allow-observed", action="store_true")
     return parser.parse_args()
 
@@ -106,6 +142,8 @@ def main() -> None:
     args = parse_args()
     if args.hours <= 0.0 or args.threads <= 0 or args.max_updates < 0:
         raise ValueError("hours/threads must be positive and max-updates nonnegative")
+    if args.resume and args.initialize_from is not None:
+        raise ValueError("--resume and --initialize-from are mutually exclusive")
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
     config = SelfPlayConfig.load(args.config)
@@ -117,15 +155,21 @@ def main() -> None:
     bootstrap_opponent.eval()
     for parameter in bootstrap_opponent.parameters():
         parameter.requires_grad_(False)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     progress_path = args.output_dir / "latest.pt"
     config_hash = _sha256_file(args.config)
     bootstrap_hash = _sha256_file(args.bootstrap)
+    initialization_hash: str | None = None
+    if not args.resume and args.initialize_from is not None:
+        initialized = load_versus_actor(args.initialize_from, allow_observed=args.allow_observed)
+        model.load_state_dict(initialized.model.state_dict(), strict=True)
+        initialization_hash = _sha256_file(args.initialize_from)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     update = 0
     environment_steps = 0
     seed_index = 0
-    history: list[dict[str, float | int]] = []
+    history: list[dict[str, float | int | str | None]] = []
+    match_assignments: list[MatchAssignment]
 
     if args.resume and progress_path.exists():
         payload = torch.load(progress_path, map_location="cpu", weights_only=True)
@@ -136,15 +180,45 @@ def main() -> None:
         environment_steps = int(payload["environment_steps"])
         seed_index = int(payload["seed_index"])
         history = list(payload.get("history", []))
+        initialization_hash = payload.get("initialization_sha256")  # type: ignore[assignment]
+        match_assignments = [
+            MatchAssignment(**assignment) for assignment in payload["match_assignments"]
+        ]
+        for assignment in match_assignments:
+            assignment.validate()
         torch.set_rng_state(payload["torch_rng_state"])
         random.setstate(_as_random_state(payload["python_rng_state"]))
         env = VersusVectorEnv.restore(payload["environment_state"])
     else:
+        if args.resume:
+            raise FileNotFoundError(f"resume checkpoint not found: {progress_path}")
+        if progress_path.exists():
+            raise FileExistsError("output already has progress; use --resume or a new directory")
         initial_seeds = [
             _scheduled_seed(config, offset) for offset in range(config.parallel_matches)
         ]
         seed_index = config.parallel_matches
         env = VersusVectorEnv(initial_seeds, config.frames_per_placement)
+        historical = _load_opponent_pool(
+            args.output_dir, config.opponent_pool_limit, args.allow_observed
+        )
+        match_assignments = [
+            _new_match_assignment(config, index, seed, historical)
+            for index, seed in enumerate(initial_seeds)
+        ]
+        _save_inference(
+            args.output_dir / "reference-model.pt",
+            model,
+            config,
+            config_hash,
+            bootstrap_hash,
+            initialization_hash,
+            update,
+            environment_steps,
+        )
+
+    if len(match_assignments) != env.match_count:
+        raise ValueError("match assignment count differs from restored environment")
 
     observation = env.observe()
     reward_config = PotentialConfig(gamma=config.gamma, shaping_scale=config.shaping_scale)
@@ -159,29 +233,35 @@ def main() -> None:
             python_rng_before = random.getstate()
             seed_index_before = seed_index
             environment_before = env.state_dict()
+            assignments_before = list(match_assignments)
             try:
                 historical = _load_opponent_pool(
                     args.output_dir, config.opponent_pool_limit, args.allow_observed
                 )
-                assignments = _opponent_assignments(config, update, bootstrap_opponent, historical)
-                transitions, observation, completed, seed_index, simulated_decisions = (
+                transitions, observation, seed_index, simulated_decisions, rollout_metrics = (
                     _collect_rollout(
                         env,
                         observation,
                         model,
-                        assignments,
+                        match_assignments,
+                        bootstrap_opponent,
+                        historical,
+                        args.allow_observed,
                         config,
                         reward_config,
                         seed_index,
                     )
                 )
-                metrics = _ppo_update(model, optimizer, transitions, config)
+                entropy_coefficient = _entropy_coefficient(config, update)
+                metrics = _ppo_update(model, optimizer, transitions, config, entropy_coefficient)
+                metrics.update(rollout_metrics)
             except BaseException:
                 model.load_state_dict(model_before, strict=True)
                 optimizer.load_state_dict(optimizer_before)
                 torch.set_rng_state(torch_rng_before)
                 random.setstate(python_rng_before)
                 seed_index = seed_index_before
+                match_assignments = assignments_before
                 env = VersusVectorEnv.restore(environment_before)
                 observation = env.observe()
                 raise
@@ -189,12 +269,14 @@ def main() -> None:
             environment_steps += simulated_decisions
             metrics.update(
                 {
+                    "event": "training_update",
                     "update": update,
                     "environment_steps": environment_steps,
-                    "completed_matches": completed,
+                    "entropy_coefficient": entropy_coefficient,
                     "seconds": time.monotonic() - started,
                 }
             )
+            _add_rolling_scores(metrics, history)
             history.append(metrics)
             history = history[-100:]
             _save_progress(
@@ -209,6 +291,8 @@ def main() -> None:
                 seed_index,
                 history,
                 env.state_dict(),
+                match_assignments,
+                initialization_hash,
             )
             if update % config.snapshot_interval_updates == 0:
                 snapshot = args.output_dir / "snapshots" / f"update-{update:06d}.pt"
@@ -224,6 +308,8 @@ def main() -> None:
                     seed_index,
                     history,
                     env.state_dict(),
+                    match_assignments,
+                    initialization_hash,
                 )
                 _save_inference(
                     args.output_dir / "snapshots" / f"update-{update:06d}-model.pt",
@@ -231,6 +317,7 @@ def main() -> None:
                     config,
                     config_hash,
                     bootstrap_hash,
+                    initialization_hash,
                     update,
                     environment_steps,
                 )
@@ -248,6 +335,8 @@ def main() -> None:
             seed_index,
             history,
             env.state_dict(),
+            match_assignments,
+            initialization_hash,
         )
         _save_inference(
             args.output_dir / "model.pt",
@@ -255,6 +344,7 @@ def main() -> None:
             config,
             config_hash,
             bootstrap_hash,
+            initialization_hash,
             update,
             environment_steps,
         )
@@ -264,16 +354,51 @@ def _collect_rollout(
     env: VersusVectorEnv,
     observation: VersusObservation,
     model: VersusActorCritic,
-    actor_assignments: list[VersusActorCritic | None],
+    match_assignments: list[MatchAssignment],
+    bootstrap: VersusActorCritic,
+    historical: list[OpponentPoolEntry],
+    allow_observed: bool,
     config: SelfPlayConfig,
     reward_config: PotentialConfig,
     seed_index: int,
-) -> tuple[list[DecisionTransition], VersusObservation, int, int, int]:
+) -> tuple[
+    list[DecisionTransition],
+    VersusObservation,
+    int,
+    int,
+    dict[str, float | int],
+]:
     by_time: list[list[DecisionTransition]] = []
-    completed_matches = 0
+    actor_assignments, model_cache = _resolve_actor_assignments(
+        match_assignments, bootstrap, historical, allow_observed
+    )
     decision_count = config.parallel_matches * 2
     if len(actor_assignments) != decision_count:
         raise ValueError("opponent assignment count differs from decisions")
+    counters = {
+        "completed_matches": 0,
+        "self_play_completed": 0,
+        "bootstrap_games": 0,
+        "bootstrap_wins": 0,
+        "bootstrap_losses": 0,
+        "bootstrap_draws": 0,
+        "historical_games": 0,
+        "historical_wins": 0,
+        "historical_losses": 0,
+        "historical_draws": 0,
+        "learner_decisions": 0,
+        "learner_lines": 0,
+        "learner_attack": 0,
+        "learner_outgoing_attack": 0,
+        "learner_tetrises": 0,
+        "learner_t_spin_mini": 0,
+        "learner_t_spin_full": 0,
+        "learner_perfect_clears": 0,
+    }
+    entropy_sum = 0.0
+    normalized_entropy_sum = 0.0
+    max_probability_sum = 0.0
+    candidate_count_sum = 0
     for _ in range(config.rollout_steps):
         if bool(torch.any(observation.done)):
             raise RuntimeError("rollout started with an unreset completed match")
@@ -289,9 +414,30 @@ def _collect_rollout(
                 logits = actor.actor_logits(observation.candidate_features[start:end])
             distribution = Categorical(logits=logits)
             action = distribution.sample()
-            selections.append(int(action.item()))
+            selected = int(action.item())
+            selections.append(selected)
             log_probabilities.append(float(distribution.log_prob(action).item()))
             candidate_views.append(observation.candidate_features[start:end].clone())
+            if actor_assignments[decision] is None:
+                candidate_count = end - start
+                entropy = float(distribution.entropy().item())
+                counters["learner_decisions"] += 1
+                candidate_count_sum += candidate_count
+                entropy_sum += entropy
+                if candidate_count > 1:
+                    normalized_entropy_sum += entropy / math.log(candidate_count)
+                max_probability_sum += float(distribution.probs.max().item())
+                diagnostics = observation.candidate_diagnostics[start + selected]
+                lines, t_spin, perfect_clear, attack, outgoing = (
+                    int(value.item()) for value in diagnostics
+                )
+                counters["learner_lines"] += lines
+                counters["learner_attack"] += attack
+                counters["learner_outgoing_attack"] += outgoing
+                counters["learner_tetrises"] += int(lines == 4)
+                counters["learner_t_spin_mini"] += int(t_spin == 1)
+                counters["learner_t_spin_full"] += int(t_spin == 2)
+                counters["learner_perfect_clears"] += int(perfect_clear != 0)
 
         next_observation = env.step(selections)
         terminal = next_observation.done
@@ -315,19 +461,43 @@ def _collect_rollout(
                 reward=float(rewards[index].item()),
                 next_value=float(next_values[index].item()),
                 terminal=bool(terminal[index].item()),
+                is_learner=actor_assignments[index] is None,
             )
             for index in range(decision_count)
         ]
         by_time.append(step_transitions)
 
-        completed = int(terminal[0::2].sum().item())
-        completed_matches += completed
-        if completed:
+        completed_indices = [
+            index for index in range(config.parallel_matches) if bool(terminal[index * 2].item())
+        ]
+        counters["completed_matches"] += len(completed_indices)
+        if completed_indices:
+            for match_index in completed_indices:
+                assignment = match_assignments[match_index]
+                if assignment.kind == "self_play":
+                    counters["self_play_completed"] += 1
+                    continue
+                side = assignment.learner_side
+                if side is None:
+                    raise RuntimeError("fixed opponent match lacks learner side")
+                prefix = assignment.kind
+                outcome = int(next_observation.results[match_index * 2 + side].item())
+                counters[f"{prefix}_games"] += 1
+                counters[f"{prefix}_wins"] += int(outcome > 0)
+                counters[f"{prefix}_losses"] += int(outcome < 0)
+                counters[f"{prefix}_draws"] += int(outcome == 0)
             reset_seeds = [
-                _scheduled_seed(config, seed_index + offset) for offset in range(completed)
+                _scheduled_seed(config, seed_index + offset)
+                for offset in range(len(completed_indices))
             ]
-            seed_index += completed
+            seed_index += len(completed_indices)
             next_observation = env.reset_done(reset_seeds)
+            for match_index, seed in zip(completed_indices, reset_seeds, strict=True):
+                assignment = _new_match_assignment(config, match_index, seed, historical)
+                match_assignments[match_index] = assignment
+                pair = _actors_for_assignment(assignment, bootstrap, model_cache, allow_observed)
+                base = match_index * 2
+                actor_assignments[base : base + 2] = pair
         observation = next_observation
 
     advantages = torch.zeros((config.rollout_steps, decision_count), dtype=torch.float32)
@@ -346,12 +516,30 @@ def _collect_rollout(
     for record, advantage in zip(flattened, advantages.flatten(), strict=True):
         record.advantage = float(advantage.item())
         record.return_target = record.advantage + record.old_value
-    learner_transitions = [
-        record
-        for index, record in enumerate(flattened)
-        if actor_assignments[index % decision_count] is None
-    ]
-    return learner_transitions, observation, completed_matches, seed_index, len(flattened)
+    learner_transitions = [record for record in flattened if record.is_learner]
+    learner_decisions = counters["learner_decisions"]
+    rollout_metrics: dict[str, float | int] = dict(counters)
+    if learner_decisions:
+        rollout_metrics.update(
+            {
+                "rollout_entropy": entropy_sum / learner_decisions,
+                "rollout_normalized_entropy": normalized_entropy_sum / learner_decisions,
+                "rollout_effective_choices": math.exp(entropy_sum / learner_decisions),
+                "rollout_mean_max_probability": max_probability_sum / learner_decisions,
+                "rollout_mean_candidates": candidate_count_sum / learner_decisions,
+                "lines_per_piece": counters["learner_lines"] / learner_decisions,
+                "attack_per_piece": counters["learner_attack"] / learner_decisions,
+                "outgoing_attack_per_piece": counters["learner_outgoing_attack"]
+                / learner_decisions,
+                "tetris_per_100": 100.0 * counters["learner_tetrises"] / learner_decisions,
+                "t_spin_mini_per_100": 100.0 * counters["learner_t_spin_mini"] / learner_decisions,
+                "t_spin_full_per_100": 100.0 * counters["learner_t_spin_full"] / learner_decisions,
+                "perfect_clear_per_100": 100.0
+                * counters["learner_perfect_clears"]
+                / learner_decisions,
+            }
+        )
+    return learner_transitions, observation, seed_index, len(flattened), rollout_metrics
 
 
 def _ppo_update(
@@ -359,6 +547,7 @@ def _ppo_update(
     optimizer: torch.optim.Optimizer,
     transitions: list[DecisionTransition],
     config: SelfPlayConfig,
+    entropy_coefficient: float,
 ) -> dict[str, float]:
     advantages = torch.tensor([record.advantage for record in transitions])
     advantages = (advantages - advantages.mean()) / advantages.std().clamp_min(1e-6)
@@ -366,6 +555,11 @@ def _ppo_update(
     policy_losses: list[float] = []
     value_losses: list[float] = []
     entropies: list[float] = []
+    normalized_entropies: list[float] = []
+    approximate_kls: list[float] = []
+    clip_fractions: list[float] = []
+    gradient_norms: list[float] = []
+    explained_variances: list[float] = []
     for _ in range(config.ppo_epochs):
         order = torch.randperm(len(transitions)).tolist()
         for start in range(0, len(order), config.minibatch_decisions):
@@ -375,19 +569,28 @@ def _ppo_update(
             logits = model.actor_logits(candidate_tensor)
             new_log_probabilities = []
             entropy_values = []
+            normalized_entropy_values = []
             offset = 0
             for record in records:
                 end = offset + record.candidates.shape[0]
                 distribution = Categorical(logits=logits[offset:end])
                 action = torch.tensor(record.action)
                 new_log_probabilities.append(distribution.log_prob(action))
-                entropy_values.append(distribution.entropy())
+                candidate_entropy = distribution.entropy()
+                entropy_values.append(candidate_entropy)
+                candidate_count = record.candidates.shape[0]
+                if candidate_count > 1:
+                    normalized_entropy_values.append(candidate_entropy / math.log(candidate_count))
+                else:
+                    normalized_entropy_values.append(torch.zeros_like(candidate_entropy))
                 offset = end
             new_log_probability = torch.stack(new_log_probabilities)
             entropy = torch.stack(entropy_values).mean()
+            normalized_entropy = torch.stack(normalized_entropy_values).mean()
             old_log_probability = torch.tensor([record.old_log_probability for record in records])
             batch_advantage = advantages[indices]
-            ratio = torch.exp(new_log_probability - old_log_probability)
+            log_ratio = new_log_probability - old_log_probability
+            ratio = torch.exp(log_ratio)
             unclipped = ratio * batch_advantage
             clipped = (
                 torch.clamp(ratio, 1.0 - config.clip_ratio, 1.0 + config.clip_ratio)
@@ -398,65 +601,145 @@ def _ppo_update(
             values = model.value(states)
             targets = torch.tensor([record.return_target for record in records])
             value_loss = torch.nn.functional.mse_loss(values, targets)
+            entropy_objective = normalized_entropy if config.normalize_entropy else entropy
             loss = (
                 policy_loss
                 + config.value_coefficient * value_loss
-                - config.entropy_coefficient * entropy
+                - entropy_coefficient * entropy_objective
             )
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+            gradient_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
             optimizer.step()
             losses.append(float(loss.item()))
             policy_losses.append(float(policy_loss.item()))
             value_losses.append(float(value_loss.item()))
             entropies.append(float(entropy.item()))
+            normalized_entropies.append(float(normalized_entropy.item()))
+            approximate_kls.append(float(((ratio - 1.0) - log_ratio).mean().item()))
+            clip_fractions.append(
+                float(((ratio - 1.0).abs() > config.clip_ratio).float().mean().item())
+            )
+            gradient_norms.append(float(gradient_norm.item()))
+            target_variance = targets.var(unbiased=False)
+            if float(target_variance.item()) > 1e-12:
+                residual_variance = (targets - values).var(unbiased=False)
+                explained_variances.append(
+                    float((1.0 - residual_variance / target_variance).item())
+                )
 
     return {
         "loss": _mean(losses),
         "policy_loss": _mean(policy_losses),
         "value_loss": _mean(value_losses),
-        "entropy": _mean(entropies),
+        "ppo_entropy": _mean(entropies),
+        "ppo_normalized_entropy": _mean(normalized_entropies),
+        "entropy_loss_contribution": -entropy_coefficient
+        * _mean(normalized_entropies if config.normalize_entropy else entropies),
+        "approximate_kl": _mean(approximate_kls),
+        "clip_fraction": _mean(clip_fractions),
+        "gradient_norm": _mean(gradient_norms),
+        "explained_variance": _mean(explained_variances) if explained_variances else 0.0,
         "mean_reward": _mean([record.reward for record in transitions]),
     }
 
 
 def _load_opponent_pool(
     output_dir: Path, limit: int, allow_observed: bool
-) -> list[VersusActorCritic]:
+) -> list[OpponentPoolEntry]:
     paths = sorted((output_dir / "snapshots").glob("update-*-model.pt"))[-limit:]
-    models = []
+    entries = []
     for path in paths:
         loaded = load_versus_actor(path, allow_observed=allow_observed).model
         loaded.eval()
         for parameter in loaded.parameters():
             parameter.requires_grad_(False)
-        models.append(loaded)
-    return models
+        entries.append(OpponentPoolEntry(checkpoint=str(path), model=loaded))
+    return entries
 
 
-def _opponent_assignments(
+def _new_match_assignment(
     config: SelfPlayConfig,
-    update: int,
-    bootstrap: VersusActorCritic,
-    historical: list[VersusActorCritic],
-) -> list[VersusActorCritic | None]:
+    match_index: int,
+    seed: int,
+    historical: list[OpponentPoolEntry],
+) -> MatchAssignment:
     self_play_matches = round(config.parallel_matches * config.self_play_fraction)
     historical_matches = round(config.parallel_matches * config.historical_fraction)
-    assignments: list[VersusActorCritic | None] = []
-    for match_index in range(config.parallel_matches):
-        if match_index < self_play_matches:
-            assignments.extend((None, None))
-            continue
-        learner_side = (match_index + update) % 2
-        if match_index < self_play_matches + historical_matches and historical:
-            opponent = historical[(match_index + update) % len(historical)]
-        else:
-            opponent = bootstrap
-        pair: list[VersusActorCritic | None] = [opponent, opponent]
-        pair[learner_side] = None
-        assignments.extend(pair)
-    return assignments
+    if match_index < self_play_matches:
+        return MatchAssignment(kind="self_play", learner_side=None)
+    learner_side = seed % 2
+    if match_index < self_play_matches + historical_matches and historical:
+        opponent = historical[seed % len(historical)]
+        return MatchAssignment(
+            kind="historical",
+            learner_side=learner_side,
+            opponent_checkpoint=opponent.checkpoint,
+        )
+    return MatchAssignment(kind="bootstrap", learner_side=learner_side)
+
+
+def _resolve_actor_assignments(
+    assignments: list[MatchAssignment],
+    bootstrap: VersusActorCritic,
+    historical: list[OpponentPoolEntry],
+    allow_observed: bool,
+) -> tuple[list[VersusActorCritic | None], dict[str, VersusActorCritic]]:
+    cache = {entry.checkpoint: entry.model for entry in historical}
+    actors: list[VersusActorCritic | None] = []
+    for assignment in assignments:
+        assignment.validate()
+        actors.extend(_actors_for_assignment(assignment, bootstrap, cache, allow_observed))
+    return actors, cache
+
+
+def _actors_for_assignment(
+    assignment: MatchAssignment,
+    bootstrap: VersusActorCritic,
+    cache: dict[str, VersusActorCritic],
+    allow_observed: bool,
+) -> list[VersusActorCritic | None]:
+    if assignment.kind == "self_play":
+        return [None, None]
+    if assignment.kind == "bootstrap":
+        opponent = bootstrap
+    else:
+        checkpoint = assignment.opponent_checkpoint
+        if checkpoint is None:
+            raise ValueError("historical assignment lacks checkpoint")
+        if checkpoint not in cache:
+            loaded = load_versus_actor(Path(checkpoint), allow_observed=allow_observed).model
+            loaded.eval()
+            for parameter in loaded.parameters():
+                parameter.requires_grad_(False)
+            cache[checkpoint] = loaded
+        opponent = cache[checkpoint]
+    pair: list[VersusActorCritic | None] = [opponent, opponent]
+    if assignment.learner_side is None:
+        raise ValueError("fixed-opponent assignment lacks learner side")
+    pair[assignment.learner_side] = None
+    return pair
+
+
+def _entropy_coefficient(config: SelfPlayConfig, update: int) -> float:
+    final = config.entropy_coefficient_final
+    if final is None:
+        return config.entropy_coefficient
+    fraction = min(max(update, 0) / config.entropy_decay_updates, 1.0)
+    return config.entropy_coefficient + fraction * (final - config.entropy_coefficient)
+
+
+def _add_rolling_scores(
+    metrics: dict[str, float | int | str | None],
+    history: list[dict[str, float | int | str | None]],
+) -> None:
+    window = [*history[-9:], metrics]
+    for prefix in ("bootstrap", "historical"):
+        games = sum(int(row.get(f"{prefix}_games", 0) or 0) for row in window)
+        wins = sum(int(row.get(f"{prefix}_wins", 0) or 0) for row in window)
+        draws = sum(int(row.get(f"{prefix}_draws", 0) or 0) for row in window)
+        metrics[f"{prefix}_rolling_10_games"] = games
+        metrics[f"{prefix}_rolling_10_score"] = (wins + 0.5 * draws) / games if games else None
 
 
 def _save_progress(
@@ -469,14 +752,17 @@ def _save_progress(
     update: int,
     environment_steps: int,
     seed_index: int,
-    history: list[dict[str, float | int]],
+    history: list[dict[str, float | int | str | None]],
     environment_state: dict[str, object],
+    match_assignments: list[MatchAssignment],
+    initialization_hash: str | None,
 ) -> None:
     payload = {
         "checkpoint_schema": CHECKPOINT_SCHEMA,
         "config": asdict(config),
         "config_sha256": config_hash,
         "bootstrap_sha256": bootstrap_hash,
+        "initialization_sha256": initialization_hash,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "update": update,
@@ -486,6 +772,7 @@ def _save_progress(
         "python_rng_state": random.getstate(),
         "history": history,
         "environment_state": environment_state,
+        "match_assignments": [asdict(assignment) for assignment in match_assignments],
     }
     _atomic_torch_save(payload, path)
 
@@ -496,6 +783,7 @@ def _save_inference(
     config: SelfPlayConfig,
     config_hash: str,
     bootstrap_hash: str,
+    initialization_hash: str | None,
     update: int,
     environment_steps: int,
 ) -> None:
@@ -506,6 +794,7 @@ def _save_inference(
             "config": asdict(config),
             "config_sha256": config_hash,
             "bootstrap_sha256": bootstrap_hash,
+            "initialization_sha256": initialization_hash,
             "model_state": model.state_dict(),
             "model_config": asdict(model.config),
             "solo_model_config": model.solo_model.config.to_dict(),
@@ -530,6 +819,8 @@ def _validate_resume(
         raise ValueError("solo bootstrap changed; refusing resume")
     if "environment_state" not in payload:
         raise ValueError("progress checkpoint lacks exact environment state")
+    if "match_assignments" not in payload:
+        raise ValueError("progress checkpoint lacks persistent opponent assignments")
 
 
 def _atomic_torch_save(payload: dict[str, object], path: Path) -> None:

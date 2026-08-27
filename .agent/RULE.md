@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-26T09:00:54+09:00
+Last updated: 2026-08-27T22:17:59+09:00
 
 ## 1. Authority and scope
 
@@ -95,6 +95,8 @@ Explanation/         # Korean standalone explanations for implemented components
 - The unshaped objective is zero-sum terminal round outcome. Dense shaping is allowed only when it is potential-based, `F(s,a,s') = gamma*Phi(s') - Phi(s)`, antisymmetric across players, bounded, terminal-normalized, and accompanied by an MDP/stochastic-game policy or Nash-equilibrium invariance check.
 - Every proposed potential feature must define units, normalization, bound, expected causal effect, failure mode, and an ablation with confidence intervals. Correlation alone is not causation.
 - Evaluate against frozen historical opponents and baselines, never only the current self-play policy. Seeds, code revision, configuration hash, hardware, wall time, and confidence interval must be reported.
+- A self-play match keeps its opponent kind/checkpoint and learner side fixed until terminal. Update boundaries and resume must persist this assignment; changing an opponent during an active match invalidates terminal credit.
+- Variable-length action entropy must be reported both raw and normalized by `log(legal candidate count)`. Entropy coefficients and schedules are committed experiment semantics, not resource-profile controls.
 - Before RL, bootstrap candidates from versioned heuristic/search demonstrations. Store every legal candidate score/rank plus rules, engine, seed, opponent and teacher hashes; split datasets by match/seed, not individual rows.
 - One-shot behavior cloning is not sufficient evidence. Compare chosen-only cloning, full-score distillation, learner-state dataset aggregation, and terminal-objective RL fine-tuning in closed-loop matches.
 - Generated datasets/checkpoints stay outside version control; commit schemas, manifests, configs and reports only.

@@ -1,6 +1,6 @@
 use crate::features::{board_summary, extract_afterstate_features};
 use crate::{FEATURE_COUNT, GenerationError};
-use engine_core::SoftDropMode;
+use engine_core::{PieceKind, SoftDropMode, SpinClassification};
 use rayon::prelude::*;
 use rules_tetrio::{PlayerHandlingProfile, TetrioRulesDraft};
 use std::fmt;
@@ -10,11 +10,13 @@ use versus::{
 };
 
 pub const VERSUS_CANDIDATE_FEATURE_COUNT: usize = FEATURE_COUNT + 10;
+pub const VERSUS_CANDIDATE_DIAGNOSTIC_COUNT: usize = 5;
 pub const VERSUS_STATE_FEATURE_COUNT: usize = 12;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VersusCandidateBatch {
     pub features: Vec<[i32; VERSUS_CANDIDATE_FEATURE_COUNT]>,
+    pub diagnostics: Vec<[i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT]>,
     pub state_features: Vec<[i32; VERSUS_STATE_FEATURE_COUNT]>,
     pub offsets: Vec<usize>,
     pub done: Vec<bool>,
@@ -24,6 +26,7 @@ pub struct VersusCandidateBatch {
 #[derive(Clone)]
 struct VersusChoice {
     features: [i32; VERSUS_CANDIDATE_FEATURE_COUNT],
+    diagnostics: [i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT],
     action: PlacementAction,
 }
 
@@ -35,6 +38,7 @@ struct MatchState {
 
 struct MatchCandidateData {
     features: [Vec<[i32; VERSUS_CANDIDATE_FEATURE_COUNT]>; 2],
+    diagnostics: [Vec<[i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT]>; 2],
     state_features: [[i32; VERSUS_STATE_FEATURE_COUNT]; 2],
     done: [bool; 2],
     results: [i8; 2],
@@ -109,6 +113,7 @@ impl VersusBatch {
             .map(match_candidate_data)
             .collect::<Result<Vec<_>, _>>()?;
         let mut features = Vec::new();
+        let mut diagnostics = Vec::new();
         let mut state_features = Vec::with_capacity(self.matches.len() * 2);
         let mut offsets = Vec::with_capacity(self.matches.len() * 2 + 1);
         let mut done = Vec::with_capacity(self.matches.len() * 2);
@@ -119,6 +124,7 @@ impl VersusBatch {
             for player in 0..2 {
                 state_features.push(match_data.state_features[player]);
                 features.extend(match_data.features[player].iter().copied());
+                diagnostics.extend(match_data.diagnostics[player].iter().copied());
                 offsets.push(features.len());
                 done.push(match_data.done[player]);
                 results.push(match_data.results[player]);
@@ -127,6 +133,7 @@ impl VersusBatch {
 
         Ok(VersusCandidateBatch {
             features,
+            diagnostics,
             state_features,
             offsets,
             done,
@@ -214,6 +221,8 @@ fn match_candidate_data(
 ) -> Result<MatchCandidateData, VersusClosedLoopError> {
     let result = match_state.battle.result();
     let mut features: [Vec<[i32; VERSUS_CANDIDATE_FEATURE_COUNT]>; 2] = [Vec::new(), Vec::new()];
+    let mut diagnostics: [Vec<[i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT]>; 2] =
+        [Vec::new(), Vec::new()];
     let mut state_features = [[0; VERSUS_STATE_FEATURE_COUNT]; 2];
     let mut done = [false; 2];
     let mut results = [0; 2];
@@ -230,11 +239,13 @@ fn match_candidate_data(
             .as_ref()
             .expect("candidate cache initialized");
         features[index].extend(choices.iter().map(|choice| choice.features));
+        diagnostics[index].extend(choices.iter().map(|choice| choice.diagnostics));
         done[index] = result != BattleResult::Ongoing || choices.is_empty();
         results[index] = result_for_player(result, player);
     }
     Ok(MatchCandidateData {
         features,
+        diagnostics,
         state_features,
         done,
         results,
@@ -308,8 +319,23 @@ fn enumerate_player_candidates(
             features[17] = opponent_ready;
             features[18] = opponent_summary[1];
             features[19] = opponent_summary[2];
+            let t_spin = match locked.clear.spin {
+                Some(spin) if spin.piece == PieceKind::T => match spin.classification {
+                    SpinClassification::Mini => 1,
+                    SpinClassification::Full => 2,
+                },
+                _ => 0,
+            };
+            let diagnostics = [
+                i32::from(locked.clear.lines),
+                t_spin,
+                i32::from(locked.clear.perfect_clear),
+                i32_from_u64(attack.total_attack()),
+                i32_from_u64(cancellation.outgoing.total()),
+            ];
             choices.push(VersusChoice {
                 features,
+                diagnostics,
                 action: PlacementAction {
                     used_hold,
                     placement: placement.state,
@@ -515,6 +541,14 @@ mod tests {
 
         assert_eq!(candidates.offsets.len(), 5);
         assert_eq!(candidates.state_features.len(), 4);
+        assert_eq!(candidates.diagnostics.len(), candidates.features.len());
+        assert!(candidates.diagnostics.iter().all(|row| {
+            (0..=4).contains(&row[0])
+                && (0..=2).contains(&row[1])
+                && (0..=1).contains(&row[2])
+                && row[3] >= 0
+                && row[4] >= 0
+        }));
         assert!(candidates.done.iter().all(|done| !done));
         assert_eq!(candidates.state_features[0], candidates.state_features[1]);
 

@@ -12,7 +12,11 @@
 - 30%: 이전 update에서 보존된 과거 모델
 - 20%: 강화학습 전의 고정 솔로 초기 정책
 
-과거 모델이 아직 없는 첫 update에서는 해당 몫도 고정 초기 정책을 사용한다. 고정 상대 경기에서는 양쪽 진영을 번갈아 배정하고 학습 중인 쪽의 transition만 PPO update에 사용한다.
+과거 모델이 아직 없는 첫 update에서는 해당 몫도 고정 초기 정책을 사용한다. 고정 상대 경기에서는 game seed의 홀짝으로 학습 진영을 정하고 학습 중인 쪽의 transition만 PPO update에 사용한다. 한 경기가 시작되면 상대 종류, 과거 checkpoint와 학습 진영을 종료 시점까지 고정한다. 따라서 PPO update 경계를 지나는 장기 경기에서도 상대가 갑자기 바뀌거나 terminal credit의 주체가 뒤집히지 않는다.
+
+현재 장기 실행 설정은 v2다. 중단된 r0에서 update 1~70의 같은 32개 고정 상태를 비교한 결과 entropy가 `1.2090→2.8197`, 유효 선택지가 `3.35→16.77`, 최대 행동 확률이 `0.486→0.189`로 변했다. 이는 탐색이 조금 늘어난 수준이 아니라 정책 분포가 실제로 평평해진 것이다. 원인은 후보 수가 다른 분포의 raw entropy에 고정 계수 `0.01`을 계속 더한 점이었다.
+
+v2는 후보가 `N`개일 때 `H(pi)/log(N)`으로 entropy를 `[0,1]`에 정규화하고, 그 계수를 update 0의 `0.0005`에서 update 100의 `0.00005`까지 선형 감소시킨다. r0 update 50은 별도 8 seed×좌우 교대×300수 확인 평가에서 4,800수 동안 공격 `0.1054/수`, 실제 송신 `0.0946/수`, Tetris `0.375/100수`를 기록해 r1의 초기화 모델로 정했다. 이 수치는 승률이 아니라 모든 경기가 horizon에서 미종료된 상황의 기술·공격 진단값이다.
 
 ## 2. 보조 보상의 정확한 식
 
@@ -80,6 +84,16 @@ F0 + gamma*F1 + ... = -Phi(s0) + gamma^T*Phi(sT)
 ./scripts/run-versus-selfplay.ps1 -ResourceProfile balanced -Hours 24
 ```
 
+현재 작업공간처럼 r0 update 50 파일이 있으면 기본 실행은 그 추론 checkpoint에서 가중치만 가져와 새 `checkpoints/versus-selfplay-r1` 실험을 만든다. r0의 optimizer나 진행 중 경기 상태는 섞지 않는다. 해당 파일이 없는 새 checkout에서는 승격된 솔로 bootstrap으로 시작하며, 다른 초기 모델 또는 출력 폴더를 명시할 수도 있다.
+
+```powershell
+./scripts/run-versus-selfplay.ps1 `
+  -ResourceProfile max `
+  -Hours 24 `
+  -InitializeFrom checkpoints/versus-selfplay-r0/snapshots/update-000050-model.pt `
+  -OutputDir checkpoints/versus-selfplay-r1
+```
+
 자원 프로필은 학습 의미를 바꾸지 않고 Torch 및 Rust 후보 생성 thread 수만 바꾼다.
 
 ```powershell
@@ -91,18 +105,31 @@ F0 + gamma*F1 + ... = -Phi(s0) + gamma^T*Phi(sT)
 중단 후 이어서 실행할 때는 다음과 같이 한다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24 -Resume
+./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24 -OutputDir checkpoints/versus-selfplay-r1 -Resume
 ```
 
 한 update가 끝날 때마다 다음 파일이 원자적으로 갱신된다.
 
 ```text
-checkpoints/versus-selfplay-r0/latest.pt   # optimizer와 정확 재개 상태
-checkpoints/versus-selfplay-r0/model.pt    # 솔로 파일 없이 로드되는 실사용 모델
-checkpoints/versus-selfplay-r0/snapshots/ # 상대 풀과 사후 평가용 과거 모델
+checkpoints/versus-selfplay-r1/latest.pt         # optimizer와 정확 재개 상태
+checkpoints/versus-selfplay-r1/reference-model.pt # 학습 시작 시점의 독립 추론 모델
+checkpoints/versus-selfplay-r1/model.pt          # 현재 update의 독립 추론 모델
+checkpoints/versus-selfplay-r1/snapshots/        # 상대 풀과 사후 평가용 과거 모델
 ```
 
-진행 중인 32경기는 update가 끝나도 초기화하지 않는다. `latest.pt`에는 각 경기의 현재 seed와 지금까지 선택한 양쪽 candidate index가 함께 들어간다. Resume 시 Rust 엔진이 경기별 선택 이력을 병렬로 다시 실행하여 보드·bag·공격·가비지·margin frame을 복원한다. 따라서 한 경기가 600수 이후의 가비지 배율 구간까지 이어지면서도 update 경계 체크포인트에서 정확히 재개된다.
+진행 중인 32경기는 update가 끝나도 초기화하지 않는다. `latest.pt`에는 각 경기의 현재 seed와 지금까지 선택한 양쪽 candidate index뿐 아니라 그 경기의 상대 종류, 고정 과거 checkpoint, 학습 진영이 함께 들어간다. Resume 시 Rust 엔진이 경기별 선택 이력을 병렬로 다시 실행하여 보드·bag·공격·가비지·margin frame을 복원한다. 따라서 한 경기가 600수 이후의 가비지 배율 구간까지 이어지면서도 update 경계 체크포인트에서 정확히 재개된다.
+
+매 update의 한 줄 JSON에는 다음 진단값이 나온다.
+
+- `rollout_entropy`, `rollout_normalized_entropy`, `rollout_effective_choices`, `rollout_mean_max_probability`: 실제 수집 정책의 퍼짐 정도
+- `entropy_coefficient`, `entropy_loss_contribution`: 현재 탐색 계수와 PPO 목적함수에 더해진 entropy 항
+- `approximate_kl`, `clip_fraction`, `gradient_norm`: update 크기와 clipping·gradient 상태
+- `explained_variance`, `value_loss`: critic이 return을 설명하는 정도
+- `attack_per_piece`, `outgoing_attack_per_piece`, `lines_per_piece`: 공격 생성·상쇄 후 송신·라인 처리 효율
+- `tetris_per_100`, `t_spin_mini_per_100`, `t_spin_full_per_100`, `perfect_clear_per_100`: 고급 기술 발생률
+- `bootstrap_*`, `historical_*`, `*_rolling_10_score`: 종료된 고정 상대 경기와 최근 10 update 누적 score
+
+`completed_matches=0`인 update에서 승률이 비는 것은 오류가 아니다. 12 frame cadence와 낮은 초기 공격력에서는 한 경기가 여러 update에 걸칠 수 있으므로, 승패가 쌓이기 전에는 공격·기술·entropy 진단을 함께 본다.
 
 개발용 1 update만 확인하려면 `-MaxUpdates 1`을 사용할 수 있지만, 이는 성능 학습이 아니라 배선 검증이다.
 
@@ -112,9 +139,9 @@ checkpoints/versus-selfplay-r0/snapshots/ # 상대 풀과 사후 평가용 과�
 
 ```powershell
 docker compose run --rm training python -m tetris_rl.evaluation.versus `
-  --candidate checkpoints/versus-selfplay-r0/model.pt `
-  --opponent checkpoints/versus-selfplay-r0/snapshots/update-000010-model.pt `
-  --output runs/evaluation/versus-r0-vs-update10.json `
+  --candidate checkpoints/versus-selfplay-r1/model.pt `
+  --opponent checkpoints/versus-selfplay-r1/reference-model.pt `
+  --output runs/evaluation/versus-r1-vs-reference.json `
   --base-seed 80001 `
   --seeds 256 `
   --horizon 2000 `
@@ -123,7 +150,7 @@ docker compose run --rm training python -m tetris_rl.evaluation.versus `
   --allow-observed
 ```
 
-학습 loss만으로 최종 모델을 고르지 않는다. 좌우 교대 승률, 미종료 경기 수, 고정 초기 정책 상대 퇴보 여부와 8/12/15 frame cadence 민감도를 함께 확인한 뒤 champion을 정한다.
+학습 loss만으로 최종 모델을 고르지 않는다. 좌우 교대 승률, 미종료 경기 수, 고정 초기 정책 상대 퇴보 여부와 8/12/15 frame cadence 민감도를 함께 확인한 뒤 champion을 정한다. 평가 horizon에서 끝나지 않은 경기는 승·패·무 score의 분모에서 제외하고 `completion_rate`로 별도 표시한다. 완료 경기가 없으면 score와 승률은 증거가 아니므로 `attack_per_piece`, `outgoing_attack_per_piece`, Tetris/T-spin/Perfect Clear 빈도를 비교한다.
 
 ## 5. 검증된 사항
 
@@ -132,8 +159,10 @@ docker compose run --rm training python -m tetris_rl.evaluation.versus `
 - 1대1 Rust 배치 → Python actor → PPO 역전파 → `latest.pt`/`model.pt` 저장 smoke
 - 완료 update 단위 resume와 의미 설정 hash 불일치 차단
 - seed/action history 재연을 통한 진행 중 1대1 경기의 정확 상태 복원
+- update 경계를 넘어 유지되는 경기별 상대 checkpoint와 학습 진영의 고정·복원
 - 자기대전·과거 모델·고정 초기 모델 상대 풀 smoke
 - 동일 모델의 좌우 교대 closed-loop 평가 smoke
+- 후보 수 정규화 entropy, 감소 schedule, KL·clip·gradient·critic·기술 로그
 - 16경기 후보 생성 4회 benchmark: Rayon 1 thread 3.496초, 8 thread 0.741초
 
 마지막 benchmark는 해당 개발 장비의 smoke 측정값이며 장기 학습 처리량 보장은 아니다.

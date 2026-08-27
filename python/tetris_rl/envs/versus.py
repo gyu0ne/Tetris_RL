@@ -6,11 +6,12 @@ import torch
 from torch import Tensor
 
 CANDIDATE_FEATURE_COUNT = 20
+CANDIDATE_DIAGNOSTIC_COUNT = 5
 STATE_FEATURE_COUNT = 12
 
 
 class VersusBridge(Protocol):
-    def candidates(self) -> tuple[bytes, bytes, list[int], list[bool], list[int]]: ...
+    def candidates(self) -> tuple[bytes, bytes, bytes, list[int], list[bool], list[int]]: ...
 
     def step(self, selections: list[int]) -> None: ...
 
@@ -22,6 +23,7 @@ class VersusBridge(Protocol):
 @dataclass(frozen=True)
 class VersusObservation:
     candidate_features: Tensor
+    candidate_diagnostics: Tensor
     state_features: Tensor
     offsets: tuple[int, ...]
     done: Tensor
@@ -74,8 +76,11 @@ class VersusVectorEnv:
         return int(self._bridge.match_count())
 
     def observe(self) -> VersusObservation:
-        candidate_bytes, state_bytes, offsets, done, results = self._bridge.candidates()
+        candidate_bytes, diagnostic_bytes, state_bytes, offsets, done, results = (
+            self._bridge.candidates()
+        )
         candidate_features = _decode_i32(candidate_bytes, CANDIDATE_FEATURE_COUNT)
+        candidate_diagnostics = _decode_i32(diagnostic_bytes, CANDIDATE_DIAGNOSTIC_COUNT)
         state_features = _decode_i32(state_bytes, STATE_FEATURE_COUNT)
         if len(offsets) != len(done) + 1 or len(done) != len(results):
             raise ValueError("invalid versus bridge batch dimensions")
@@ -83,8 +88,11 @@ class VersusVectorEnv:
             raise ValueError("state feature count differs from decision count")
         if offsets[-1] != candidate_features.shape[0]:
             raise ValueError("candidate offsets do not cover the feature buffer")
+        if candidate_diagnostics.shape[0] != candidate_features.shape[0]:
+            raise ValueError("candidate diagnostics differ from feature count")
         observation = VersusObservation(
             candidate_features=candidate_features,
+            candidate_diagnostics=candidate_diagnostics,
             state_features=state_features,
             offsets=tuple(int(value) for value in offsets),
             done=torch.tensor(done, dtype=torch.bool),

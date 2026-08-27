@@ -52,6 +52,7 @@ mod python {
         ) -> PyResult<(
             Bound<'py, PyBytes>,
             Bound<'py, PyBytes>,
+            Bound<'py, PyBytes>,
             Vec<usize>,
             Vec<bool>,
             Vec<i8>,
@@ -59,6 +60,7 @@ mod python {
             let batch = self.inner.candidates().map_err(value_error)?;
             Ok((
                 PyBytes::new(py, &feature_bytes(batch.features)),
+                PyBytes::new(py, &feature_bytes(batch.diagnostics)),
                 PyBytes::new(py, &feature_bytes(batch.state_features)),
                 batch.offsets,
                 batch.done,

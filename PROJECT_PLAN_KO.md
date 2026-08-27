@@ -1,7 +1,7 @@
 # TETR.IO 동등 엔진 및 강화학습 1 대 1 봇 통합 개발 계획서
 
 > 기준일: 2026-08-24
-> 현재 상태: deterministic solo/1대1 mechanics, 기능 동등성 gate, 최종 솔로 모방학습 모델, fixed-cadence placement-level 1대1 환경과 PPO 자기대전·상대 풀·paired 평가 구현 완료. 실제 장기 자기대전 run과 최종 champion 선정은 미실행
+> 현재 상태: deterministic solo/1대1 mechanics, 기능 동등성 gate, 최종 솔로 모방학습 모델, fixed-cadence placement-level 1대1 환경과 persistent-opponent normalized-entropy PPO 자기대전·기술/paired 평가 구현 완료. r0 진단 후 r1 장기 자기대전 run과 최종 champion 선정은 미실행
 > 기준 문서: `.agent/RULE.md`, `.agent/PROJECT_Explain_*.md`
 > 주의: 이 문서는 기존 영문 계획서를 한국어로 통합·번역한 설명서다. 아직 증거가 확보되지 않은 값은 `UNCONFIRMED`로 유지한다.
 

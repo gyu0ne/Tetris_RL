@@ -9,8 +9,9 @@ class FakeVersusBridge:
 
     def candidates(self):
         features = (b"\x00\x00\x00\x00" * 20) * 2
+        diagnostics = (b"\x00\x00\x00\x00" * 5) * 2
         states = (b"\x00\x00\x00\x00" * 12) * 2
-        return features, states, [0, 1, 2], [False, False], [0, 0]
+        return features, diagnostics, states, [0, 1, 2], [False, False], [0, 0]
 
     def step(self, selections):
         self.stepped = selections == [0, 0]
@@ -29,6 +30,7 @@ class VersusVectorEnvTest(unittest.TestCase):
 
         observation = env.observe()
         self.assertEqual(tuple(observation.candidate_features.shape), (2, 20))
+        self.assertEqual(tuple(observation.candidate_diagnostics.shape), (2, 5))
         self.assertEqual(tuple(observation.state_features.shape), (2, 12))
         env.step([0, 0])
         self.assertTrue(bridge.stepped)
