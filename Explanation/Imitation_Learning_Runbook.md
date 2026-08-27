@@ -22,9 +22,9 @@ clean commit에서 다음을 실행하면 이 문서의 1~5단계를 순서대�
 
 | 프로필 | 독립 학습 병렬도 | 평가 자원 | 용도 |
 |---|---:|---:|---|
-| `light` | 1 worker × 2 threads | 2 threads | 다른 작업을 병행할 때 |
-| `balanced` | 2 workers × 4 threads | 6 threads | 기본 권장값 |
-| `max` | 3 workers × 5 threads | 10 threads | 학습 중 PC를 거의 사용하지 않을 때 |
+| `light` | 1 worker × 2 threads | 1 worker × 2 threads | 다른 작업을 병행할 때 |
+| `balanced` | 2 workers × 4 threads | 3 workers × 2 threads | 기본 권장값 |
+| `max` | 3 workers × 5 threads | 6 workers × 2 threads | 학습 중 PC를 거의 사용하지 않을 때 |
 
 ```powershell
 ./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile light
@@ -32,7 +32,7 @@ clean commit에서 다음을 실행하면 이 문서의 1~5단계를 순서대�
 ./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max
 ```
 
-이 값은 `18 logical CPU / 8 GB RAM` 환경을 기준으로 정한 상한이다. gzip/JSON 해석 구간에는 CPU 사용률이 낮아질 수 있어 실제 사용률이 항상 표의 thread 합계와 같지는 않다. 프로필은 동시 run 수와 native thread 수만 바꾸며 배치 크기, 학습률, seed와 epoch 예산은 동일하다.
+이 값은 `18 logical CPU / 8 GB RAM` 환경을 기준으로 정한 상한이다. gzip/JSON 해석 구간에는 CPU 사용률이 낮아질 수 있어 실제 사용률이 항상 표의 thread 합계와 같지는 않다. 학습 프로필은 초기화 run 병렬도와 각 run의 native thread 수를, 평가는 seed shard worker와 worker별 thread 수를 바꾼다. 배치 크기, 학습률, seed와 epoch 예산은 동일하다.
 
 스크립트는 컨테이너를 build하고 100만 결정을 생성한 뒤 세 모델을 학습한다. 최종 생존 평가에서 top-out이 발생하면 25만 learner-state를 추가하고 세 모델을 처음부터 재학습하며, 이를 최대 두 번 수행한다. 라운드마다 선택·최종 평가 seed 집합도 바꾼다. 중간 데이터를 자동 삭제하지는 않는다.
 
@@ -125,7 +125,7 @@ docker compose run --rm training python -m tetris_rl.training.multiseed --manife
 ## 3. 후보 하나 선택
 
 ```powershell
-docker compose run --rm training python -m tetris_rl.evaluation.select --manifest datasets/solo-imitation-bootstrap-v1/manifest.json --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2026.pt --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2027.pt --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2028.pt --output-checkpoint checkpoints/solo-imitation-bootstrap-v2/selected.pt --offline-output runs/evaluation/solo-imitation-bootstrap-v2-offline.json --selection-output runs/evaluation/solo-imitation-bootstrap-v2-selection.json --base-seed 20001 --seeds 256 --horizon 2000 --batch-decisions 64 --threads 2 --min-dev-survival 1.0 --allow-observed
+docker compose run --rm training python -m tetris_rl.evaluation.select --manifest datasets/solo-imitation-bootstrap-v1/manifest.json --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2026.pt --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2027.pt --candidate checkpoints/solo-imitation-bootstrap-v2/seed-2028.pt --output-checkpoint checkpoints/solo-imitation-bootstrap-v2/selected.pt --offline-output runs/evaluation/solo-imitation-bootstrap-v2-offline.json --selection-output runs/evaluation/solo-imitation-bootstrap-v2-selection.json --base-seed 20001 --seeds 256 --horizon 2000 --batch-decisions 64 --workers 3 --threads 2 --min-dev-survival 1.0 --allow-observed
 ```
 
 세 후보 모두 같은 validation records와 같은 256개 미사용 seed에서 비교한다. offline gate를 통과하고 2,000수 동안 한 번도 죽지 않은 후보만 선택 대상이다. 그중 생존율, 평균 생존 수, normalized regret 순으로 하나를 고른다.
@@ -133,10 +133,12 @@ docker compose run --rm training python -m tetris_rl.evaluation.select --manifes
 ## 4. 최종 대규모 솔로 생존 실행
 
 ```powershell
-docker compose run --rm training python -m tetris_rl.evaluation.closed_loop --checkpoint checkpoints/solo-imitation-bootstrap-v2/selected.pt --base-seed 40001 --seeds 2000 --horizon 10000 --threads 2 --allow-observed --require-gates --min-survival 1.0 --output runs/evaluation/solo-imitation-bootstrap-v2-final-closed-loop.json
+docker compose run --rm training python -m tetris_rl.evaluation.closed_loop --checkpoint checkpoints/solo-imitation-bootstrap-v2/selected.pt --base-seed 40001 --seeds 2000 --horizon 10000 --workers 3 --threads 2 --allow-observed --require-gates --min-survival 1.0 --output runs/evaluation/solo-imitation-bootstrap-v2-final-closed-loop.json
 ```
 
 이는 선택에 쓰지 않은 2,000개 seed에서 총 2,000만 placement를 실행한다. top-out이 한 번이라도 발생하면 통과하지 않는다. 이것이 이 프로젝트에서 사용하는 “혼자서는 죽지 않는 수준”의 운영상 정의다. 무한 시간과 모든 가능한 seed에 대한 수학적 증명은 아니지만, 짧은 1,000수 smoke와는 다른 장기 실주행 기준이다.
+
+`--workers`는 seed 목록을 독립 프로세스에 나누고 `--threads`는 각 프로세스의 PyTorch thread 수를 정한다. 모든 shard는 같은 checkpoint를 별도로 로드하며 결과는 seed 수로 가중 합산된다. worker 수를 바꿔도 seed·행동·생존 결과는 바뀌지 않는다.
 
 ## 5A. 생존 통과 시 최종 승격
 

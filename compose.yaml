@@ -32,3 +32,23 @@ services:
       PYTHONPATH: /workspace/python
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
+
+  spectator:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    working_dir: /workspace
+    command: >-
+      python -m tetris_rl.spectator.server
+      --checkpoint checkpoints/solo-imitation-versus-bootstrap-v1/model.pt
+      --bind 0.0.0.0:8788
+      --threads 2
+      --allow-observed
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace/python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8788:8788"

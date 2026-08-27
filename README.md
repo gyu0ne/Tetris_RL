@@ -30,7 +30,9 @@ TETR.IO의 학습 관련 mechanics를 독립적으로 재현하고 1 대 1 bot�
 - 후보마다 공유되는 CPU용 `10→64→32→1` afterstate scorer, match/seed split 검증 loader와 listwise teacher-score distillation
 - 매 epoch 순서 샘플링, best-epoch 복원, early stopping과 서로 다른 초기화 seed 3개를 사용하는 장기 모방학습
 - 실제 `model.pt`를 Rust 엔진에 되먹임하는 후보 선택·closed-loop 생존 평가·checkpoint 승격
+- 교사 라벨 부가 계산을 제거한 추론 전용 Rust 후보 경로와 seed-sharded closed-loop 병렬 평가
 - 모델이 방문한 상태에 휴리스틱 교사 점수를 다시 붙이는 learner-state dataset aggregation
+- 승격된 실제 checkpoint의 착지 선택을 재생·일시정지·단일 진행할 수 있는 로컬 모델 관전자
 
 선언된 학습 mechanics의 실행 경로는 `TETR.IO BETA 1.7.8 / TL S2` current client asset을 기준으로 구현되어 있다. 여기에는 `0.02G`, 120초 이후 gravity 증가, client의 `locking > locktime`/reset-cap 경계, 공격·garbage·Clutch·round terminal 순서가 포함된다. version-pinned capture를 strict JSON과 정확한 SHA-256으로 읽는 adapter 경계도 구현했다. 다만 실제 기준 board/attack/garbage checkpoint corpus가 없으므로 profile 표기는 계속 `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`다. 이 표시는 픽셀이나 UI가 다르다는 뜻이 아니라 아직 외부 mechanics corpus를 모두 채우지 않았다는 뜻이다. 운영자의 승인이나 공식 인증은 요구하지 않는다. formal report에서는 같은 조건·입력의 version-pinned reference trace와 exact diff가 0이고 필수 mechanics claim 및 기본 randomized battle 하한이 모두 통과하면 `Conformant`로 판정한다. 이 formal label은 수동 테스트와 heuristic/모방학습 도구 개발을 막지 않는다. TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 공급한다. 브라우저 OS event의 0.1 subframe 재생은 검증 adapter 범위이며, 주 학습 action인 reachable locked afterstate와 1 대 1 상태 전이는 raw keyboard timestamp에 의존하지 않는다.
 
@@ -69,6 +71,16 @@ dataset shard는 deterministic gzip 임시 파일이며 저장소에 commit하�
 ```
 
 실행 절차와 중간 산출물은 `Explanation/Imitation_Learning_Runbook.md`, 평가기와 승격 구조는 `Explanation/Imitation_Model_Evaluation_and_Promotion.md`에 있다. 모델 가중치용 휴대용 JSON은 사용하지 않는다.
+
+## 최종 모델 관전
+
+승격된 최종 checkpoint를 실제 Rust 착지 엔진에서 실행해 보려면 다음을 사용한다.
+
+```text
+docker compose up --build spectator
+```
+
+브라우저에서 `http://127.0.0.1:8788`을 연다. 재생·일시정지·1수 진행, 속도 변경, seed 초기화를 지원한다. 보드는 학습 action과 같은 도달 지점 단위이며 화면의 후보 수·선택 점수·추론 시간은 현재 `model.pt`를 직접 채점한 결과다. 종료 명령은 `docker compose stop spectator`다. 상세 구조는 `Explanation/Solo_Model_Spectator_and_Fast_Evaluation.md`에 있다.
 
 ## 컨테이너 검증
 

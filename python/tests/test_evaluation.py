@@ -1,6 +1,10 @@
 import unittest
 
-from tetris_rl.evaluation.closed_loop import evaluate_closed_loop
+from tetris_rl.evaluation.closed_loop import (
+    ClosedLoopMetrics,
+    combine_closed_loop_metrics,
+    evaluate_closed_loop,
+)
 from tetris_rl.evaluation.offline import evaluate_decisions
 from tetris_rl.evaluation.select import _choose_candidate
 from tetris_rl.models import AfterstateScorer
@@ -76,6 +80,21 @@ class ClosedLoopEvaluationTest(unittest.TestCase):
         self.assertEqual(metrics.survived, 1)
         self.assertEqual(metrics.survival_at_horizon, 0.5)
         self.assertEqual(metrics.mean_pieces_placed, 1.5)
+
+    def test_metric_shards_combine_with_seed_weighting(self) -> None:
+        combined = combine_closed_loop_metrics(
+            [
+                ClosedLoopMetrics(2, 10, 1, 0.5, 7.0, 4, 10),
+                ClosedLoopMetrics(1, 10, 1, 1.0, 10.0, 10, 10),
+            ]
+        )
+
+        self.assertEqual(combined.seeds, 3)
+        self.assertEqual(combined.survived, 2)
+        self.assertAlmostEqual(combined.survival_at_horizon, 2 / 3)
+        self.assertEqual(combined.mean_pieces_placed, 8.0)
+        self.assertEqual(combined.min_pieces_placed, 4)
+        self.assertEqual(combined.max_pieces_placed, 10)
 
 
 class CandidateSelectionTest(unittest.TestCase):

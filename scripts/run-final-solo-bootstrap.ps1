@@ -12,27 +12,30 @@ switch ($ResourceProfile) {
     'light' {
         $TrainingWorkers = 1
         $ThreadsPerWorker = 2
-        $EvaluationThreads = 2
+        $EvaluationWorkers = 1
+        $EvaluationThreadsPerWorker = 2
         $AggregationParallelGames = 128
     }
     'balanced' {
         $TrainingWorkers = 2
         $ThreadsPerWorker = 4
-        $EvaluationThreads = 6
+        $EvaluationWorkers = 3
+        $EvaluationThreadsPerWorker = 2
         $AggregationParallelGames = 256
     }
     'max' {
         $TrainingWorkers = 3
         $ThreadsPerWorker = 5
-        $EvaluationThreads = 10
+        $EvaluationWorkers = 6
+        $EvaluationThreadsPerWorker = 2
         $AggregationParallelGames = 512
     }
 }
 if ($TrainingThreads -gt 0) {
     $ThreadsPerWorker = $TrainingThreads
-    $EvaluationThreads = $TrainingThreads
+    $EvaluationThreadsPerWorker = $TrainingThreads
 }
-Write-Host "Resource profile: $ResourceProfile (workers=$TrainingWorkers, threads/worker=$ThreadsPerWorker, evaluation threads=$EvaluationThreads)"
+Write-Host "Resource profile: $ResourceProfile (training workers=$TrainingWorkers, training threads/worker=$ThreadsPerWorker, evaluation workers=$EvaluationWorkers, evaluation threads/worker=$EvaluationThreadsPerWorker)"
 
 function Assert-LastExitCode {
     param([string]$Stage)
@@ -150,7 +153,8 @@ for ($round = 0; $round -le $maximumAggregationRounds; $round += 1) {
         --seeds 256 `
         --horizon 2000 `
         --batch-decisions 64 `
-        --threads $EvaluationThreads `
+        --threads $EvaluationThreadsPerWorker `
+        --workers $EvaluationWorkers `
         --min-dev-survival 1.0 `
         --allow-observed
     Assert-LastExitCode 'candidate selection'
@@ -160,7 +164,8 @@ for ($round = 0; $round -le $maximumAggregationRounds; $round += 1) {
         --base-seed $finalBaseSeed `
         --seeds 2000 `
         --horizon 10000 `
-        --threads $EvaluationThreads `
+        --threads $EvaluationThreadsPerWorker `
+        --workers $EvaluationWorkers `
         --allow-observed `
         --require-gates `
         --min-survival 1.0 `
@@ -204,7 +209,7 @@ for ($round = 0; $round -le $maximumAggregationRounds; $round += 1) {
         --decisions-per-match 250 `
         --target-decisions 250000 `
         --parallel-games $AggregationParallelGames `
-        --threads $EvaluationThreads `
+        --threads $EvaluationThreadsPerWorker `
         --allow-observed
     Assert-LastExitCode 'learner-state aggregation'
     $currentManifest = $nextManifest

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "outputs": [
+    {
+      "timestamp": "2026-08-27T10:20:00+09:00",
+      "scope": "python/tetris_rl/spectator",
+      "macrostructure": "Workbench",
+      "genre": "modern-minimal",
+      "theme": "Cobalt",
+      "nav": "N1",
+      "footer": "Ft2",
+      "variation": "live board left, diagnostic instrument rail right, placement-level playback",
+      "slop_test": "pass 58 gates",
+      "responsive_viewports": [320, 375, 414, 768]
+    }
+  ]
+}

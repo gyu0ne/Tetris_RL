@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-08-27T10:20:00+09:00",
+  "scope": "solo model spectator",
+  "existing_stack": "vanilla HTML/CSS/JS served by Python stdlib HTTP",
+  "existing_visual_language": {
+    "font": "Inter/Pretendard/Noto/system in the manual playground",
+    "palette": "dark neutral technical tool",
+    "motion": "small CSS transitions only",
+    "spacing": "no shared token system"
+  },
+  "audience": "project developer",
+  "use": "observe and diagnose the promoted solo model",
+  "tone": "technical and utilitarian",
+  "macrostructure": "Workbench",
+  "genre": "modern-minimal",
+  "theme": "Cobalt",
+  "nav": "N1",
+  "footer": "Ft2",
+  "imagery": "none; the live authoritative board is the focal artifact"
+}

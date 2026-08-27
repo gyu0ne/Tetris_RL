@@ -9,3 +9,4 @@
 - [솔로 모방학습 실행 절차](./Imitation_Learning_Runbook.md): 한 명령 자동 실행과 수동 생성·학습·검증·재학습·승격 절차
 - [모방학습 모델 평가와 승격](./Imitation_Model_Evaluation_and_Promotion.md): offline·closed-loop 평가의 차이, 실제 `model.pt` 평가 구조와 실사용 체크포인트 생성 절차
 - [장기 모방학습 규모 근거](./Imitation_Learning_Scale_Estimate.md): 100만 교사 결정·3개 초기화·최대 100 epoch·learner-state 추가·장기 생존 실행값의 근거
+- [솔로 모델 관전자와 고속 평가](./Solo_Model_Spectator_and_Fast_Evaluation.md): 승격된 `model.pt`를 직접 보는 방법, 추론 전용 Rust 경로, seed 병렬 평가와 자원 프로필

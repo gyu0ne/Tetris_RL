@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-27T10:21:14+09:00 [USER] Continue after the completed solo promotion by implementing a real-checkpoint spectator and reducing closed-loop evaluation time before later 1v1 work.
+
 - 2026-08-26T09:00:54+09:00 [USER] Divide solo-pipeline compute use into selectable light, balanced and maximum profiles; add intermediate saving and resume; assess whether the currently unfinished roughly 10-epoch candidate can be discarded.
 
 - 2026-08-25T20:26:31+09:00 [USER] Freeze the current completion boundary at solo learning: prepare the implementation/execution plan only, retain the implemented solo pipeline, and defer 1v1 learning code until a later explicit request.
@@ -31,6 +33,10 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-27T10:21:14+09:00 [CODE] Keep placement-level model actions for observation: the spectator renders authoritative Rust board snapshots after each selected reachable lock and does not invent frame-path animation.
+- 2026-08-27T10:21:14+09:00 [CODE] Split inference candidate generation from teacher labeling. Inference retains only feature, placement and hold flag; learner-state aggregation retains teacher score, checksum/path and event records through `labeled_candidates`.
+- 2026-08-27T10:21:14+09:00 [CODE] Parallelize closed-loop evaluation by disjoint seed shards in spawned processes and combine metrics with seed weighting; resource profiles now use evaluation worker×thread settings of `1×2`, `3×2`, and `6×2`.
 
 - 2026-08-26T09:00:54+09:00 [CODE] Resource profiles change only independent-run workers, native threads and evaluation/aggregation parallelism: light `1×2`, balanced `2×4`, max `3×5`. Batch size, learning rate, seed schedule and epoch/early-stop semantics remain fixed, and resource-profile changes are resume-compatible.
 - 2026-08-26T09:00:54+09:00 [CODE] Preserve the completed seed-2026 candidate and 1,024,000-decision dataset, but discard the old trainer's unsaved seed-2027 work through epoch 11. It had no resumable optimizer/model state, while continuing dirty source during later pipeline stages would make code/checkpoint provenance inconsistent.
@@ -99,6 +105,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-27T10:21:14+09:00 [CODE] Added the Rust inference-only candidate path, PyO3 snapshots, process-sharded checkpoint evaluation, updated resource profiles, and a localhost spectator under `python/tetris_rl/spectator` plus `compose.yaml` service `spectator`.
+- 2026-08-27T10:21:14+09:00 [CODE] Added `Explanation/Solo_Model_Spectator_and_Fast_Evaluation.md`, `.agent/PROJECT_Explain_Solo_Inference_and_Spectator.md`, Hallmark tokens/audit records, and updated README/runbook/evaluation design documentation.
 
 - 2026-08-26T09:00:54+09:00 [CODE] Added process-parallel multi-initialization training, validated reuse of completed seed checkpoints, and epoch-atomic progress checkpoints containing current/best model, optimizer, early-stop state and history. Resume fails closed on dataset, feature or learning-semantic configuration mismatch.
 - 2026-08-26T09:00:54+09:00 [CODE] Added selectable resource profiles and `-ReuseDataset` to `run-final-solo-bootstrap.ps1`; synchronized the versioned training config, repository rules, internal design explanations and Korean runbook with restart and retention behavior.
@@ -200,6 +209,11 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-27T10:21:14+09:00 [TOOL] Final verification passed: Rust fmt, workspace clippy, Python-feature PyO3 clippy, 135 workspace tests, release build, training image build, Ruff format/check, 17 Python tests, Compose config, real-checkpoint API smoke and browser console checks. Fresh graph indexing recorded 2,430 nodes and 8,681 edges.
+- 2026-08-27T10:21:14+09:00 [TOOL] The promoted 2,817-parameter checkpoint loaded in the spectator; seed 1 advanced three authoritative placements and reported 68 candidates on the latest decision, selected index 67, and an updated Rust board snapshot.
+- 2026-08-27T10:21:14+09:00 [TOOL] Identical 24-seed×300-placement evaluations with 1 and 4 workers both returned 24/24 survival and mean 300; Docker-inclusive wall time was 9.409 s versus 6.865 s, a 1.37× short-run speedup limited by process/model startup overhead.
+- 2026-08-27T10:21:14+09:00 [TOOL] Browser validation at 320/375/414/768 px found no element overflow or wrapped button label after the mobile rail fix; the final board widths were 159/214/254/318 px.
+
 - 2026-08-26T09:00:54+09:00 [TOOL] The old training container had 18 logical CPUs available with no CPU quota but ran `--threads 2`, using roughly 110-145% CPU and 256-346 MB RAM; independent initialization runs are therefore the safe coarse-grained parallelism opportunity.
 - 2026-08-26T09:00:54+09:00 [TOOL] Seed 2026 completed 20 epochs with best validation regret `0.00032234432234432237`; seed 2027 reached epoch 11 with best observed regret `0.0024713064713064712` at epoch 9 but had no checkpoint under the old trainer. The old container was intentionally stopped before edits.
 
@@ -250,6 +264,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-27T10:21:14+09:00 [CODE] The completed solo model can now be watched at `http://127.0.0.1:8788` through `docker compose up --build spectator`, and future closed-loop gates can select an explicit evaluation worker count without changing deterministic results. The remaining project milestone is the separately authorized 1v1 learning environment and self-play RL.
 
 - 2026-08-26T09:00:54+09:00 [CODE] The solo pipeline can now be restarted safely at epoch boundaries with selectable compute use. The next recommended execution is `./scripts/run-final-solo-bootstrap.ps1 -ResourceProfile max -ReuseDataset`; it reuses the existing dataset and seed-2026 candidate, then retrains pending seeds 2027/2028 concurrently and saves each completed epoch.
 

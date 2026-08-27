@@ -11,7 +11,7 @@ mod record;
 mod solo;
 mod teacher;
 
-pub use closed_loop::{CandidateBatch, ClosedLoopError, SoloBatch};
+pub use closed_loop::{CandidateBatch, ClosedLoopError, SoloBatch, SoloSnapshot};
 pub use features::{FEATURE_COUNT, FEATURE_NAMES, extract_afterstate_features};
 pub use record::{
     ActionToken, CandidateRecord, DatasetManifest, DecisionRecord, ImmediateEvents,

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import torch
 
-from tetris_rl.evaluation.closed_loop import _new_bridge, evaluate_closed_loop
+from tetris_rl.evaluation.closed_loop import evaluate_checkpoint_parallel
 from tetris_rl.evaluation.offline import evaluate_decisions
 from tetris_rl.models import load_scorer
 from tetris_rl.training.dataset import iter_decisions, validate_dataset
@@ -27,6 +27,7 @@ def main() -> None:
     parser.add_argument("--horizon", type=int, default=2_000)
     parser.add_argument("--batch-decisions", type=int, default=64)
     parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--min-tie-aware", type=float, default=0.97)
     parser.add_argument("--min-positive-margin", type=float, default=0.95)
     parser.add_argument("--max-normalized-regret", type=float, default=0.05)
@@ -39,8 +40,8 @@ def main() -> None:
         raise ValueError("candidate paths must be unique")
     if args.base_seed < 0 or args.seeds <= 0 or args.horizon <= 0:
         raise ValueError("base-seed must be nonnegative; seeds and horizon must be positive")
-    if args.batch_decisions <= 0 or args.threads <= 0:
-        raise ValueError("batch-decisions and threads must be positive")
+    if args.batch_decisions <= 0 or args.threads <= 0 or args.workers <= 0:
+        raise ValueError("batch-decisions, threads and workers must be positive")
 
     torch.set_num_threads(args.threads)
     dataset = validate_dataset(args.manifest, allow_observed=args.allow_observed)
@@ -70,10 +71,14 @@ def main() -> None:
                 normalized is not None and normalized <= args.max_normalized_regret
             ),
         }
-        closed_loop = evaluate_closed_loop(
-            scorer,
-            _new_bridge(evaluation_seeds),
+        closed_loop = evaluate_checkpoint_parallel(
+            path,
+            evaluation_seeds,
             args.horizon,
+            workers=args.workers,
+            threads_per_worker=args.threads,
+            allow_observed=args.allow_observed,
+            loaded_scorer=scorer,
         )
         dev_gate = closed_loop.survival_at_horizon >= args.min_dev_survival
         training = scorer.metadata.get("training", {})

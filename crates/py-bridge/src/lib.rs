@@ -42,7 +42,7 @@ mod python {
             &mut self,
             py: Python<'py>,
         ) -> PyResult<LabeledCandidateBatch<'py>> {
-            let batch = self.inner.candidates().map_err(value_error)?;
+            let batch = self.inner.labeled_candidates().map_err(value_error)?;
             let features = feature_bytes(batch.features);
             let mut scores = Vec::with_capacity(batch.teacher_scores.len() * size_of::<i64>());
             for score in batch.teacher_scores {
@@ -77,7 +77,30 @@ mod python {
         fn game_count(&self) -> usize {
             self.inner.game_count()
         }
+
+        fn snapshot(&self, index: usize) -> PyResult<SoloSnapshotTuple> {
+            let snapshot = self.inner.snapshot(index).map_err(value_error)?;
+            Ok((
+                snapshot.board_rows,
+                snapshot.garbage_rows,
+                snapshot.active,
+                snapshot.hold,
+                snapshot.preview,
+                snapshot.pieces_placed,
+                snapshot.top_out,
+            ))
+        }
     }
+
+    type SoloSnapshotTuple = (
+        Vec<u16>,
+        Vec<u16>,
+        String,
+        Option<String>,
+        Vec<String>,
+        u64,
+        bool,
+    );
 
     #[pymodule]
     fn tetris_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -138,6 +138,40 @@ pub(crate) struct CandidateChoice {
     pub(crate) placement: PieceState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct InferenceChoice {
+    pub(crate) features: [i32; crate::FEATURE_COUNT],
+    pub(crate) placement: PieceState,
+    pub(crate) used_hold: bool,
+}
+
+pub(crate) fn enumerate_inference_candidates(
+    game: &GameState,
+) -> Result<Vec<InferenceChoice>, GenerationError> {
+    let mut sources = vec![(false, game.clone())];
+    if game.hold_available() {
+        let mut held = game.clone();
+        let outcome = held.hold_active()?;
+        if !outcome.top_out {
+            sources.push((true, held));
+        }
+    }
+
+    let mut choices = Vec::new();
+    for (used_hold, source) in sources {
+        for placement in source.reachable_placements() {
+            let mut board = *source.board();
+            let lock = board.lock(placement.state)?;
+            choices.push(InferenceChoice {
+                features: extract_afterstate_features(&board, placement.state, lock.cleared),
+                placement: placement.state,
+                used_hold,
+            });
+        }
+    }
+    Ok(choices)
+}
+
 pub(crate) fn enumerate_candidates(
     game: &GameState,
     game_config: GameConfig,
