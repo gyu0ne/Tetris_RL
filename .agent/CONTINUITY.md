@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-28T14:26:56+09:00 [USER] Stop r1 at update 315, compare the generated checkpoints, and diagnose the causes if final strength is insufficient.
+
 - 2026-08-27T22:17:59+09:00 [USER] Resume the stopped r0 entropy analysis, find an improvement direction, and add performance/learning diagnostics to the training log.
 
 - 2026-08-27T16:19:56+09:00 [USER] Resume the deferred 1v1 learning phase: implement a runnable placement-level reinforcement-learning path and explain the exact auxiliary reward.
@@ -227,6 +229,11 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-28T14:26:56+09:00 [TOOL] Screened all 31 ten-update r1 snapshots from their recorded training metrics, then ran deterministic paired side-swapped greedy matches on independent seeds. Advanced-candidate results were non-transitive: u200 beat u230 `9-3`, u230 beat u310 `10-2`, and u310 beat u200 `7-5`; u315 tied u200 `6-6` and narrowly beat u230 `6-5` with one unfinished game. No checkpoint is a statistically clear universal champion.
+- 2026-08-28T14:26:56+09:00 [TOOL] Baseline comparisons did not establish robust improvement: reference beat u200 `8-4`, u150 beat reference `7-5`, and u150 tied u200 `6-6`. Learned models produced more attack than reference but did not reliably convert it into wins; greedy matches commonly survived beyond 1,200 placements before margin pressure separated them.
+- 2026-08-28T14:26:56+09:00 [CODE] Strength limits are consistent with the implementation: `gamma^1400=0.0149`, the GAE trace has an effective horizon of about 18.9 placements, critic explained variance stayed near `0.08`, the actor observation is a one-step compact summary with no queue/full spatial setup representation, actor scoring is additively separable between solo shape and versus context, and the historical pool retains only the latest eight snapshots. Full T-spin frequency remained roughly `0.01-0.03/100` placements.
+- 2026-08-28T14:26:56+09:00 [TOOL] The all-terminal evaluator path exposed an unrelated decoder defect: `torch.frombuffer(bytearray(b''), dtype=int32)` rejects an empty candidate buffer after every match finishes. A read-only in-process empty-buffer workaround recovered the reports; training is unaffected because completed matches reset immediately.
+
 - 2026-08-27T22:17:59+09:00 [TOOL] On the same 32 fixed states, r0 update 1 to 70 changed raw entropy `1.2090 -> 2.8197`, effective choices `3.35 -> 16.77`, and mean maximum probability `0.486 -> 0.189`; the old fixed raw-entropy coefficient was flattening the policy rather than merely observing harder states.
 - 2026-08-27T22:17:59+09:00 [TOOL] Independent confirmation of r0 update 50 used 8 paired seeds and 300 placements per side: 4,800 candidate placements, attack/piece `0.1054167`, outgoing/piece `0.0945833`, Tetris/100 `0.375`; all 16 games were unfinished, so these are technique-efficiency signals and not a win-rate claim.
 - 2026-08-27T22:17:59+09:00 [TOOL] Python format/lint and 27 unit tests passed; Rust format, clippy with denied warnings, 141 workspace tests and release build passed. One initial Docker Hub metadata request timed out and one nested login-shell command lost Cargo PATH; the documented container commands succeeded on retry.
@@ -291,6 +298,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-28T14:26:56+09:00 [CODE] Do not promote r1 latest or any single snapshot as the final 1v1 model. r1 learned additional attack but plateaued, forgot matchups and remained non-transitive; the next implementation phase should strengthen observation/value credit, preserve a diverse champion pool, protect the solo prior, add sampled/greedy held-out league selection, and fix the evaluator empty-buffer terminal edge before another long run.
 
 - 2026-08-27T22:17:59+09:00 [CODE] The entropy failure has a reproduced cause and a verified r1 implementation path. The next real experiment is `scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24`, followed by paired held-out/cadence evaluation; no final 1v1 champion is claimed yet.
 
