@@ -63,9 +63,14 @@ class AfterstateScorerTest(unittest.TestCase):
             metadata={},
         )
         versus = VersusActorCritic(solo)
-        candidates = torch.randn((11, 20))
-        state = torch.tensor([[8, 14, 2, 6, 3, 11, 1, 5, 4, 1, 7, 2]], dtype=torch.float32)
-        swapped = state.reshape(1, 6, 2).flip(-1).reshape(1, 12)
+        candidates = torch.randn((11, 76))
+        state = torch.randn((1, 122))
+        swapped = state.clone()
+        swapped[:, :12] = state[:, :12].reshape(1, 6, 2).flip(-1).reshape(1, 12)
+        for own, opponent in ((12, 22), (32, 42), (52, 87)):
+            width = opponent - own
+            swapped[:, own : own + width] = state[:, opponent : opponent + width]
+            swapped[:, opponent : opponent + width] = state[:, own : own + width]
 
         expected = model((candidates[:, :10] - solo.feature_mean) / solo.feature_std)
         torch.testing.assert_close(versus.actor_logits(candidates), expected)
@@ -87,7 +92,7 @@ class AfterstateScorerTest(unittest.TestCase):
             path = Path(directory) / "versus.pt"
             torch.save(
                 {
-                    "checkpoint_schema": "versus-actor-critic-v1",
+                    "checkpoint_schema": "versus-actor-critic-v2",
                     "mechanics_status": MECHANICS_STATUS,
                     "model_config": asdict(model.config),
                     "solo_model_config": model.solo_model.config.to_dict(),

@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-28T15:06:31+09:00 [USER] Proceed from the stopped r1 diagnosis with theory-first objective selection; the next learner should attack effectively while clearing stably and defending under garbage pressure.
+
 - 2026-08-28T14:26:56+09:00 [USER] Stop r1 at update 315, compare the generated checkpoints, and diagnose the causes if final strength is insufficient.
 
 - 2026-08-27T22:17:59+09:00 [USER] Resume the stopped r0 entropy analysis, find an improvement direction, and add performance/learning diagnostics to the training log.
@@ -39,6 +41,10 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-28T15:06:31+09:00 [CODE] Supersede r1 for new runs with r2: preserve terminal zero-sum outcome, use `gamma=0.9995`, GAE `lambda=0.995`, bounded `0.05` potential shaping, a joint 76-feature residual actor, a symmetric 122-feature critic, 0.1x solo-trunk learning rate and decaying fixed-teacher KL `0.02 -> 0.001` over 500 updates.
+- 2026-08-28T15:06:31+09:00 [CODE] Replace latest-8 uniform history with full-history stratification up to 32 snapshots and PFSP weight `max(0.05, (1-smoothed learner score)^1)`; use current/historical/bootstrap match fractions `35/50/15`, retaining fixed opponent and learner side until terminal.
+- 2026-08-28T15:06:31+09:00 [CODE] Do not add direct attack, line-clear or T-spin rewards. r1 demonstrated that higher attack per piece need not yield higher win rate, while potential-based shaping preserves the terminal objective; attack/cancellation/stack/garbage/technique quantities remain diagnostics and held-out tie-break evidence.
 
 - 2026-08-27T22:17:59+09:00 [CODE] Supersede r0 raw-entropy PPO for new runs: r1 uses candidate-count-normalized entropy and a committed linear coefficient schedule `0.0005 -> 0.00005` over 100 updates; r0 remains an immutable diagnostic artifact and is not progress-resumed.
 - 2026-08-27T22:17:59+09:00 [CODE] Persist opponent kind, historical checkpoint and learner side for every active match until terminal. Resume restores these assignments with seed/action replay so an update boundary cannot change the opponent or terminal-credit owner.
@@ -119,6 +125,12 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-28T15:14:13+09:00 [TOOL] Final post-documentation verification supersedes the earlier test count: Rust fmt/clippy `-D warnings`/141 tests/release build, Ruff format/check and 30 Python tests all passed; both v3 JSON files and the PowerShell runner parsed, `git diff --check` passed, and the constructed r2 model has exactly 14,883 parameters.
+
+- 2026-08-28T15:06:31+09:00 [CODE] Added Rust/Python r2 candidate and state observations, joint residual actor-critic with legacy r1 loading, fixed-teacher KL, split optimizer rates, PFSP league statistics, per-update `latest-model.pt`, terminal empty-buffer handling, attack/defense logs, v3 production/smoke configs and the r2 PowerShell default.
+- 2026-08-28T15:06:31+09:00 [CODE] Added `Explanation/Versus_Self_Play_R2_Design_and_Runbook.md`, updated the Explanation index and internal versus design with the equations, source basis, execution procedure and completion limits.
+- 2026-08-28T15:06:31+09:00 [TOOL] Container verification passed Rust workspace tests (141 total across crates), Ruff check, 28 Python tests, a rebuilt release PyO3 training image, one actual r2 PPO update, and legacy r1 inference on 76/122-width observations. The smoke emitted KL, cancellation, height/hole/garbage/danger metrics and advanced 16 environment decisions in 0.283 seconds.
 
 - 2026-08-27T22:17:59+09:00 [CODE] Added Rust/Python candidate technique diagnostics, paired-evaluator completion/attack/technique metrics, normalized-entropy PPO with decay, persistent match assignments, warm-start/reference checkpoints, and rich per-update PPO/rollout/opponent logs. Added v2 production/smoke configs and updated the PowerShell runner, Korean manual, project plan, README, rules and internal design record.
 - 2026-08-27T22:17:59+09:00 [TOOL] Fresh v2 smoke advanced updates `1 -> 2`, resumed exactly to update 3 with environment steps `16 -> 32 -> 48`, coefficient `0.0005 -> 0.0004775 -> 0.000455`, progress schema v2, two persisted assignments, initialization SHA-256 and a reloadable 4,515-parameter inference model.
@@ -229,6 +241,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-28T15:06:31+09:00 [TOOL] For the observed 1,400-placement decision scale, `0.997^1400=0.014901` but `0.9995^1400=0.496498`; the new discount half-life is 1,385.95 placements. Raising GAE lambda from 0.95 to 0.995 changes the exponential trace proxy `1/(1-gamma*lambda)` from 18.92 to 181.90 placements, with weight 0.06352 still present at lag 500.
+- 2026-08-28T15:06:31+09:00 [TOOL] Primary PPO/GAE, potential-shaping, stochastic-game invariance, kickstarting, Tetris policy-search and AlphaStar league sources support the selected mechanisms; they do not prove the numeric r2 hyperparameters are globally optimal, so 24-hour strength and ablation results remain required.
+
 - 2026-08-28T14:26:56+09:00 [TOOL] Screened all 31 ten-update r1 snapshots from their recorded training metrics, then ran deterministic paired side-swapped greedy matches on independent seeds. Advanced-candidate results were non-transitive: u200 beat u230 `9-3`, u230 beat u310 `10-2`, and u310 beat u200 `7-5`; u315 tied u200 `6-6` and narrowly beat u230 `6-5` with one unfinished game. No checkpoint is a statistically clear universal champion.
 - 2026-08-28T14:26:56+09:00 [TOOL] Baseline comparisons did not establish robust improvement: reference beat u200 `8-4`, u150 beat reference `7-5`, and u150 tied u200 `6-6`. Learned models produced more attack than reference but did not reliably convert it into wins; greedy matches commonly survived beyond 1,200 placements before margin pressure separated them.
 - 2026-08-28T14:26:56+09:00 [CODE] Strength limits are consistent with the implementation: `gamma^1400=0.0149`, the GAE trace has an effective horizon of about 18.9 placements, critic explained variance stayed near `0.08`, the actor observation is a one-step compact summary with no queue/full spatial setup representation, actor scoring is additively separable between solo shape and versus context, and the historical pool retains only the latest eight snapshots. Full T-spin frequency remained roughly `0.01-0.03/100` placements.
@@ -298,6 +313,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-28T15:06:31+09:00 [CODE] The theory-backed r2 learner and runbook are implementation-complete and smoke-verified. No r2 strength claim exists yet; the next user operation is a fresh `checkpoints/versus-selfplay-r2` 24-hour run, followed by held-out snapshot league and 8/12/15-cadence selection.
 
 - 2026-08-28T14:26:56+09:00 [CODE] Do not promote r1 latest or any single snapshot as the final 1v1 model. r1 learned additional attack but plateaued, forgot matchups and remained non-transitive; the next implementation phase should strengthen observation/value credit, preserve a diverse champion pool, protect the solo prior, add sampled/greedy held-out league selection, and fix the evaluator empty-buffer terminal edge before another long run.
 

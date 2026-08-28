@@ -1,5 +1,7 @@
 # 1대1 자기대전 강화학습 실행과 보조 보상
 
+> 이 문서는 r1 실험의 역사와 진단을 보존한다. 현재 기본 실행은 r2이며, 새 구조·수식·실행법은 `Versus_Self_Play_R2_Design_and_Runbook.md`를 기준으로 한다.
+
 ## 1. 현재 구현 범위
 
 승격된 솔로 모방학습 모델을 초기 정책으로 사용하는 placement-level 1대1 PPO 학습기가 구현되어 있다. 모델은 키 입력을 고르지 않고 Hold를 포함한 도달 가능한 최종 착지를 고른다. Rust `BattleSession`이 선택을 12 frame/piece, 즉 5 PPS의 공통 cadence로 적용하면서 공격, 동시 상쇄, 가비지 이동·삽입, B2B, 콤보, Surge와 KO를 처리한다.

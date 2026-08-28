@@ -5,9 +5,9 @@ from typing import Protocol
 import torch
 from torch import Tensor
 
-CANDIDATE_FEATURE_COUNT = 20
+CANDIDATE_FEATURE_COUNT = 76
 CANDIDATE_DIAGNOSTIC_COUNT = 5
-STATE_FEATURE_COUNT = 12
+STATE_FEATURE_COUNT = 122
 
 
 class VersusBridge(Protocol):
@@ -140,6 +140,8 @@ class VersusVectorEnv:
 
 
 def _decode_i32(payload: bytes, width: int) -> Tensor:
+    if not payload:
+        return torch.empty((0, width), dtype=torch.float32)
     values = torch.frombuffer(bytearray(payload), dtype=torch.int32)
     if values.numel() % width != 0:
         raise ValueError(f"buffer length is not divisible by feature width {width}")

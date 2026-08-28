@@ -4,7 +4,7 @@ param(
     [double]$Hours = 24,
     [int]$MaxUpdates = 0,
     [string]$InitializeFrom = '',
-    [string]$OutputDir = 'checkpoints/versus-selfplay-r1',
+    [string]$OutputDir = 'checkpoints/versus-selfplay-r2',
     [switch]$Resume
 )
 
@@ -28,17 +28,10 @@ if ($dirtyFiles.Count -ne 0) {
 docker compose build training
 if ($LASTEXITCODE -ne 0) { throw 'training image build failed.' }
 
-if (-not $InitializeFrom) {
-    $PreferredInitialization = 'checkpoints/versus-selfplay-r0/snapshots/update-000050-model.pt'
-    if (Test-Path -LiteralPath $PreferredInitialization -PathType Leaf) {
-        $InitializeFrom = $PreferredInitialization
-    }
-}
-
 $arguments = @(
     'compose', 'run', '--rm', '-e', "RAYON_NUM_THREADS=$Threads", 'training',
     'python', '-m', 'tetris_rl.training.selfplay',
-    '--config', 'configs/training/versus_selfplay_ppo_v2.json',
+    '--config', 'configs/training/versus_selfplay_ppo_v3.json',
     '--bootstrap', 'checkpoints/solo-imitation-versus-bootstrap-v1/model.pt',
     '--output-dir', $OutputDir,
     '--hours', "$Hours",
@@ -55,6 +48,6 @@ if ($Resume) {
     $arguments += @('--initialize-from', $InitializeFrom)
 }
 
-Write-Host "Self-play v2: $ResourceProfile ($Threads threads, $Hours hours, output $OutputDir)"
+Write-Host "Self-play r2: $ResourceProfile ($Threads threads, $Hours hours, output $OutputDir)"
 docker @arguments
 if ($LASTEXITCODE -ne 0) { throw "self-play failed with exit code $LASTEXITCODE" }

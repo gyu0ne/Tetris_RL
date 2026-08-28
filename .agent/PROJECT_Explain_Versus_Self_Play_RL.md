@@ -1,5 +1,22 @@
 # PROJECT Explain: Versus Self-Play RL
 
+## r2 확정 설계 (2026-08-28)
+
+r1의 단일 최고 모델 가정을 폐기한다. 실제 held-out 대국에서 update 200, 230, 310이 순환 우위를 보였고 reference가 공격량이 더 낮으면서도 update 200을 이겼으므로, 공격량 자체는 목표가 아니라 승리 원인의 진단값이다.
+
+- 목적은 계속 `win=+1, loss=-1, draw=0`인 zero-sum terminal outcome이다. attack/line/T-spin 보너스는 최적 정책을 바꿀 수 있으므로 reward에 직접 더하지 않는다.
+- potential shaping은 `0.05 * (0.9995*Phi(s')-Phi(s))`로 축소한다. `Phi(terminal)=0`, player-swap 반대칭, `|Phi|<=1`을 유지하므로 stochastic-game equilibrium을 보존한다. 한 transition shaping 절댓값 상한은 `0.099975`다.
+- r1의 `gamma=0.997`은 1,400수 뒤 승패를 `0.01490`으로 줄였다. r2의 `gamma=0.9995`는 같은 거리를 `0.49650`으로 보존하고 반감기는 `1,385.95`수다.
+- GAE는 `lambda=0.995`로 높인다. 지수 trace 유효 길이 `1/(1-gamma*lambda)`는 r1의 `18.92`에서 `181.90`수로 늘어난다. 이는 장기 승패 전달을 개선하지만 분산도 늘리므로 32경기, 512-step rollout과 함께 사용한다.
+- actor는 솔로 scorer에 별도 문맥 점수를 단순 합산하던 구조를 폐기한다. 솔로 10개 특징과 대전/보드/조각 66개 특징을 함께 보는 `76→64→32→1` residual을 사용하고 마지막 층을 0으로 초기화한다. 따라서 시작 정책은 솔로 정책과 정확히 같지만 이후에는 보드 모양과 가비지 상황의 상호작용을 표현할 수 있다.
+- 관측에는 후보 착지 후 10열 높이, 10열 구멍, hold 사용 여부, 현재/hold/preview 3개 조각 one-hot을 추가한다. critic은 양쪽의 전역 압력 6개, 열 높이·구멍, 조각 문맥을 모두 보고 `V(swap(s))=-V(s)`를 구조적으로 강제한다.
+- 솔로 trunk의 learning rate는 residual/value의 0.1배다. 고정 모방 teacher와의 `KL(teacher || learner)` 계수는 `0.02→0.001`로 500 update 동안 감소시킨다. 이것은 안전한 줄 지우기를 초기 탐색 기준으로 유지하되 승패 학습이 teacher를 추월할 여지를 남기는 kickstarting 보조 목적이다.
+- 상대 구성은 current self-play 35%, historical PFSP 50%, frozen bootstrap 15%다. 과거 풀은 최근 8개가 아니라 전체 이력을 최대 32개로 층화 표본한다. 상대 가중치는 smoothed learner score `p`에 대해 `max(0.05, (1-p)^1)`이며, 어려운 상대를 더 자주 뽑는다.
+- 모든 update 뒤 `latest.pt`와 `latest-model.pt`를 원자적으로 저장한다. `model.pt`는 정상 종료 시 저장하고 10 update마다 progress/inference snapshot을 함께 남긴다.
+- 평가 로그는 승패와 공격 외에 cancellation, 평균 최대 높이, 구멍, pending/ready garbage, 높이 16 이상 danger rate를 포함한다. champion은 단일 공격량이나 최신 update가 아니라 좌우 교대 held-out 대국과 고정 reference/과거 상대에 대한 결과로 고른다.
+
+모델은 14,883 parameter로 float32 weight만 약 58 KiB다. r1 checkpoint는 legacy actor가 새 76/122-width 관측의 앞 20/12개를 읽도록 호환 로더를 유지하므로 사후 비교는 계속 가능하다. r1 actor를 r2 초기값으로 직접 불러오는 것은 구조가 다르므로 금지하고, 검증된 솔로 bootstrap에서 새로 시작한다.
+
 ## 확정 설계
 
 - 정책 행동은 `hold + reachable locked afterstate`이며 프레임 입력은 학습하지 않는다.

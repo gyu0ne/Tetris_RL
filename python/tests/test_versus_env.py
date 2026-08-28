@@ -8,9 +8,9 @@ class FakeVersusBridge:
         self.stepped = False
 
     def candidates(self):
-        features = (b"\x00\x00\x00\x00" * 20) * 2
+        features = (b"\x00\x00\x00\x00" * 76) * 2
         diagnostics = (b"\x00\x00\x00\x00" * 5) * 2
-        states = (b"\x00\x00\x00\x00" * 12) * 2
+        states = (b"\x00\x00\x00\x00" * 122) * 2
         return features, diagnostics, states, [0, 1, 2], [False, False], [0, 0]
 
     def step(self, selections):
@@ -29,12 +29,17 @@ class VersusVectorEnvTest(unittest.TestCase):
         env = VersusVectorEnv([1], bridge=bridge)
 
         observation = env.observe()
-        self.assertEqual(tuple(observation.candidate_features.shape), (2, 20))
+        self.assertEqual(tuple(observation.candidate_features.shape), (2, 76))
         self.assertEqual(tuple(observation.candidate_diagnostics.shape), (2, 5))
-        self.assertEqual(tuple(observation.state_features.shape), (2, 12))
+        self.assertEqual(tuple(observation.state_features.shape), (2, 122))
         env.step([0, 0])
         self.assertTrue(bridge.stepped)
         self.assertEqual(env.state_dict()["histories"], [[(0, 0)]])
+
+    def test_empty_completed_batch_decodes_without_torch_frombuffer_failure(self) -> None:
+        from tetris_rl.envs.versus import _decode_i32
+
+        self.assertEqual(tuple(_decode_i32(b"", 76).shape), (0, 76))
 
 
 if __name__ == "__main__":

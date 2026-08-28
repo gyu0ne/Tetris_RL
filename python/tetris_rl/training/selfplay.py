@@ -15,10 +15,15 @@ from torch.distributions import Categorical
 
 from tetris_rl.envs import VersusObservation, VersusVectorEnv
 from tetris_rl.features import MECHANICS_STATUS
-from tetris_rl.models import VersusActorCritic, load_scorer, load_versus_actor
+from tetris_rl.models import (
+    VersusActorCritic,
+    VersusModelConfig,
+    load_scorer,
+    load_versus_actor,
+)
 from tetris_rl.training.reward import PotentialConfig, transition_reward
 
-CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v2"
+CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v3"
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,14 @@ class SelfPlayConfig:
     entropy_coefficient_final: float | None = None
     entropy_decay_updates: int = 1
     normalize_entropy: bool = False
+    model_architecture: str = "legacy-additive-v1"
+    solo_learning_rate_multiplier: float = 1.0
+    kickstart_coefficient: float = 0.0
+    kickstart_coefficient_final: float = 0.0
+    kickstart_decay_updates: int = 1
+    pfsp_exponent: float = 1.0
+    pfsp_min_weight: float = 0.05
+    anchor_checkpoints: list[str] | None = None
 
     @classmethod
     def load(cls, path: Path) -> "SelfPlayConfig":
@@ -55,7 +68,11 @@ class SelfPlayConfig:
         return config
 
     def validate(self) -> None:
-        if self.schema_version not in {"versus-selfplay-ppo-v1", "versus-selfplay-ppo-v2"}:
+        if self.schema_version not in {
+            "versus-selfplay-ppo-v1",
+            "versus-selfplay-ppo-v2",
+            "versus-selfplay-ppo-v3",
+        }:
             raise ValueError("unsupported self-play config schema")
         positive = (
             self.frames_per_placement,
@@ -84,6 +101,21 @@ class SelfPlayConfig:
                 raise ValueError("v2 requires a nonnegative final entropy coefficient")
             if self.entropy_decay_updates <= 0 or not self.normalize_entropy:
                 raise ValueError("v2 requires normalized entropy and positive decay updates")
+        if self.schema_version == "versus-selfplay-ppo-v3":
+            if self.model_architecture != "joint-residual-v2":
+                raise ValueError("v3 requires the joint residual model")
+            if self.entropy_coefficient_final is None or self.entropy_coefficient_final < 0.0:
+                raise ValueError("v3 requires a nonnegative final entropy coefficient")
+            if self.entropy_decay_updates <= 0 or not self.normalize_entropy:
+                raise ValueError("v3 requires normalized entropy and positive entropy decay")
+            if not 0.0 < self.solo_learning_rate_multiplier <= 1.0:
+                raise ValueError("solo learning-rate multiplier must be in (0, 1]")
+            if min(self.kickstart_coefficient, self.kickstart_coefficient_final) < 0.0:
+                raise ValueError("kickstart coefficients must be nonnegative")
+            if self.kickstart_decay_updates <= 0:
+                raise ValueError("kickstart decay must be positive")
+            if self.pfsp_exponent <= 0.0 or self.pfsp_min_weight <= 0.0:
+                raise ValueError("PFSP settings must be positive")
 
 
 @dataclass(frozen=True)
@@ -150,8 +182,10 @@ def main() -> None:
     torch.manual_seed(config.base_seed)
     random.seed(config.base_seed)
     solo = load_scorer(args.bootstrap, allow_observed=args.allow_observed)
-    model = VersusActorCritic(solo)
-    bootstrap_opponent = VersusActorCritic(solo)
+    architecture_version = 2 if config.model_architecture == "joint-residual-v2" else 1
+    model_config = VersusModelConfig(architecture_version=architecture_version)
+    model = VersusActorCritic(solo, model_config)
+    bootstrap_opponent = VersusActorCritic(solo, model_config)
     bootstrap_opponent.eval()
     for parameter in bootstrap_opponent.parameters():
         parameter.requires_grad_(False)
@@ -162,13 +196,16 @@ def main() -> None:
     initialization_hash: str | None = None
     if not args.resume and args.initialize_from is not None:
         initialized = load_versus_actor(args.initialize_from, allow_observed=args.allow_observed)
+        if initialized.model.config.architecture_version != architecture_version:
+            raise ValueError("initialization checkpoint architecture differs from training config")
         model.load_state_dict(initialized.model.state_dict(), strict=True)
         initialization_hash = _sha256_file(args.initialize_from)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    optimizer = _build_optimizer(model, config)
     update = 0
     environment_steps = 0
     seed_index = 0
     history: list[dict[str, float | int | str | None]] = []
+    league_stats: dict[str, dict[str, int]] = {}
     match_assignments: list[MatchAssignment]
 
     if args.resume and progress_path.exists():
@@ -180,6 +217,10 @@ def main() -> None:
         environment_steps = int(payload["environment_steps"])
         seed_index = int(payload["seed_index"])
         history = list(payload.get("history", []))
+        league_stats = {
+            str(checkpoint): {str(key): int(value) for key, value in stats.items()}
+            for checkpoint, stats in payload.get("league_stats", {}).items()
+        }
         initialization_hash = payload.get("initialization_sha256")  # type: ignore[assignment]
         match_assignments = [
             MatchAssignment(**assignment) for assignment in payload["match_assignments"]
@@ -199,11 +240,9 @@ def main() -> None:
         ]
         seed_index = config.parallel_matches
         env = VersusVectorEnv(initial_seeds, config.frames_per_placement)
-        historical = _load_opponent_pool(
-            args.output_dir, config.opponent_pool_limit, args.allow_observed
-        )
+        historical = _load_opponent_pool(args.output_dir, config, args.allow_observed)
         match_assignments = [
-            _new_match_assignment(config, index, seed, historical)
+            _new_match_assignment(config, index, seed, historical, league_stats)
             for index, seed in enumerate(initial_seeds)
         ]
         _save_inference(
@@ -234,10 +273,9 @@ def main() -> None:
             seed_index_before = seed_index
             environment_before = env.state_dict()
             assignments_before = list(match_assignments)
+            league_stats_before = deepcopy(league_stats)
             try:
-                historical = _load_opponent_pool(
-                    args.output_dir, config.opponent_pool_limit, args.allow_observed
-                )
+                historical = _load_opponent_pool(args.output_dir, config, args.allow_observed)
                 transitions, observation, seed_index, simulated_decisions, rollout_metrics = (
                     _collect_rollout(
                         env,
@@ -250,10 +288,20 @@ def main() -> None:
                         config,
                         reward_config,
                         seed_index,
+                        league_stats,
                     )
                 )
                 entropy_coefficient = _entropy_coefficient(config, update)
-                metrics = _ppo_update(model, optimizer, transitions, config, entropy_coefficient)
+                kickstart_coefficient = _kickstart_coefficient(config, update)
+                metrics = _ppo_update(
+                    model,
+                    bootstrap_opponent,
+                    optimizer,
+                    transitions,
+                    config,
+                    entropy_coefficient,
+                    kickstart_coefficient,
+                )
                 metrics.update(rollout_metrics)
             except BaseException:
                 model.load_state_dict(model_before, strict=True)
@@ -262,6 +310,7 @@ def main() -> None:
                 random.setstate(python_rng_before)
                 seed_index = seed_index_before
                 match_assignments = assignments_before
+                league_stats = league_stats_before
                 env = VersusVectorEnv.restore(environment_before)
                 observation = env.observe()
                 raise
@@ -273,6 +322,7 @@ def main() -> None:
                     "update": update,
                     "environment_steps": environment_steps,
                     "entropy_coefficient": entropy_coefficient,
+                    "kickstart_coefficient": kickstart_coefficient,
                     "seconds": time.monotonic() - started,
                 }
             )
@@ -293,6 +343,17 @@ def main() -> None:
                 env.state_dict(),
                 match_assignments,
                 initialization_hash,
+                league_stats,
+            )
+            _save_inference(
+                args.output_dir / "latest-model.pt",
+                model,
+                config,
+                config_hash,
+                bootstrap_hash,
+                initialization_hash,
+                update,
+                environment_steps,
             )
             if update % config.snapshot_interval_updates == 0:
                 snapshot = args.output_dir / "snapshots" / f"update-{update:06d}.pt"
@@ -310,6 +371,7 @@ def main() -> None:
                     env.state_dict(),
                     match_assignments,
                     initialization_hash,
+                    league_stats,
                 )
                 _save_inference(
                     args.output_dir / "snapshots" / f"update-{update:06d}-model.pt",
@@ -337,6 +399,7 @@ def main() -> None:
             env.state_dict(),
             match_assignments,
             initialization_hash,
+            league_stats,
         )
         _save_inference(
             args.output_dir / "model.pt",
@@ -361,6 +424,7 @@ def _collect_rollout(
     config: SelfPlayConfig,
     reward_config: PotentialConfig,
     seed_index: int,
+    league_stats: dict[str, dict[str, int]],
 ) -> tuple[
     list[DecisionTransition],
     VersusObservation,
@@ -394,6 +458,12 @@ def _collect_rollout(
         "learner_t_spin_mini": 0,
         "learner_t_spin_full": 0,
         "learner_perfect_clears": 0,
+        "learner_cancelled_attack": 0,
+        "learner_max_height_sum": 0,
+        "learner_holes_sum": 0,
+        "learner_pending_sum": 0,
+        "learner_ready_sum": 0,
+        "learner_danger_decisions": 0,
     }
     entropy_sum = 0.0
     normalized_entropy_sum = 0.0
@@ -434,10 +504,18 @@ def _collect_rollout(
                 counters["learner_lines"] += lines
                 counters["learner_attack"] += attack
                 counters["learner_outgoing_attack"] += outgoing
+                counters["learner_cancelled_attack"] += attack - outgoing
                 counters["learner_tetrises"] += int(lines == 4)
                 counters["learner_t_spin_mini"] += int(t_spin == 1)
                 counters["learner_t_spin_full"] += int(t_spin == 2)
                 counters["learner_perfect_clears"] += int(perfect_clear != 0)
+                state = observation.state_features[decision]
+                max_height = int(state[0].item())
+                counters["learner_max_height_sum"] += max_height
+                counters["learner_holes_sum"] += int(state[2].item())
+                counters["learner_pending_sum"] += int(state[4].item())
+                counters["learner_ready_sum"] += int(state[6].item())
+                counters["learner_danger_decisions"] += int(max_height >= 16)
 
         next_observation = env.step(selections)
         terminal = next_observation.done
@@ -486,6 +564,17 @@ def _collect_rollout(
                 counters[f"{prefix}_wins"] += int(outcome > 0)
                 counters[f"{prefix}_losses"] += int(outcome < 0)
                 counters[f"{prefix}_draws"] += int(outcome == 0)
+                if assignment.kind == "historical":
+                    checkpoint = assignment.opponent_checkpoint
+                    if checkpoint is None:
+                        raise RuntimeError("historical match lacks checkpoint")
+                    stats = league_stats.setdefault(
+                        checkpoint, {"games": 0, "wins": 0, "losses": 0, "draws": 0}
+                    )
+                    stats["games"] += 1
+                    stats["wins"] += int(outcome > 0)
+                    stats["losses"] += int(outcome < 0)
+                    stats["draws"] += int(outcome == 0)
             reset_seeds = [
                 _scheduled_seed(config, seed_index + offset)
                 for offset in range(len(completed_indices))
@@ -493,7 +582,9 @@ def _collect_rollout(
             seed_index += len(completed_indices)
             next_observation = env.reset_done(reset_seeds)
             for match_index, seed in zip(completed_indices, reset_seeds, strict=True):
-                assignment = _new_match_assignment(config, match_index, seed, historical)
+                assignment = _new_match_assignment(
+                    config, match_index, seed, historical, league_stats
+                )
                 match_assignments[match_index] = assignment
                 pair = _actors_for_assignment(assignment, bootstrap, model_cache, allow_observed)
                 base = match_index * 2
@@ -531,6 +622,13 @@ def _collect_rollout(
                 "attack_per_piece": counters["learner_attack"] / learner_decisions,
                 "outgoing_attack_per_piece": counters["learner_outgoing_attack"]
                 / learner_decisions,
+                "cancelled_attack_per_piece": counters["learner_cancelled_attack"]
+                / learner_decisions,
+                "mean_max_height": counters["learner_max_height_sum"] / learner_decisions,
+                "mean_holes": counters["learner_holes_sum"] / learner_decisions,
+                "mean_pending_garbage": counters["learner_pending_sum"] / learner_decisions,
+                "mean_ready_garbage": counters["learner_ready_sum"] / learner_decisions,
+                "danger_rate": counters["learner_danger_decisions"] / learner_decisions,
                 "tetris_per_100": 100.0 * counters["learner_tetrises"] / learner_decisions,
                 "t_spin_mini_per_100": 100.0 * counters["learner_t_spin_mini"] / learner_decisions,
                 "t_spin_full_per_100": 100.0 * counters["learner_t_spin_full"] / learner_decisions,
@@ -544,10 +642,12 @@ def _collect_rollout(
 
 def _ppo_update(
     model: VersusActorCritic,
+    teacher: VersusActorCritic,
     optimizer: torch.optim.Optimizer,
     transitions: list[DecisionTransition],
     config: SelfPlayConfig,
     entropy_coefficient: float,
+    kickstart_coefficient: float,
 ) -> dict[str, float]:
     advantages = torch.tensor([record.advantage for record in transitions])
     advantages = (advantages - advantages.mean()) / advantages.std().clamp_min(1e-6)
@@ -560,6 +660,7 @@ def _ppo_update(
     clip_fractions: list[float] = []
     gradient_norms: list[float] = []
     explained_variances: list[float] = []
+    kickstart_losses: list[float] = []
     for _ in range(config.ppo_epochs):
         order = torch.randperm(len(transitions)).tolist()
         for start in range(0, len(order), config.minibatch_decisions):
@@ -567,9 +668,12 @@ def _ppo_update(
             records = [transitions[index] for index in indices]
             candidate_tensor = torch.cat([record.candidates for record in records], dim=0)
             logits = model.actor_logits(candidate_tensor)
+            with torch.no_grad():
+                teacher_logits = teacher.actor_logits(candidate_tensor)
             new_log_probabilities = []
             entropy_values = []
             normalized_entropy_values = []
+            kickstart_values = []
             offset = 0
             for record in records:
                 end = offset + record.candidates.shape[0]
@@ -583,10 +687,19 @@ def _ppo_update(
                     normalized_entropy_values.append(candidate_entropy / math.log(candidate_count))
                 else:
                     normalized_entropy_values.append(torch.zeros_like(candidate_entropy))
+                teacher_log_probability = torch.log_softmax(teacher_logits[offset:end], dim=0)
+                teacher_probability = teacher_log_probability.exp()
+                student_log_probability = torch.log_softmax(logits[offset:end], dim=0)
+                kickstart_values.append(
+                    torch.sum(
+                        teacher_probability * (teacher_log_probability - student_log_probability)
+                    )
+                )
                 offset = end
             new_log_probability = torch.stack(new_log_probabilities)
             entropy = torch.stack(entropy_values).mean()
             normalized_entropy = torch.stack(normalized_entropy_values).mean()
+            kickstart_loss = torch.stack(kickstart_values).mean()
             old_log_probability = torch.tensor([record.old_log_probability for record in records])
             batch_advantage = advantages[indices]
             log_ratio = new_log_probability - old_log_probability
@@ -606,6 +719,7 @@ def _ppo_update(
                 policy_loss
                 + config.value_coefficient * value_loss
                 - entropy_coefficient * entropy_objective
+                + kickstart_coefficient * kickstart_loss
             )
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -627,6 +741,7 @@ def _ppo_update(
                 explained_variances.append(
                     float((1.0 - residual_variance / target_variance).item())
                 )
+            kickstart_losses.append(float(kickstart_loss.item()))
 
     return {
         "loss": _mean(losses),
@@ -636,6 +751,8 @@ def _ppo_update(
         "ppo_normalized_entropy": _mean(normalized_entropies),
         "entropy_loss_contribution": -entropy_coefficient
         * _mean(normalized_entropies if config.normalize_entropy else entropies),
+        "kickstart_kl": _mean(kickstart_losses),
+        "kickstart_loss_contribution": kickstart_coefficient * _mean(kickstart_losses),
         "approximate_kl": _mean(approximate_kls),
         "clip_fraction": _mean(clip_fractions),
         "gradient_norm": _mean(gradient_norms),
@@ -645,11 +762,16 @@ def _ppo_update(
 
 
 def _load_opponent_pool(
-    output_dir: Path, limit: int, allow_observed: bool
+    output_dir: Path, config: SelfPlayConfig, allow_observed: bool
 ) -> list[OpponentPoolEntry]:
-    paths = sorted((output_dir / "snapshots").glob("update-*-model.pt"))[-limit:]
+    snapshots = sorted((output_dir / "snapshots").glob("update-*-model.pt"))
+    paths = [Path(path) for path in config.anchor_checkpoints or []]
+    paths.extend(_stratified_paths(snapshots, config.opponent_pool_limit))
+    unique_paths = list(dict.fromkeys(paths))
     entries = []
-    for path in paths:
+    for path in unique_paths:
+        if not path.is_file():
+            raise FileNotFoundError(f"configured opponent checkpoint not found: {path}")
         loaded = load_versus_actor(path, allow_observed=allow_observed).model
         loaded.eval()
         for parameter in loaded.parameters():
@@ -663,6 +785,7 @@ def _new_match_assignment(
     match_index: int,
     seed: int,
     historical: list[OpponentPoolEntry],
+    league_stats: dict[str, dict[str, int]] | None = None,
 ) -> MatchAssignment:
     self_play_matches = round(config.parallel_matches * config.self_play_fraction)
     historical_matches = round(config.parallel_matches * config.historical_fraction)
@@ -670,7 +793,7 @@ def _new_match_assignment(
         return MatchAssignment(kind="self_play", learner_side=None)
     learner_side = seed % 2
     if match_index < self_play_matches + historical_matches and historical:
-        opponent = historical[seed % len(historical)]
+        opponent = _sample_pfsp_opponent(config, seed, historical, league_stats or {})
         return MatchAssignment(
             kind="historical",
             learner_side=learner_side,
@@ -729,6 +852,60 @@ def _entropy_coefficient(config: SelfPlayConfig, update: int) -> float:
     return config.entropy_coefficient + fraction * (final - config.entropy_coefficient)
 
 
+def _kickstart_coefficient(config: SelfPlayConfig, update: int) -> float:
+    fraction = min(max(update, 0) / config.kickstart_decay_updates, 1.0)
+    return config.kickstart_coefficient + fraction * (
+        config.kickstart_coefficient_final - config.kickstart_coefficient
+    )
+
+
+def _build_optimizer(model: VersusActorCritic, config: SelfPlayConfig) -> torch.optim.Optimizer:
+    if model.config.architecture_version == 1:
+        return torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    solo_parameters = list(model.solo_model.parameters())
+    adaptation_parameters = [
+        parameter
+        for name, parameter in model.named_parameters()
+        if not name.startswith("solo_model.")
+    ]
+    return torch.optim.Adam(
+        [
+            {"params": adaptation_parameters, "lr": config.learning_rate},
+            {
+                "params": solo_parameters,
+                "lr": config.learning_rate * config.solo_learning_rate_multiplier,
+            },
+        ]
+    )
+
+
+def _stratified_paths(paths: list[Path], limit: int) -> list[Path]:
+    if limit <= 0 or not paths:
+        return []
+    if len(paths) <= limit:
+        return paths
+    if limit == 1:
+        return [paths[-1]]
+    indices = [round(index * (len(paths) - 1) / (limit - 1)) for index in range(limit)]
+    return [paths[index] for index in indices]
+
+
+def _sample_pfsp_opponent(
+    config: SelfPlayConfig,
+    seed: int,
+    historical: list[OpponentPoolEntry],
+    league_stats: dict[str, dict[str, int]],
+) -> OpponentPoolEntry:
+    weights = []
+    for entry in historical:
+        stats = league_stats.get(entry.checkpoint, {})
+        games = int(stats.get("games", 0))
+        score = (int(stats.get("wins", 0)) + 0.5 * int(stats.get("draws", 0)) + 1.0) / (games + 2.0)
+        weights.append(max(config.pfsp_min_weight, (1.0 - score) ** config.pfsp_exponent))
+    chooser = random.Random(seed ^ 0x5EED5EED)
+    return chooser.choices(historical, weights=weights, k=1)[0]
+
+
 def _add_rolling_scores(
     metrics: dict[str, float | int | str | None],
     history: list[dict[str, float | int | str | None]],
@@ -756,6 +933,7 @@ def _save_progress(
     environment_state: dict[str, object],
     match_assignments: list[MatchAssignment],
     initialization_hash: str | None,
+    league_stats: dict[str, dict[str, int]],
 ) -> None:
     payload = {
         "checkpoint_schema": CHECKPOINT_SCHEMA,
@@ -773,6 +951,7 @@ def _save_progress(
         "history": history,
         "environment_state": environment_state,
         "match_assignments": [asdict(assignment) for assignment in match_assignments],
+        "league_stats": league_stats,
     }
     _atomic_torch_save(payload, path)
 
@@ -789,7 +968,11 @@ def _save_inference(
 ) -> None:
     _atomic_torch_save(
         {
-            "checkpoint_schema": "versus-actor-critic-v1",
+            "checkpoint_schema": (
+                "versus-actor-critic-v1"
+                if model.config.architecture_version == 1
+                else "versus-actor-critic-v2"
+            ),
             "mechanics_status": MECHANICS_STATUS,
             "config": asdict(config),
             "config_sha256": config_hash,

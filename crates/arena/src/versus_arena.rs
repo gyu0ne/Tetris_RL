@@ -1,6 +1,6 @@
-use crate::features::{board_summary, extract_afterstate_features};
+use crate::features::{board_summary, column_heights, column_holes, extract_afterstate_features};
 use crate::{FEATURE_COUNT, GenerationError};
-use engine_core::{PieceKind, SoftDropMode, SpinClassification};
+use engine_core::{GameState, PieceKind, SoftDropMode, SpinClassification, WIDTH};
 use rayon::prelude::*;
 use rules_tetrio::{PlayerHandlingProfile, TetrioRulesDraft};
 use std::fmt;
@@ -9,9 +9,10 @@ use versus::{
     cancel_attack_packets, resolve_attack,
 };
 
-pub const VERSUS_CANDIDATE_FEATURE_COUNT: usize = FEATURE_COUNT + 10;
+const PIECE_CONTEXT_FEATURE_COUNT: usize = 35;
+pub const VERSUS_CANDIDATE_FEATURE_COUNT: usize = FEATURE_COUNT + 10 + WIDTH * 2 + 1 + 35;
 pub const VERSUS_CANDIDATE_DIAGNOSTIC_COUNT: usize = 5;
-pub const VERSUS_STATE_FEATURE_COUNT: usize = 12;
+pub const VERSUS_STATE_FEATURE_COUNT: usize = 12 + WIDTH * 4 + 35 * 2;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VersusCandidateBatch {
@@ -319,6 +320,12 @@ fn enumerate_player_candidates(
             features[17] = opponent_ready;
             features[18] = opponent_summary[1];
             features[19] = opponent_summary[2];
+            let heights = column_heights(after.board());
+            let holes = column_holes(after.board(), &heights);
+            features[20..30].copy_from_slice(&heights);
+            features[30..40].copy_from_slice(&holes);
+            features[40] = i32::from(used_hold);
+            features[41..76].copy_from_slice(&piece_context(&source));
             let t_spin = match locked.clear.spin {
                 Some(spin) if spin.piece == PieceKind::T => match spin.classification {
                     SpinClassification::Mini => 1,
@@ -355,7 +362,8 @@ fn extract_state_features(
     let opponent = battle.player(other_player(perspective));
     let own_summary = board_summary(own.session().game().board());
     let opponent_summary = board_summary(opponent.session().game().board());
-    [
+    let mut features = [0; VERSUS_STATE_FEATURE_COUNT];
+    features[..12].copy_from_slice(&[
         own_summary[1],
         opponent_summary[1],
         own_summary[2],
@@ -368,7 +376,37 @@ fn extract_state_features(
         i32_from_u64(u64::from(opponent.attack_state().combo)),
         i32_from_u64(u64::from(own.attack_state().back_to_back)),
         i32_from_u64(u64::from(opponent.attack_state().back_to_back)),
-    ]
+    ]);
+    let own_game = own.session().game();
+    let opponent_game = opponent.session().game();
+    let own_heights = column_heights(own_game.board());
+    let opponent_heights = column_heights(opponent_game.board());
+    let own_holes = column_holes(own_game.board(), &own_heights);
+    let opponent_holes = column_holes(opponent_game.board(), &opponent_heights);
+    features[12..22].copy_from_slice(&own_heights);
+    features[22..32].copy_from_slice(&opponent_heights);
+    features[32..42].copy_from_slice(&own_holes);
+    features[42..52].copy_from_slice(&opponent_holes);
+    features[52..87].copy_from_slice(&piece_context(own_game));
+    features[87..122].copy_from_slice(&piece_context(opponent_game));
+    features
+}
+
+fn piece_context(game: &GameState) -> [i32; PIECE_CONTEXT_FEATURE_COUNT] {
+    let mut features = [0; PIECE_CONTEXT_FEATURE_COUNT];
+    write_piece_one_hot(&mut features[0..7], Some(game.active().kind));
+    write_piece_one_hot(&mut features[7..14], game.hold());
+    for (index, piece) in game.preview().into_iter().take(3).enumerate() {
+        let start = 14 + index * 7;
+        write_piece_one_hot(&mut features[start..start + 7], Some(piece));
+    }
+    features
+}
+
+fn write_piece_one_hot(target: &mut [i32], piece: Option<PieceKind>) {
+    if let Some(piece) = piece {
+        target[piece.index()] = 1;
+    }
 }
 
 fn selected_action(
@@ -567,6 +605,12 @@ mod tests {
             assert_eq!(one[pair * 2], two[pair * 2 + 1]);
             assert_eq!(one[pair * 2 + 1], two[pair * 2]);
         }
+        assert_eq!(&one[12..22], &two[22..32]);
+        assert_eq!(&one[22..32], &two[12..22]);
+        assert_eq!(&one[32..42], &two[42..52]);
+        assert_eq!(&one[42..52], &two[32..42]);
+        assert_eq!(&one[52..87], &two[87..122]);
+        assert_eq!(&one[87..122], &two[52..87]);
     }
 
     #[test]

@@ -10,7 +10,7 @@ STATE_FEATURE_COUNT = 12
 class PotentialConfig:
     gamma: float = 0.997
     shaping_scale: float = 0.10
-    weights: tuple[float, ...] = (0.35, 0.20, 0.25, 0.10, 0.05, 0.05)
+    weights: tuple[float, ...] = (0.25, 0.25, 0.15, 0.25, 0.05, 0.05)
     bounds: tuple[float, ...] = (20.0, 16.0, 20.0, 8.0, 4.0, 8.0)
 
     def validate(self) -> None:
@@ -29,12 +29,13 @@ class PotentialConfig:
 def state_potential(state_features: Tensor, config: PotentialConfig) -> Tensor:
     """Bounded player-relative Phi(s); swapping players negates it exactly."""
     config.validate()
-    if state_features.ndim != 2 or state_features.shape[1] != STATE_FEATURE_COUNT:
+    if state_features.ndim != 2 or state_features.shape[1] < STATE_FEATURE_COUNT:
         raise ValueError(
-            f"expected [states, {STATE_FEATURE_COUNT}], got {tuple(state_features.shape)}"
+            f"expected [states, at least {STATE_FEATURE_COUNT}], got {tuple(state_features.shape)}"
         )
-    own = state_features[:, 0::2]
-    opponent = state_features[:, 1::2]
+    paired = state_features[:, :STATE_FEATURE_COUNT]
+    own = paired[:, 0::2]
+    opponent = paired[:, 1::2]
     # Stack pressure is good when it is on the opponent. Chain state is good
     # when it belongs to the acting player.
     raw = torch.stack(

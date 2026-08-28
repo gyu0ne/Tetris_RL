@@ -23,6 +23,11 @@ class MatchSummary:
     t_spin_mini: int = 0
     t_spin_full: int = 0
     perfect_clears: int = 0
+    max_height_sum: int = 0
+    holes_sum: int = 0
+    pending_sum: int = 0
+    ready_sum: int = 0
+    danger_decisions: int = 0
 
     @property
     def games(self) -> int:
@@ -79,6 +84,11 @@ def main() -> None:
         t_spin_mini=candidate_left.t_spin_mini + candidate_right.t_spin_mini,
         t_spin_full=candidate_left.t_spin_full + candidate_right.t_spin_full,
         perfect_clears=candidate_left.perfect_clears + candidate_right.perfect_clears,
+        max_height_sum=candidate_left.max_height_sum + candidate_right.max_height_sum,
+        holes_sum=candidate_left.holes_sum + candidate_right.holes_sum,
+        pending_sum=candidate_left.pending_sum + candidate_right.pending_sum,
+        ready_sum=candidate_left.ready_sum + candidate_right.ready_sum,
+        danger_decisions=candidate_left.danger_decisions + candidate_right.danger_decisions,
     )
     report = {
         "schema_version": "paired-versus-evaluation-v2",
@@ -116,6 +126,11 @@ def evaluate_side(
     t_spin_mini = 0
     t_spin_full = 0
     perfect_clears = 0
+    max_height_sum = 0
+    holes_sum = 0
+    pending_sum = 0
+    ready_sum = 0
+    danger_decisions = 0
     for _ in range(horizon):
         if bool(torch.all(observation.done)):
             break
@@ -127,6 +142,13 @@ def evaluate_side(
             selected = selections[decision]
             if selected is None:
                 continue
+            state = observation.state_features[decision]
+            max_height = int(state[0].item())
+            max_height_sum += max_height
+            holes_sum += int(state[2].item())
+            pending_sum += int(state[4].item())
+            ready_sum += int(state[6].item())
+            danger_decisions += int(max_height >= 16)
             diagnostic_index = observation.offsets[decision] + selected
             diagnostic = observation.candidate_diagnostics[diagnostic_index]
             cleared, spin, perfect, total_attack, sent_attack = (
@@ -156,6 +178,11 @@ def evaluate_side(
         t_spin_mini=t_spin_mini,
         t_spin_full=t_spin_full,
         perfect_clears=perfect_clears,
+        max_height_sum=max_height_sum,
+        holes_sum=holes_sum,
+        pending_sum=pending_sum,
+        ready_sum=ready_sum,
+        danger_decisions=danger_decisions,
     )
 
 
@@ -172,6 +199,14 @@ def _summary_payload(summary: MatchSummary) -> dict[str, int | float | list[floa
         "lines_per_piece": summary.lines / pieces if pieces else 0.0,
         "attack_per_piece": summary.attack / pieces if pieces else 0.0,
         "outgoing_attack_per_piece": summary.outgoing_attack / pieces if pieces else 0.0,
+        "cancelled_attack_per_piece": (summary.attack - summary.outgoing_attack) / pieces
+        if pieces
+        else 0.0,
+        "mean_max_height": summary.max_height_sum / pieces if pieces else 0.0,
+        "mean_holes": summary.holes_sum / pieces if pieces else 0.0,
+        "mean_pending_garbage": summary.pending_sum / pieces if pieces else 0.0,
+        "mean_ready_garbage": summary.ready_sum / pieces if pieces else 0.0,
+        "danger_rate": summary.danger_decisions / pieces if pieces else 0.0,
         "tetris_per_100": 100.0 * summary.tetrises / pieces if pieces else 0.0,
         "t_spin_mini_per_100": 100.0 * summary.t_spin_mini / pieces if pieces else 0.0,
         "t_spin_full_per_100": 100.0 * summary.t_spin_full / pieces if pieces else 0.0,

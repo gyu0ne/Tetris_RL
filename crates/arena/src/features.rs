@@ -74,7 +74,7 @@ fn eroded_piece_cells(placement: PieceState, cleared: ClearedLines) -> i32 {
     i32::from(cleared.count()) * i32::try_from(piece_cells).expect("tetromino has four cells")
 }
 
-fn column_heights(board: &Board) -> [i32; WIDTH] {
+pub(crate) fn column_heights(board: &Board) -> [i32; WIDTH] {
     let mut heights = [0; WIDTH];
     for (x, height) in heights.iter_mut().enumerate() {
         for y in (0..HEIGHT).rev() {
@@ -85,6 +85,20 @@ fn column_heights(board: &Board) -> [i32; WIDTH] {
         }
     }
     heights
+}
+
+pub(crate) fn column_holes(board: &Board, heights: &[i32; WIDTH]) -> [i32; WIDTH] {
+    let mut holes = [0; WIDTH];
+    for (x, height) in heights.iter().copied().enumerate() {
+        for y in 0..height {
+            holes[x] += i32::from(!occupied(
+                board,
+                x,
+                usize::try_from(y).expect("height is nonnegative"),
+            ));
+        }
+    }
+    holes
 }
 
 fn row_transitions(board: &Board) -> i32 {
@@ -116,17 +130,7 @@ fn column_transitions(board: &Board) -> i32 {
 }
 
 fn buried_holes(board: &Board, heights: &[i32; WIDTH]) -> i32 {
-    let mut holes = 0;
-    for (x, height) in heights.iter().copied().enumerate() {
-        for y in 0..height {
-            holes += i32::from(!occupied(
-                board,
-                x,
-                usize::try_from(y).expect("height is nonnegative"),
-            ));
-        }
-    }
-    holes
+    column_holes(board, heights).iter().sum()
 }
 
 fn cumulative_wells(board: &Board) -> i32 {

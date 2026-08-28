@@ -19,7 +19,11 @@ def load_versus_actor(
     path: Path, *, allow_observed: bool = False, device: str = "cpu"
 ) -> LoadedVersusActor:
     payload = torch.load(path, map_location=device, weights_only=True)
-    _expect(payload.get("checkpoint_schema") == "versus-actor-critic-v1", "checkpoint schema")
+    checkpoint_schema = payload.get("checkpoint_schema")
+    _expect(
+        checkpoint_schema in {"versus-actor-critic-v1", "versus-actor-critic-v2"},
+        "checkpoint schema",
+    )
     mechanics_status = payload.get("mechanics_status")
     if mechanics_status == MECHANICS_STATUS:
         _expect(allow_observed, "OBSERVED checkpoint requires explicit opt-in")
@@ -32,7 +36,10 @@ def load_versus_actor(
         feature_std=torch.ones(solo_config.input_features, device=device),
         metadata={},
     )
-    model = VersusActorCritic(solo, VersusModelConfig(**payload["model_config"])).to(device)
+    model_config = dict(payload["model_config"])
+    if checkpoint_schema == "versus-actor-critic-v1":
+        model_config["architecture_version"] = 1
+    model = VersusActorCritic(solo, VersusModelConfig(**model_config)).to(device)
     model.load_state_dict(payload["model_state"], strict=True)
     model.eval()
     return LoadedVersusActor(model=model, metadata=payload)

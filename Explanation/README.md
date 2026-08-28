@@ -10,4 +10,5 @@
 - [모방학습 모델 평가와 승격](./Imitation_Model_Evaluation_and_Promotion.md): offline·closed-loop 평가의 차이, 실제 `model.pt` 평가 구조와 실사용 체크포인트 생성 절차
 - [장기 모방학습 규모 근거](./Imitation_Learning_Scale_Estimate.md): 100만 교사 결정·3개 초기화·최대 100 epoch·learner-state 추가·장기 생존 실행값의 근거
 - [솔로 모델 관전자와 고속 평가](./Solo_Model_Spectator_and_Fast_Evaluation.md): 승격된 `model.pt`를 직접 보는 방법, 추론 전용 Rust 경로, seed 병렬 평가와 자원 프로필
-- [1대1 자기대전 강화학습과 보조 보상](./Versus_Self_Play_Reinforcement_Learning.md): placement-level PPO, 보조 보상의 정확한 식, 상대 풀, 실행·재개·평가 절차
+- [1대1 자기대전 r2 설계와 실행](./Versus_Self_Play_R2_Design_and_Runbook.md): 장기 승패 할인, joint residual, 솔로 KL 보존, PFSP, 공격·안정성·방어 지표와 실행 절차
+- [1대1 자기대전 r1 기록](./Versus_Self_Play_Reinforcement_Learning.md): 기존 placement-level PPO와 entropy 실패·수정의 역사적 설명
