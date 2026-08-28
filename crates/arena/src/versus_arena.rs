@@ -1,4 +1,4 @@
-use crate::features::{board_summary, column_heights, column_holes, extract_afterstate_features};
+use crate::features::{analyze_afterstate, board_summary, column_heights_and_holes};
 use crate::{FEATURE_COUNT, GenerationError};
 use engine_core::{GameState, PieceKind, SoftDropMode, SpinClassification, WIDTH};
 use rayon::prelude::*;
@@ -287,10 +287,12 @@ fn enumerate_player_candidates(
     let mut choices = Vec::new();
 
     for (used_hold, source) in sources {
+        let source_piece_context = piece_context(&source);
         for placement in source.reachable_placements() {
-            let mut after = source.clone();
-            let locked = after.lock_placement_deferred(placement.state, placement.last_action)?;
-            let solo = extract_afterstate_features(after.board(), placement.state, locked.cleared);
+            let preview = source.preview_reachable_placement(&placement)?;
+            let locked = preview.locked;
+            let analysis = analyze_afterstate(&preview.board, placement.state, locked.cleared);
+            let solo = analysis.features;
             let attack = resolve_attack(
                 own.attack_state(),
                 locked.clear,
@@ -320,12 +322,10 @@ fn enumerate_player_candidates(
             features[17] = opponent_ready;
             features[18] = opponent_summary[1];
             features[19] = opponent_summary[2];
-            let heights = column_heights(after.board());
-            let holes = column_holes(after.board(), &heights);
-            features[20..30].copy_from_slice(&heights);
-            features[30..40].copy_from_slice(&holes);
+            features[20..30].copy_from_slice(&analysis.heights);
+            features[30..40].copy_from_slice(&analysis.holes);
             features[40] = i32::from(used_hold);
-            features[41..76].copy_from_slice(&piece_context(&source));
+            features[41..76].copy_from_slice(&source_piece_context);
             let t_spin = match locked.clear.spin {
                 Some(spin) if spin.piece == PieceKind::T => match spin.classification {
                     SpinClassification::Mini => 1,
@@ -379,10 +379,8 @@ fn extract_state_features(
     ]);
     let own_game = own.session().game();
     let opponent_game = opponent.session().game();
-    let own_heights = column_heights(own_game.board());
-    let opponent_heights = column_heights(opponent_game.board());
-    let own_holes = column_holes(own_game.board(), &own_heights);
-    let opponent_holes = column_holes(opponent_game.board(), &opponent_heights);
+    let (own_heights, own_holes) = column_heights_and_holes(own_game.board());
+    let (opponent_heights, opponent_holes) = column_heights_and_holes(opponent_game.board());
     features[12..22].copy_from_slice(&own_heights);
     features[22..32].copy_from_slice(&opponent_heights);
     features[32..42].copy_from_slice(&own_holes);

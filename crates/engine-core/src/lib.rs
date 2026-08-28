@@ -26,7 +26,8 @@ pub use board::{
 pub use clear::ClearEvent;
 pub use game::{
     GameConfig, GameError, GameState, HoldOutcome, InitialActionOutcome, LockedPlacement,
-    PlacementOutcome, SpawnRules, TETRIO_7_BAG_ORDER, TETRIO_SPAWN_FALL_FRACTION_MICROS,
+    PlacementOutcome, PlacementPreview, SpawnRules, TETRIO_7_BAG_ORDER,
+    TETRIO_SPAWN_FALL_FRACTION_MICROS,
 };
 pub use handling::{
     HandlingRules, HandlingState, InitialActions, InputButton, InputEdge, InputEdgeKind,

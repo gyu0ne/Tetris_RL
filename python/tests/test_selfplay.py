@@ -2,20 +2,100 @@ import unittest
 from pathlib import Path
 from typing import cast
 
+import torch
+from tetris_rl.envs import VersusObservation
 from tetris_rl.models import VersusActorCritic
 from tetris_rl.training.selfplay import (
     OpponentPoolEntry,
     SelfPlayConfig,
+    _batched_actor_logits,
     _entropy_coefficient,
     _kickstart_coefficient,
     _new_match_assignment,
+    _ragged_policy_terms,
     _resolve_actor_assignments,
     _sample_pfsp_opponent,
+    _segmented_log_probabilities,
     _stratified_paths,
 )
+from torch.distributions import Categorical
+
+
+class CountingActor:
+    def __init__(self, scale: float) -> None:
+        self.scale = scale
+        self.calls = 0
+
+    def actor_logits(self, candidates: torch.Tensor) -> torch.Tensor:
+        self.calls += 1
+        return candidates[:, 0] * self.scale
 
 
 class SelfPlayOpponentPoolTest(unittest.TestCase):
+    def test_vectorized_ragged_policy_terms_match_categorical_reference(self) -> None:
+        logits = torch.tensor([0.2, -0.5, 1.1, 0.3, -0.7, 0.4], requires_grad=True)
+        teacher_logits = torch.tensor([-0.1, 0.7, 0.2, -0.4, 0.9, 0.1])
+        counts = torch.tensor([2, 3, 1])
+        actions = torch.tensor([1, 2, 0])
+        teacher_log_probability = _segmented_log_probabilities(teacher_logits, counts)
+
+        selected, entropy, normalized_entropy, kickstart = _ragged_policy_terms(
+            logits, teacher_log_probability, counts, actions
+        )
+        offset = 0
+        expected_selected = []
+        expected_entropy = []
+        expected_normalized = []
+        expected_kickstart = []
+        for count, action in zip(counts.tolist(), actions.tolist(), strict=True):
+            end = offset + count
+            student = Categorical(logits=logits[offset:end])
+            teacher_log_probability = torch.log_softmax(teacher_logits[offset:end], dim=0)
+            teacher_probability = teacher_log_probability.exp()
+            student_log_probability = torch.log_softmax(logits[offset:end], dim=0)
+            expected_selected.append(student.log_prob(torch.tensor(action)))
+            expected_entropy.append(student.entropy())
+            expected_normalized.append(
+                student.entropy() / torch.log(torch.tensor(float(count)))
+                if count > 1
+                else torch.tensor(0.0)
+            )
+            expected_kickstart.append(
+                torch.sum(teacher_probability * (teacher_log_probability - student_log_probability))
+            )
+            offset = end
+
+        self.assertTrue(torch.allclose(selected, torch.stack(expected_selected)))
+        self.assertTrue(torch.allclose(entropy, torch.stack(expected_entropy)))
+        self.assertTrue(torch.allclose(normalized_entropy, torch.stack(expected_normalized)))
+        self.assertTrue(torch.allclose(kickstart, torch.stack(expected_kickstart)))
+        (selected.mean() + entropy.mean() + kickstart.mean()).backward()
+        self.assertTrue(torch.isfinite(logits.grad).all())
+
+    def test_actor_inference_batches_each_distinct_model_once(self) -> None:
+        learner = CountingActor(1.0)
+        opponent = CountingActor(-1.0)
+        observation = VersusObservation(
+            candidate_features=torch.tensor([[1.0], [2.0], [3.0], [4.0], [5.0], [6.0]]),
+            candidate_diagnostics=torch.empty((6, 0)),
+            state_features=torch.empty((3, 0)),
+            offsets=(0, 2, 5, 6),
+            done=torch.zeros(3, dtype=torch.bool),
+            results=torch.zeros(3),
+        )
+
+        logits = _batched_actor_logits(
+            observation,
+            [None, cast(VersusActorCritic, opponent), None],
+            cast(VersusActorCritic, learner),
+        )
+
+        self.assertEqual(learner.calls, 1)
+        self.assertEqual(opponent.calls, 1)
+        self.assertTrue(torch.equal(logits[0], torch.tensor([1.0, 2.0])))
+        self.assertTrue(torch.equal(logits[1], torch.tensor([-3.0, -4.0, -5.0])))
+        self.assertTrue(torch.equal(logits[2], torch.tensor([6.0])))
+
     def test_assignments_use_current_historical_and_bootstrap_ratios(self) -> None:
         config = SelfPlayConfig(
             schema_version="versus-selfplay-ppo-v2",

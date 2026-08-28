@@ -1,8 +1,8 @@
 use crate::{
-    BagOrderError, Board, BoardError, ClearEvent, ClearedLines, GarbagePushResult, HEIGHT,
-    InitialActions, LastAction, LockVisibility, Orientation, PieceKind, PieceState, RotationResult,
-    SevenBag, SpinRules, TopOutReason, TopOutRules, VISIBLE_HEIGHT, classify_spin, reachable_locks,
-    try_rotate,
+    BagOrderError, Board, BoardError, ClearEvent, ClearedLines, GarbagePushResult,
+    GeometricPlacement, HEIGHT, InitialActions, LastAction, LockVisibility, Orientation, PieceKind,
+    PieceState, RotationResult, SevenBag, SpinRules, TopOutReason, TopOutRules, VISIBLE_HEIGHT,
+    classify_spin, reachable_locks, try_rotate,
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -164,6 +164,44 @@ impl GameState {
         } else {
             reachable_locks(&self.board, self.active)
         }
+    }
+
+    /// Computes the authoritative lock facts and compacted afterstate for a
+    /// placement returned by [`Self::reachable_placements`] without running a
+    /// second reachability search. The game itself is not mutated.
+    pub fn preview_reachable_placement(
+        &self,
+        placement: &GeometricPlacement,
+    ) -> Result<PlacementPreview, GameError> {
+        self.ensure_playable()?;
+        if placement.state.kind != self.active.kind {
+            return Err(GameError::WrongPiece {
+                active: self.active.kind,
+                attempted: placement.state.kind,
+            });
+        }
+
+        let spin = classify_spin(
+            &self.board,
+            placement.state,
+            placement.last_action,
+            self.config.spin,
+        );
+        let mut board = self.board;
+        let lock = board.lock(placement.state)?;
+        let locked = LockedPlacement {
+            cleared: lock.cleared,
+            clear: ClearEvent::from_lock(
+                placement.state.kind,
+                lock.cleared,
+                spin,
+                lock.perfect_clear,
+            ),
+            cleared_garbage: lock.cleared_garbage,
+            lock_visibility: lock.visibility,
+            pieces_placed: self.pieces_placed + 1,
+        };
+        Ok(PlacementPreview { board, locked })
     }
 
     pub fn hold_active(&mut self) -> Result<HoldOutcome, GameError> {
@@ -415,6 +453,12 @@ pub struct LockedPlacement {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlacementPreview {
+    pub board: Board,
+    pub locked: LockedPlacement,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HoldOutcome {
     pub held: PieceKind,
     pub active: PieceState,
@@ -578,6 +622,20 @@ mod tests {
                 .lock_placement(second_placement)
                 .expect("second lock");
             assert_eq!(first, second);
+        }
+    }
+
+    #[test]
+    fn reachable_preview_matches_mutating_deferred_lock() {
+        let game = GameState::new(77, GameConfig::default()).unwrap();
+        for placement in game.reachable_placements() {
+            let preview = game.preview_reachable_placement(&placement).unwrap();
+            let mut applied = game.clone();
+            let locked = applied
+                .lock_placement_deferred(placement.state, placement.last_action)
+                .unwrap();
+            assert_eq!(preview.locked, locked);
+            assert_eq!(preview.board, *applied.board());
         }
     }
 

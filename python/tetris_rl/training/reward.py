@@ -4,6 +4,14 @@ import torch
 from torch import Tensor
 
 STATE_FEATURE_COUNT = 12
+POTENTIAL_COMPONENT_NAMES = (
+    "stack",
+    "holes",
+    "pending",
+    "ready",
+    "combo",
+    "back_to_back",
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +36,11 @@ class PotentialConfig:
 
 def state_potential(state_features: Tensor, config: PotentialConfig) -> Tensor:
     """Bounded player-relative Phi(s); swapping players negates it exactly."""
+    return state_potential_components(state_features, config).sum(dim=1)
+
+
+def state_potential_components(state_features: Tensor, config: PotentialConfig) -> Tensor:
+    """Weighted, bounded components whose row sum is Phi(s)."""
     config.validate()
     if state_features.ndim != 2 or state_features.shape[1] < STATE_FEATURE_COUNT:
         raise ValueError(
@@ -52,7 +65,7 @@ def state_potential(state_features: Tensor, config: PotentialConfig) -> Tensor:
     bounds = torch.tensor(config.bounds, dtype=state_features.dtype, device=state_features.device)
     weights = torch.tensor(config.weights, dtype=state_features.dtype, device=state_features.device)
     normalized = torch.clamp(raw / bounds, min=-1.0, max=1.0)
-    return normalized @ weights
+    return normalized * weights
 
 
 def transition_reward(
@@ -63,12 +76,30 @@ def transition_reward(
     config: PotentialConfig,
 ) -> Tensor:
     """z + lambda * (gamma*Phi(s') - Phi(s)), with Phi(terminal)=0."""
+    reward, _ = transition_reward_details(
+        current_state,
+        next_state,
+        terminal_outcome,
+        terminal,
+        config,
+    )
+    return reward
+
+
+def transition_reward_details(
+    current_state: Tensor,
+    next_state: Tensor,
+    terminal_outcome: Tensor,
+    terminal: Tensor,
+    config: PotentialConfig,
+) -> tuple[Tensor, Tensor]:
+    """Returns total reward and six scaled potential-shaping components."""
     if terminal_outcome.ndim != 1 or terminal.ndim != 1:
         raise ValueError("terminal outcome and mask must be vectors")
     if terminal_outcome.shape != terminal.shape or terminal.shape[0] != current_state.shape[0]:
         raise ValueError("reward batch dimensions differ")
-    current = state_potential(current_state, config)
-    following = state_potential(next_state, config)
-    following = torch.where(terminal, torch.zeros_like(following), following)
-    shaping = config.gamma * following - current
-    return terminal_outcome + config.shaping_scale * shaping
+    current = state_potential_components(current_state, config)
+    following = state_potential_components(next_state, config)
+    following = torch.where(terminal[:, None], torch.zeros_like(following), following)
+    shaping = config.shaping_scale * (config.gamma * following - current)
+    return terminal_outcome + shaping.sum(dim=1), shaping

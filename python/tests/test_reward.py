@@ -1,10 +1,39 @@
 import unittest
 
 import torch
-from tetris_rl.training.reward import PotentialConfig, state_potential, transition_reward
+from tetris_rl.training.reward import (
+    PotentialConfig,
+    state_potential,
+    state_potential_components,
+    transition_reward,
+    transition_reward_details,
+)
 
 
 class PotentialRewardTest(unittest.TestCase):
+    def test_component_sum_matches_public_potential_and_reward(self) -> None:
+        current = self.state.repeat(2, 1)
+        following = self.state.clone()
+        following[:, 0] += 2.0
+        terminal = torch.tensor([False, False])
+        outcomes = torch.zeros(2)
+
+        self.assertTrue(
+            torch.allclose(
+                state_potential_components(current, self.config).sum(dim=1),
+                state_potential(current, self.config),
+            )
+        )
+        reward, components = transition_reward_details(
+            current, following, outcomes, terminal, self.config
+        )
+        self.assertTrue(
+            torch.allclose(
+                reward, transition_reward(current, following, outcomes, terminal, self.config)
+            )
+        )
+        self.assertTrue(torch.allclose(reward, components.sum(dim=1)))
+
     def setUp(self) -> None:
         self.config = PotentialConfig()
         self.state = torch.tensor([[8, 14, 2, 6, 3, 11, 1, 5, 4, 1, 7, 2]], dtype=torch.float32)

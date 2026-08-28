@@ -1,5 +1,15 @@
 # PROJECT Explain: Versus Self-Play RL
 
+## 성능·보상 관측 확정 (2026-08-28)
+
+- 후보 하나마다 `reachable_locks`를 다시 실행하던 경로를 폐기한다. 최초 검증된 `GeometricPlacement`는 비변이 `preview_reachable_placement`로 lock/clear afterstate를 계산한다. preview와 실제 deferred lock의 board/event equality를 테스트한다.
+- 도달 BFS는 매 edge의 전체 path clone 대신 parent node를 저장하고 최종 placement만 path를 복원한다. afterstate board 특징은 column bit mask 한 번으로 높이·구멍·transition·well을 계산한다.
+- 동일 16경기×20 step, Rayon 2-thread 측정에서 후보 처리량은 `2,758/s -> 103,086/s`, engine 시간은 `15.923s -> 0.426s`였다.
+- Python은 actor별 rollout 후보를 batch forward하고 PPO ragged categorical/log-softmax/KL을 segment tensor 연산으로 계산한다. 고정 teacher log probability는 update당 한 번만 계산한다.
+- 작은 MLP에 12 PyTorch thread를 쓰는 것은 측정상 역효과였다. resource profile은 `light Rust2/Torch1`, `balanced Rust6/Torch2`, `max Rust12/Torch2`로 분리하며 학습 semantic config는 바꾸지 않는다.
+- 직접 attack/line/T-spin 보상은 계속 금지한다. 기존 potential shaping의 총합은 그대로 유지하되 terminal 전이 수, 조밀 보상 nonzero rate/절댓값과 stack·holes·pending·ready·combo·B2B 성분을 로그로 공개한다.
+- 첫 32경기×512 step 스모크는 terminal 0이어도 learner transition의 `96.2890625%`에 nonzero shaping이 관측됐다. `mean_reward≈0`은 양·음 상쇄이며 보상 부재의 증거가 아니다.
+
 ## r2 확정 설계 (2026-08-28)
 
 r1의 단일 최고 모델 가정을 폐기한다. 실제 held-out 대국에서 update 200, 230, 310이 순환 우위를 보였고 reference가 공격량이 더 낮으면서도 update 200을 이겼으므로, 공격량 자체는 목표가 아니라 승리 원인의 진단값이다.

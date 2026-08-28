@@ -116,6 +116,8 @@ PowerShell에서 다음 명령으로 새 r2를 시작한다.
 ./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24
 ```
 
+자원 프로필은 Rust 후보 생성과 PyTorch의 작은 MLP에 같은 thread 수를 주지 않는다. `max`는 `Rayon 12 / PyTorch 2`, `balanced`는 `6 / 2`, `light`는 `2 / 1`이다. 실제 측정에서 PyTorch 12-thread는 작은 minibatch의 scheduling 비용 때문에 2-thread보다 느렸다.
+
 기본 출력은 `checkpoints/versus-selfplay-r2`다. r1과 구조가 다르므로 r1 snapshot을 `-InitializeFrom`으로 주면 명시적으로 거부한다. 승격된 솔로 bootstrap에서 새로 시작하는 것이 정상이다.
 
 중단 후 재개:
@@ -162,6 +164,10 @@ snapshots/        10 update 간격 progress와 추론 모델
 - `approximate_kl`, `clip_fraction`, `gradient_norm`: PPO update 크기
 - `rollout_normalized_entropy`, `rollout_mean_max_probability`: 후보 수를 보정한 탐색 정도
 - `kickstart_kl`, `kickstart_loss_contribution`: 솔로 teacher에서 벗어난 정도와 실제 loss 영향
+- `learner_terminal_*`, `terminal_transition_rate`: 학습자에게 실제 승패 terminal이 전달된 횟수와 비율
+- `shaping_reward_nonzero_rate`, `shaping_reward_mean_abs`: 플레이 중 potential 보상의 발생률과 크기
+- `shaping_*_mean_abs`: stack·holes·garbage·combo·B2B별 조밀 보상 기여
+- `rollout_environment_seconds`, `rollout_policy_seconds`, `ppo_seconds`: 후보 생성·정책 수집·학습 구간별 병목
 
 최종 모델은 최신 snapshot이나 공격량 하나로 정하지 않는다. reference 및 여러 과거 snapshot과 같은 seed·좌우 교대 대국을 수행하고, 승률 Wilson 95% 구간과 completion rate를 우선한다. 동률권에서는 outgoing attack이 높고 danger/holes가 낮은 모델을 고른다. 8/12/15 frame cadence에서도 순위가 유지되는지 확인해야 cadence에 과적합되지 않았다고 본다.
 
@@ -180,4 +186,4 @@ snapshots/        10 update 간격 progress와 추론 모델
 
 ## 10. 현재 보장과 남은 실험
 
-구현·단위 테스트·한 update 스모크는 통과했다. 이것은 학습기가 의도대로 계산된다는 증거이지 r2가 이미 r1보다 강하다는 결과는 아니다. 실제 24시간 run, snapshot league 평가, shaping/KL ablation, 8/12/15 cadence 비교가 끝나야 최종 champion을 선택할 수 있다.
+구현·단위 테스트·한 update 스모크는 통과했다. 후보 엔진 마이크로벤치는 2-thread에서 15.923초에서 0.426초로 단축됐고, 첫 update에서는 terminal이 0이어도 학습자 transition의 약 96.3%에 potential shaping이 들어갔다. 상세 측정과 로그 해석은 [1대1 학습 성능 최적화와 보상 진단](./Versus_Training_Performance_and_Reward_Diagnostics.md)에 기록했다. 이것은 학습기가 의도대로 계산된다는 증거이지 r2가 이미 r1보다 강하다는 결과는 아니다. 실제 24시간 run, snapshot league 평가, shaping/KL ablation, 8/12/15 cadence 비교가 끝나야 최종 champion을 선택할 수 있다.

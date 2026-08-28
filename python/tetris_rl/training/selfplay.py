@@ -21,7 +21,11 @@ from tetris_rl.models import (
     load_scorer,
     load_versus_actor,
 )
-from tetris_rl.training.reward import PotentialConfig, transition_reward
+from tetris_rl.training.reward import (
+    POTENTIAL_COMPONENT_NAMES,
+    PotentialConfig,
+    transition_reward_details,
+)
 
 CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v3"
 
@@ -276,6 +280,7 @@ def main() -> None:
             league_stats_before = deepcopy(league_stats)
             try:
                 historical = _load_opponent_pool(args.output_dir, config, args.allow_observed)
+                rollout_started = time.monotonic()
                 transitions, observation, seed_index, simulated_decisions, rollout_metrics = (
                     _collect_rollout(
                         env,
@@ -291,8 +296,10 @@ def main() -> None:
                         league_stats,
                     )
                 )
+                rollout_seconds = time.monotonic() - rollout_started
                 entropy_coefficient = _entropy_coefficient(config, update)
                 kickstart_coefficient = _kickstart_coefficient(config, update)
+                ppo_started = time.monotonic()
                 metrics = _ppo_update(
                     model,
                     bootstrap_opponent,
@@ -302,7 +309,17 @@ def main() -> None:
                     entropy_coefficient,
                     kickstart_coefficient,
                 )
+                ppo_seconds = time.monotonic() - ppo_started
                 metrics.update(rollout_metrics)
+                metrics.update(
+                    {
+                        "rollout_total_seconds": rollout_seconds,
+                        "rollout_simulated_decisions_per_second": (
+                            simulated_decisions / rollout_seconds
+                        ),
+                        "ppo_seconds": ppo_seconds,
+                    }
+                )
             except BaseException:
                 model.load_state_dict(model_before, strict=True)
                 optimizer.load_state_dict(optimizer_before)
@@ -464,24 +481,38 @@ def _collect_rollout(
         "learner_pending_sum": 0,
         "learner_ready_sum": 0,
         "learner_danger_decisions": 0,
+        "learner_terminal_decisions": 0,
+        "learner_terminal_wins": 0,
+        "learner_terminal_losses": 0,
+        "learner_terminal_draws": 0,
     }
     entropy_sum = 0.0
     normalized_entropy_sum = 0.0
     max_probability_sum = 0.0
     candidate_count_sum = 0
+    all_candidate_count_sum = 0
+    environment_seconds = 0.0
+    policy_seconds = 0.0
+    value_reward_seconds = 0.0
+    shaping_absolute_sum = 0.0
+    shaping_nonzero = 0
+    shaping_max_absolute = 0.0
+    shaping_component_absolute_sums = torch.zeros(len(POTENTIAL_COMPONENT_NAMES))
     for _ in range(config.rollout_steps):
         if bool(torch.any(observation.done)):
             raise RuntimeError("rollout started with an unreset completed match")
+        value_started = time.monotonic()
         with torch.no_grad():
             values = model.value(observation.state_features)
+        value_reward_seconds += time.monotonic() - value_started
+        policy_started = time.monotonic()
+        logits_by_decision = _batched_actor_logits(observation, actor_assignments, model)
         selections: list[int] = []
         log_probabilities: list[float] = []
         candidate_views: list[Tensor] = []
         for decision in range(decision_count):
             start, end = observation.offsets[decision : decision + 2]
-            actor = actor_assignments[decision] or model
-            with torch.no_grad():
-                logits = actor.actor_logits(observation.candidate_features[start:end])
+            logits = logits_by_decision[decision]
             distribution = Categorical(logits=logits)
             action = distribution.sample()
             selected = int(action.item())
@@ -516,19 +547,40 @@ def _collect_rollout(
                 counters["learner_pending_sum"] += int(state[4].item())
                 counters["learner_ready_sum"] += int(state[6].item())
                 counters["learner_danger_decisions"] += int(max_height >= 16)
+        all_candidate_count_sum += observation.candidate_features.shape[0]
+        policy_seconds += time.monotonic() - policy_started
 
+        environment_started = time.monotonic()
         next_observation = env.step(selections)
+        environment_seconds += time.monotonic() - environment_started
         terminal = next_observation.done
+        value_started = time.monotonic()
         with torch.no_grad():
             next_values = model.value(next_observation.state_features)
             next_values = torch.where(terminal, torch.zeros_like(next_values), next_values)
-            rewards = transition_reward(
+            rewards, shaping_components = transition_reward_details(
                 observation.state_features,
                 next_observation.state_features,
                 next_observation.results,
                 terminal,
                 reward_config,
             )
+        value_reward_seconds += time.monotonic() - value_started
+        for index, assignment in enumerate(actor_assignments):
+            if assignment is not None:
+                continue
+            dense = shaping_components[index]
+            dense_absolute = abs(float(dense.sum().item()))
+            shaping_absolute_sum += dense_absolute
+            shaping_nonzero += int(dense_absolute > 1e-12)
+            shaping_max_absolute = max(shaping_max_absolute, dense_absolute)
+            shaping_component_absolute_sums += dense.abs()
+            if bool(terminal[index].item()):
+                outcome = int(next_observation.results[index].item())
+                counters["learner_terminal_decisions"] += 1
+                counters["learner_terminal_wins"] += int(outcome > 0)
+                counters["learner_terminal_losses"] += int(outcome < 0)
+                counters["learner_terminal_draws"] += int(outcome == 0)
         step_transitions = [
             DecisionTransition(
                 candidates=candidate_views[index],
@@ -580,7 +632,9 @@ def _collect_rollout(
                 for offset in range(len(completed_indices))
             ]
             seed_index += len(completed_indices)
+            environment_started = time.monotonic()
             next_observation = env.reset_done(reset_seeds)
+            environment_seconds += time.monotonic() - environment_started
             for match_index, seed in zip(completed_indices, reset_seeds, strict=True):
                 assignment = _new_match_assignment(
                     config, match_index, seed, historical, league_stats
@@ -618,6 +672,19 @@ def _collect_rollout(
                 "rollout_effective_choices": math.exp(entropy_sum / learner_decisions),
                 "rollout_mean_max_probability": max_probability_sum / learner_decisions,
                 "rollout_mean_candidates": candidate_count_sum / learner_decisions,
+                "rollout_candidate_afterstates": all_candidate_count_sum,
+                "rollout_environment_seconds": environment_seconds,
+                "rollout_policy_seconds": policy_seconds,
+                "rollout_value_reward_seconds": value_reward_seconds,
+                "shaping_reward_mean_abs": shaping_absolute_sum / learner_decisions,
+                "shaping_reward_nonzero_rate": shaping_nonzero / learner_decisions,
+                "shaping_reward_max_abs": shaping_max_absolute,
+                "terminal_transition_rate": counters["learner_terminal_decisions"]
+                / learner_decisions,
+                "nonzero_terminal_reward_rate": (
+                    counters["learner_terminal_wins"] + counters["learner_terminal_losses"]
+                )
+                / learner_decisions,
                 "lines_per_piece": counters["learner_lines"] / learner_decisions,
                 "attack_per_piece": counters["learner_attack"] / learner_decisions,
                 "outgoing_attack_per_piece": counters["learner_outgoing_attack"]
@@ -637,7 +704,125 @@ def _collect_rollout(
                 / learner_decisions,
             }
         )
+        for index, name in enumerate(POTENTIAL_COMPONENT_NAMES):
+            rollout_metrics[f"shaping_{name}_mean_abs"] = (
+                float(shaping_component_absolute_sums[index].item()) / learner_decisions
+            )
     return learner_transitions, observation, seed_index, len(flattened), rollout_metrics
+
+
+def _batched_actor_logits(
+    observation: VersusObservation,
+    actor_assignments: list[VersusActorCritic | None],
+    learner: VersusActorCritic,
+) -> list[Tensor]:
+    if len(actor_assignments) != observation.decision_count:
+        raise ValueError("actor assignment count differs from observation decisions")
+    grouped: dict[int, tuple[VersusActorCritic, list[int]]] = {}
+    for decision, assigned in enumerate(actor_assignments):
+        actor = assigned or learner
+        key = id(actor)
+        if key not in grouped:
+            grouped[key] = (actor, [])
+        grouped[key][1].append(decision)
+
+    logits_by_decision: list[Tensor | None] = [None] * observation.decision_count
+    with torch.no_grad():
+        for actor, decisions in grouped.values():
+            candidate_views = [
+                observation.candidate_features[
+                    observation.offsets[decision] : observation.offsets[decision + 1]
+                ]
+                for decision in decisions
+            ]
+            combined = (
+                candidate_views[0] if len(candidate_views) == 1 else torch.cat(candidate_views)
+            )
+            combined_logits = actor.actor_logits(combined)
+            offset = 0
+            for decision, candidates in zip(decisions, candidate_views, strict=True):
+                end = offset + candidates.shape[0]
+                logits_by_decision[decision] = combined_logits[offset:end]
+                offset = end
+    if any(logits is None for logits in logits_by_decision):
+        raise RuntimeError("batched actor inference left a decision without logits")
+    return [logits for logits in logits_by_decision if logits is not None]
+
+
+def _segmented_log_probabilities(values: Tensor, candidate_counts: Tensor) -> Tensor:
+    """Log-softmax each consecutive variable-size segment without Python loops."""
+    decision_count = candidate_counts.shape[0]
+    segment = torch.repeat_interleave(
+        torch.arange(decision_count, device=values.device), candidate_counts
+    )
+    maxima = torch.full(
+        (decision_count,),
+        -torch.inf,
+        dtype=values.dtype,
+        device=values.device,
+    )
+    maxima.scatter_reduce_(0, segment, values, reduce="amax", include_self=True)
+    exponentials = torch.exp(values - maxima[segment])
+    normalizers = torch.zeros_like(maxima)
+    normalizers.scatter_add_(0, segment, exponentials)
+    return values - (maxima + normalizers.log())[segment]
+
+
+def _ragged_policy_terms(
+    logits: Tensor,
+    teacher_log_probability: Tensor,
+    candidate_counts: Tensor,
+    actions: Tensor,
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Vectorized categorical terms for concatenated variable-size decisions."""
+    decision_count = candidate_counts.shape[0]
+    segment = torch.repeat_interleave(
+        torch.arange(decision_count, device=logits.device), candidate_counts
+    )
+
+    student_log_probability = _segmented_log_probabilities(logits, candidate_counts)
+    student_probability = student_log_probability.exp()
+    entropy = torch.zeros(decision_count, dtype=logits.dtype, device=logits.device).scatter_add_(
+        0, segment, -(student_probability * student_log_probability)
+    )
+    normalizers = torch.where(
+        candidate_counts > 1,
+        candidate_counts.to(logits.dtype).log(),
+        torch.ones(decision_count, dtype=logits.dtype, device=logits.device),
+    )
+    normalized_entropy = torch.where(
+        candidate_counts > 1,
+        entropy / normalizers,
+        torch.zeros_like(entropy),
+    )
+    starts = torch.cumsum(candidate_counts, dim=0) - candidate_counts
+    selected_log_probability = student_log_probability[starts + actions]
+
+    teacher_probability = teacher_log_probability.exp()
+    kickstart = torch.zeros(decision_count, dtype=logits.dtype, device=logits.device).scatter_add_(
+        0,
+        segment,
+        teacher_probability * (teacher_log_probability - student_log_probability),
+    )
+    return selected_log_probability, entropy, normalized_entropy, kickstart
+
+
+def _precompute_teacher_log_probabilities(
+    teacher: VersusActorCritic,
+    transitions: list[DecisionTransition],
+    chunk_decisions: int,
+) -> list[Tensor]:
+    cached: list[Tensor] = []
+    with torch.no_grad():
+        for start in range(0, len(transitions), chunk_decisions):
+            records = transitions[start : start + chunk_decisions]
+            candidates = torch.cat([record.candidates for record in records], dim=0)
+            counts = torch.tensor(
+                [record.candidates.shape[0] for record in records], dtype=torch.long
+            )
+            log_probability = _segmented_log_probabilities(teacher.actor_logits(candidates), counts)
+            cached.extend(torch.split(log_probability, counts.tolist()))
+    return cached
 
 
 def _ppo_update(
@@ -651,6 +836,9 @@ def _ppo_update(
 ) -> dict[str, float]:
     advantages = torch.tensor([record.advantage for record in transitions])
     advantages = (advantages - advantages.mean()) / advantages.std().clamp_min(1e-6)
+    teacher_log_probabilities = _precompute_teacher_log_probabilities(
+        teacher, transitions, config.minibatch_decisions * 4
+    )
     losses: list[float] = []
     policy_losses: list[float] = []
     value_losses: list[float] = []
@@ -668,38 +856,19 @@ def _ppo_update(
             records = [transitions[index] for index in indices]
             candidate_tensor = torch.cat([record.candidates for record in records], dim=0)
             logits = model.actor_logits(candidate_tensor)
-            with torch.no_grad():
-                teacher_logits = teacher.actor_logits(candidate_tensor)
-            new_log_probabilities = []
-            entropy_values = []
-            normalized_entropy_values = []
-            kickstart_values = []
-            offset = 0
-            for record in records:
-                end = offset + record.candidates.shape[0]
-                distribution = Categorical(logits=logits[offset:end])
-                action = torch.tensor(record.action)
-                new_log_probabilities.append(distribution.log_prob(action))
-                candidate_entropy = distribution.entropy()
-                entropy_values.append(candidate_entropy)
-                candidate_count = record.candidates.shape[0]
-                if candidate_count > 1:
-                    normalized_entropy_values.append(candidate_entropy / math.log(candidate_count))
-                else:
-                    normalized_entropy_values.append(torch.zeros_like(candidate_entropy))
-                teacher_log_probability = torch.log_softmax(teacher_logits[offset:end], dim=0)
-                teacher_probability = teacher_log_probability.exp()
-                student_log_probability = torch.log_softmax(logits[offset:end], dim=0)
-                kickstart_values.append(
-                    torch.sum(
-                        teacher_probability * (teacher_log_probability - student_log_probability)
-                    )
-                )
-                offset = end
-            new_log_probability = torch.stack(new_log_probabilities)
-            entropy = torch.stack(entropy_values).mean()
-            normalized_entropy = torch.stack(normalized_entropy_values).mean()
-            kickstart_loss = torch.stack(kickstart_values).mean()
+            teacher_log_probability = torch.cat(
+                [teacher_log_probabilities[index] for index in indices]
+            )
+            candidate_counts = torch.tensor(
+                [record.candidates.shape[0] for record in records], dtype=torch.long
+            )
+            actions = torch.tensor([record.action for record in records], dtype=torch.long)
+            new_log_probability, entropy_values, normalized_entropy_values, kickstart_values = (
+                _ragged_policy_terms(logits, teacher_log_probability, candidate_counts, actions)
+            )
+            entropy = entropy_values.mean()
+            normalized_entropy = normalized_entropy_values.mean()
+            kickstart_loss = kickstart_values.mean()
             old_log_probability = torch.tensor([record.old_log_probability for record in records])
             batch_advantage = advantages[indices]
             log_ratio = new_log_probability - old_log_probability

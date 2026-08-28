@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-28T20:36:02+09:00 [USER] Optimize the slow 32-match self-play loop first and verify whether low per-update terminal counts leave the learner with only sparse win/loss reward; expose or add justified in-play evaluation signals.
+
 - 2026-08-28T15:06:31+09:00 [USER] Proceed from the stopped r1 diagnosis with theory-first objective selection; the next learner should attack effectively while clearing stably and defending under garbage pressure.
 
 - 2026-08-28T14:26:56+09:00 [USER] Stop r1 at update 315, compare the generated checkpoints, and diagnose the causes if final strength is insufficient.
@@ -41,6 +43,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-28T20:36:02+09:00 [CODE] Preserve the r2 terminal objective and existing potential-based shaping rather than adding direct line/attack/T-spin bonuses. Expose learner terminal transitions and the nonzero rate, magnitude and six components of shaping so reward sparsity can be measured without changing the optimal zero-sum objective.
+- 2026-08-28T20:36:02+09:00 [CODE] Separate native simulation and neural-network threading in the versus resource profiles: light uses Rayon/Torch `2/1`, balanced `6/2`, and max `12/2`; measured PyTorch 12-thread execution was slower for the small network and 256-decision minibatches.
 
 - 2026-08-28T15:06:31+09:00 [CODE] Supersede r1 for new runs with r2: preserve terminal zero-sum outcome, use `gamma=0.9995`, GAE `lambda=0.995`, bounded `0.05` potential shaping, a joint 76-feature residual actor, a symmetric 122-feature critic, 0.1x solo-trunk learning rate and decaying fixed-teacher KL `0.02 -> 0.001` over 500 updates.
 - 2026-08-28T15:06:31+09:00 [CODE] Replace latest-8 uniform history with full-history stratification up to 32 snapshots and PFSP weight `max(0.05, (1-smoothed learner score)^1)`; use current/historical/bootstrap match fractions `35/50/15`, retaining fixed opponent and learner side until terminal.
@@ -125,6 +130,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-28T20:36:02+09:00 [CODE] Removed per-candidate reachability revalidation with an authoritative non-mutating placement preview, compacted BFS path storage to parent links, fused afterstate bit-mask feature scans, batched rollout actors, vectorized ragged PPO distribution terms, and cached frozen-teacher log probabilities once per update.
+- 2026-08-28T20:36:02+09:00 [CODE] Added phase timing, candidate-throughput, learner terminal and component-level shaping metrics; added `Explanation/Versus_Training_Performance_and_Reward_Diagnostics.md`, indexed it, and updated the r2 runbook and design record.
 
 - 2026-08-28T15:14:13+09:00 [TOOL] Final post-documentation verification supersedes the earlier test count: Rust fmt/clippy `-D warnings`/141 tests/release build, Ruff format/check and 30 Python tests all passed; both v3 JSON files and the PowerShell runner parsed, `git diff --check` passed, and the constructed r2 model has exactly 14,883 parameters.
 
@@ -241,6 +249,10 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-28T20:36:02+09:00 [TOOL] The isolated 16-match×20-step Rayon-2 benchmark improved from `15.923s / 2,758 candidates/s` to `0.426s / 103,086 candidates/s` (37.4x). Arena tests fell from 6.16s before the repeated-lock fix to 0.26s immediately after it.
+- 2026-08-28T20:36:02+09:00 [TOOL] A fresh 32-match×512-step smoke produced no terminal in its first update but nonzero shaping on `0.962890625` of learner decisions (`mean_abs=0.0014508`, `max_abs=0.0135548`), proving that near-zero signed mean reward was cancellation rather than absence of in-play reward.
+- 2026-08-28T20:36:02+09:00 [TOOL] Full-loop timing identified runtime oversubscription: Rust12/Torch12 took `358.90s` with `ppo_seconds=262.20`, while Rust12/Torch2 took `133.40s` with `ppo_seconds=78.98`; the prior running build was approximately `284.5s/update`.
+
 - 2026-08-28T15:06:31+09:00 [TOOL] For the observed 1,400-placement decision scale, `0.997^1400=0.014901` but `0.9995^1400=0.496498`; the new discount half-life is 1,385.95 placements. Raising GAE lambda from 0.95 to 0.995 changes the exponential trace proxy `1/(1-gamma*lambda)` from 18.92 to 181.90 placements, with weight 0.06352 still present at lag 500.
 - 2026-08-28T15:06:31+09:00 [TOOL] Primary PPO/GAE, potential-shaping, stochastic-game invariance, kickstarting, Tetris policy-search and AlphaStar league sources support the selected mechanisms; they do not prove the numeric r2 hyperparameters are globally optimal, so 24-hour strength and ablation results remain required.
 
@@ -313,6 +325,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-28T20:36:02+09:00 [TOOL] Optimization and reward observability are implemented and verified: Rust fmt/clippy/workspace tests/release build passed; Python Ruff and all 33 tests passed; PowerShell parse and `git diff --check` passed. Existing stopped/running checkpoints remain resume-compatible, but a new container build/restart is required to load the optimized binary.
 
 - 2026-08-28T15:06:31+09:00 [CODE] The theory-backed r2 learner and runbook are implementation-complete and smoke-verified. No r2 strength claim exists yet; the next user operation is a fresh `checkpoints/versus-selfplay-r2` 24-hour run, followed by held-out snapshot league and 8/12/15-cadence selection.
 
