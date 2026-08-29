@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-29T19:17:33+09:00 [USER] Implement option 2: a local real-time keyboard match in which the user directly plays against the current 1v1 model checkpoint.
+
 - 2026-08-29T10:29:25+09:00 [USER] Supersede further short r2 patching with an r3 reward/credit redesign now, before a long run; retain attack, stable clearing and defense as the intended behavior while preserving the terminal objective.
 
 - 2026-08-28T20:36:02+09:00 [USER] Optimize the slow 32-match self-play loop first and verify whether low per-update terminal counts leave the learner with only sparse win/loss reward; expose or add justified in-play evaluation signals.
@@ -45,6 +47,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-29T19:17:33+09:00 [CODE] Keep human input frame-level while retaining the learned model's reachable-placement action space at the configured 12-frame cadence; resolve a due model placement and the human's same-frame input through one transactional `BattleSession` frame so cancellation, garbage and terminal ordering remain authoritative.
+- 2026-08-29T19:17:33+09:00 [CODE] Make the browser a renderer/input relay only. Python owns checkpoint inference and Rust owns every mechanic; the server loads a compatible `*-model.pt` once at process start and requires restart for refreshed weights.
 
 - 2026-08-29T10:29:25+09:00 [CODE] Supersede r2 for new runs with r3: combine 75% structural and 25% legal-candidate tactical readiness potential, use GAE lambda `0.999`, and add a temporary teacher-constrained tactical cross-entropy `0.0001 -> 0` over 300 updates. Keep direct attack/line/T-spin event rewards excluded.
 - 2026-08-29T10:29:25+09:00 [CODE] Define tactical readiness from max outgoing attack, max cancellation capacity and max Full T-spin attack, normalized by 8 and weighted `0.4/0.4/0.2`; player-relative subtraction, terminal zero and total `|Phi|<=1` preserve the bounded antisymmetric potential contract.
@@ -136,6 +141,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-29T19:17:33+09:00 [CODE] Added the Rust human/model arena, simultaneous mixed-action battle adapter, PyO3 bridge, Python controller/server, responsive keyboard UI, Compose service, Rust/Python tests, repository rules, internal design explanation and Korean runbook. The default service targets `checkpoints/versus-selfplay-r3/latest-model.pt` on `127.0.0.1:8789`.
+- 2026-08-29T19:17:33+09:00 [CODE] Added `.playwright-mcp/` to `.gitignore` because browser QA emits temporary snapshots and screenshots that are not project artifacts.
 
 - 2026-08-29T10:29:25+09:00 [CODE] Implemented v4 reward/config/trainer wiring, candidate-set tactical potential, teacher-unit-range tactical targets, longer GAE, terminal-versus-shaping trace decomposition, nine signed/absolute shaping logs, r3 default execution and the preserved r2 script. Added focused reward/ragged-ranking/config tests and Korean/internal design documentation.
 
@@ -257,6 +265,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-29T19:17:33+09:00 [TOOL] Browser smoke on the real update-533 r3 checkpoint verified an initially paused frame 0, a human `Space` lock, model candidate inference and continued battle state. Widths 320/375/414/768/1280 had zero horizontal overflow and no wrapped button labels; a fresh page reported zero console errors.
+- 2026-08-29T19:17:33+09:00 [CODE] The request-response clock is intentionally back-pressured. Inference/HTTP latency can lower wall-clock FPS, but no authoritative engine frame is skipped or reordered; this is a presentation-speed limitation, not a mechanics divergence.
+
 - 2026-08-29T10:29:25+09:00 [TOOL] Final verification passed: Python Ruff format/lint and 38 tests; Rust fmt, clippy `-D warnings`, 144 tests and release workspace build; PowerShell/JSON parse; one-update native r3 smoke; and read-only validation of the existing r2 `latest.pt` against the new compatibility path.
 - 2026-08-29T10:29:25+09:00 [TOOL] A pure tactical soft-target smoke produced KL `43.924` and loss contribution `0.439`, so it was rejected as destabilizing. The final teacher-unit-range constrained target changed `0.3497%` of actions and contributed `5.76e-5`, comparable to normalized entropy `-4.84e-5`.
 - 2026-08-29T10:29:25+09:00 [TOOL] Matched one-update current-code measurements showed r3 PPO `28.60s` and r2 PPO `29.80s`; the new curriculum did not cause the observed PPO wall-time. r3 rollout simulated 32,768 decisions at `1,437.57/s`, with shaping nonzero on `96.53%` of learner decisions.
@@ -337,6 +348,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-29T19:17:33+09:00 [TOOL] Human-versus-model implementation passed Rust fmt, workspace Clippy with `-D warnings`, all 147 Rust tests, release build, training-image build, Ruff format/check, all 41 Python tests, Compose validation and live API/browser smoke. The existing long r3 training container remained running throughout; the battle service is running separately and ready at `http://127.0.0.1:8789`.
 
 - 2026-08-29T10:29:25+09:00 [CODE] r3 is runnable as a separate experiment from the validated solo bootstrap through `scripts/run-versus-selfplay.ps1`; r2 artifacts remain untouched. Final champion quality remains UNCONFIRMED until a long r3 run and held-out snapshot evaluation.
 

@@ -14,3 +14,4 @@
 - [1대1 자기대전 r3 보상·크레딧](./Versus_Self_Play_R3_Reward_and_Credit.md): 전술 준비도 잠재함수, 안전성 제한 전술 커리큘럼, 긴 승패 trace와 실행·로그 판정
 - [1대1 학습 성능 최적화와 보상 진단](./Versus_Training_Performance_and_Reward_Diagnostics.md): 후보 생성·PPO 병목 제거, Rayon/PyTorch 분리, terminal·potential shaping 로그 해석
 - [1대1 자기대전 r1 기록](./Versus_Self_Play_Reinforcement_Learning.md): 기존 placement-level PPO와 entropy 실패·수정의 역사적 설명
+- [사람 대 모델 로컬 대국](./Human_Versus_Model_Local_Battle.md): 실제 키보드 입력으로 현재 1대1 checkpoint와 겨루는 방법과 프레임/착지점 혼합 실행 구조

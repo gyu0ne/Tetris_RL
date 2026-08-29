@@ -6,8 +6,8 @@ use super::{
 };
 use engine_core::{
     Board, FrameSession, GameConfig, HandlingRules, InputEdge, LastAction, LockedPlacement,
-    PieceState, SessionLockFrameOutcome, SessionSpawnOutcome, SessionStepError, TimingSchedule,
-    TimingScheduleError,
+    NormalizedFrame, PieceState, SessionLockFrameOutcome, SessionSpawnOutcome, SessionStepError,
+    TimingSchedule, TimingScheduleError,
 };
 use std::fmt;
 
@@ -206,6 +206,27 @@ impl BattleSession {
         }
     }
 
+    /// Advances player one from real frame input while player two locks one
+    /// model-selected reachable afterstate on the same shared frame.
+    ///
+    /// This is the narrow adapter used by the local human-versus-model tool.
+    /// It keeps simultaneous attack/cancellation ordering authoritative while
+    /// preserving the model's placement-level action space.
+    pub fn step_player_two_placement(
+        &mut self,
+        player_one_edges: &[InputEdge],
+        player_two_action: PlacementAction,
+    ) -> Result<BattleFrameOutcome, BattleError> {
+        let checkpoint = self.clone();
+        match self.step_player_two_placement_inner(player_one_edges, player_two_action) {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                *self = checkpoint;
+                Err(error)
+            }
+        }
+    }
+
     /// Applies one simultaneous reachable afterstate per player and advances
     /// the battle clock by a shared fixed cadence. This local learning adapter
     /// preserves attack, cancellation, garbage travel/insertion, spawn and
@@ -385,10 +406,6 @@ impl BattleSession {
             .rules_at_frame(frame)
             .map_err(BattleError::TimingSchedule)?;
         let [one_handling, two_handling] = self.rules.handling;
-        let attack_rules = self.rules.attack;
-        let garbage_rules = self.rules.garbage;
-        let multiplier = self.garbage_multiplier.current();
-
         let [one, two] = &mut self.players;
         let one_lock = one
             .session
@@ -404,6 +421,86 @@ impl BattleSession {
                 player: PlayerId::Two,
                 source,
             })?;
+
+        self.resolve_frame(frame, one_lock, two_lock)
+    }
+
+    fn step_player_two_placement_inner(
+        &mut self,
+        player_one_edges: &[InputEdge],
+        player_two_action: PlacementAction,
+    ) -> Result<BattleFrameOutcome, BattleError> {
+        self.validate_frame_start()?;
+        let frame = self.frame;
+        let timing = self
+            .rules
+            .timing
+            .rules_at_frame(frame)
+            .map_err(BattleError::TimingSchedule)?;
+        let [one_handling, _] = self.rules.handling;
+        let [one, two] = &mut self.players;
+        let one_lock = one
+            .session
+            .step_until_lock(timing, one_handling, player_one_edges)
+            .map_err(|source| BattleError::Session {
+                player: PlayerId::One,
+                source,
+            })?;
+        let (hold_applied, locked) = two
+            .session
+            .lock_afterstate_deferred(
+                player_two_action.used_hold,
+                player_two_action.placement,
+                player_two_action.last_action,
+            )
+            .map_err(|source| BattleError::Session {
+                player: PlayerId::Two,
+                source,
+            })?;
+        two.session.advance_placement_clock(1);
+        let two_lock = SessionLockFrameOutcome {
+            frame,
+            normalized: NormalizedFrame {
+                actions: Vec::new(),
+                hold_requested: player_two_action.used_hold,
+                hold_action_index: player_two_action.used_hold.then_some(0),
+            },
+            timing: None,
+            locked: Some(locked),
+            hold_applied,
+            terminal: two.session.is_terminal(),
+        };
+
+        self.resolve_frame(frame, one_lock, two_lock)
+    }
+
+    fn validate_frame_start(&self) -> Result<(), BattleError> {
+        if self.result != BattleResult::Ongoing {
+            return Err(BattleError::RoundOver(self.result));
+        }
+        if self.players[0].session.frame() != self.frame
+            || self.players[1].session.frame() != self.frame
+        {
+            return Err(BattleError::FrameDesync {
+                battle: self.frame,
+                player_one: self.players[0].session.frame(),
+                player_two: self.players[1].session.frame(),
+            });
+        }
+        Ok(())
+    }
+
+    fn resolve_frame(
+        &mut self,
+        frame: u64,
+        one_lock: SessionLockFrameOutcome,
+        two_lock: SessionLockFrameOutcome,
+    ) -> Result<BattleFrameOutcome, BattleError> {
+        let [one_handling, two_handling] = self.rules.handling;
+        let attack_rules = self.rules.attack;
+        let garbage_rules = self.rules.garbage;
+        let multiplier = self.garbage_multiplier.current();
+        let [one, two] = &mut self.players;
 
         let (one_attack, one_cancel) = resolve_player_attack(
             PlayerId::One,

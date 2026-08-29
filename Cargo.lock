@@ -225,6 +225,7 @@ name = "py-bridge"
 version = "0.1.0"
 dependencies = [
  "arena",
+ "engine-core",
  "pyo3",
 ]
 

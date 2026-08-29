@@ -2,6 +2,18 @@
   "schema_version": 1,
   "outputs": [
     {
+      "timestamp": "2026-08-29T19:17:33+09:00",
+      "scope": "python/tetris_rl/human_battle",
+      "macrostructure": "Split Studio",
+      "genre": "modern-minimal",
+      "theme": "Coral",
+      "nav": "N9",
+      "footer": "Ft5",
+      "variation": "paired authoritative boards, human frame controls, model placement diagnostics",
+      "slop_test": "pass 58 gates",
+      "responsive_viewports": [320, 375, 414, 768, 1280]
+    },
+    {
       "timestamp": "2026-08-27T10:20:00+09:00",
       "scope": "python/tetris_rl/spectator",
       "macrostructure": "Workbench",

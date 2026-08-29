@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-27T22:17:59+09:00
+Last updated: 2026-08-29T19:17:33+09:00
 
 ## 1. Authority and scope
 
@@ -26,7 +26,7 @@ crates/
   replay-conformance/# canonical frame snapshots and differential reports
   versus/            # attacks, garbage queues and round-terminal mechanics
   replay/            # deterministic event log and validation fixtures
-  arena/             # local bot-vs-bot orchestration
+  arena/             # local bot-vs-bot and human-vs-bot orchestration
   bot-protocol/      # TBP-compatible adapter and local protocol
   py-bridge/         # narrow Python binding for vectorized simulation
 python/tetris_rl/
@@ -35,6 +35,7 @@ python/tetris_rl/
   models/            # policy/value models only
   training/          # self-play, opponent pool, checkpoints
   evaluation/        # rating, ablations, statistical reports
+  human_battle/      # local HTTP controller and diagnostic battle UI
 configs/             # immutable, versioned rules and experiment configs
 tests/
   unit/ property/ differential/ replay/ golden/ fuzz/
@@ -46,6 +47,7 @@ Explanation/         # Korean standalone explanations for implemented components
 
 - Do not mix rendering/UI, game rules, learning code, or experiment outputs.
 - Manual tools call the same Rust mechanics APIs used by tests/arena; a separately implemented browser/JavaScript rules engine is prohibited.
+- Human-versus-model play keeps human controls frame-level and model decisions placement-level. Attack, cancellation, garbage, top-out and simultaneous resolution must remain a single transactional `BattleSession` transition; the browser may never approximate them.
 - Generated datasets, checkpoints, caches, and benchmark artifacts must not be committed unless explicitly approved.
 - Dependencies and toolchains run in containers by default. Do not install host system packages.
 

@@ -52,3 +52,24 @@ services:
       PYTHONUNBUFFERED: "1"
     ports:
       - "127.0.0.1:8788:8788"
+
+  human-battle:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    working_dir: /workspace
+    command: >-
+      python -m tetris_rl.human_battle.server
+      --checkpoint checkpoints/versus-selfplay-r3/latest-model.pt
+      --bind 0.0.0.0:8789
+      --frames-per-placement 12
+      --threads 2
+      --allow-observed
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace/python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8789:8789"

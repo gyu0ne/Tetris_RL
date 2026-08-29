@@ -25,10 +25,10 @@ pub struct VersusCandidateBatch {
 }
 
 #[derive(Clone)]
-struct VersusChoice {
-    features: [i32; VERSUS_CANDIDATE_FEATURE_COUNT],
-    diagnostics: [i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT],
-    action: PlacementAction,
+pub(crate) struct VersusChoice {
+    pub(crate) features: [i32; VERSUS_CANDIDATE_FEATURE_COUNT],
+    pub(crate) diagnostics: [i32; VERSUS_CANDIDATE_DIAGNOSTIC_COUNT],
+    pub(crate) action: PlacementAction,
 }
 
 #[derive(Clone)]
@@ -254,17 +254,21 @@ fn match_candidate_data(
 }
 
 fn new_match(seed: u64) -> Result<MatchState, VersusClosedLoopError> {
-    let handling = PlayerHandlingProfile::normalized(8, 0, 1, SoftDropMode::Sonic);
-    let rules = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2()
-        .try_battle_rules([handling; 2])
-        .map_err(|error| VersusClosedLoopError::Profile(format!("{error:?}")))?;
     Ok(MatchState {
-        battle: BattleSession::new(seed, rules)?,
+        battle: new_battle(seed)?,
         choices: [None, None],
     })
 }
 
-fn enumerate_player_candidates(
+pub(crate) fn new_battle(seed: u64) -> Result<BattleSession, VersusClosedLoopError> {
+    let handling = PlayerHandlingProfile::normalized(8, 0, 1, SoftDropMode::Sonic);
+    let rules = TetrioRulesDraft::tetra_league_beta_1_7_8_season_2()
+        .try_battle_rules([handling; 2])
+        .map_err(|error| VersusClosedLoopError::Profile(format!("{error:?}")))?;
+    Ok(BattleSession::new(seed, rules)?)
+}
+
+pub(crate) fn enumerate_player_candidates(
     battle: &BattleSession,
     player: PlayerId,
 ) -> Result<Vec<VersusChoice>, VersusClosedLoopError> {
@@ -407,7 +411,7 @@ fn write_piece_one_hot(target: &mut [i32], piece: Option<PieceKind>) {
     }
 }
 
-fn selected_action(
+pub(crate) fn selected_action(
     cached: &Option<Vec<VersusChoice>>,
     selected: Option<usize>,
     decision: usize,
@@ -464,6 +468,10 @@ pub enum VersusClosedLoopError {
     CandidatesNotRequested(usize),
     MissingSelection(usize),
     SelectionForDoneMatch(usize),
+    SelectionBeforeCadence {
+        frame: u64,
+        next_frame: u64,
+    },
     SelectionOutOfRange {
         decision: usize,
         selected: usize,
@@ -509,6 +517,10 @@ impl fmt::Display for VersusClosedLoopError {
                     "completed match {index} must not receive a selection"
                 )
             }
+            Self::SelectionBeforeCadence { frame, next_frame } => write!(
+                formatter,
+                "frame {frame} received a bot selection before cadence frame {next_frame}"
+            ),
             Self::SelectionOutOfRange {
                 decision,
                 selected,

@@ -58,3 +58,37 @@
   --z-sticky: 200;
   --z-toast: 500;
 }
+
+/* Human battle · Coral palette extension. The existing Cobalt spectator tokens
+ * remain unchanged; this namespace prevents the two tools from restyling one
+ * another. */
+:root {
+  --battle-font-display: "Geist", "IBM Plex Sans KR", sans-serif;
+  --battle-font-body: "IBM Plex Sans KR", sans-serif;
+  --battle-font-mono: "JetBrains Mono", monospace;
+  --battle-color-paper: oklch(95% 0.012 55);
+  --battle-color-paper-2: oklch(91% 0.016 55);
+  --battle-color-paper-3: oklch(86% 0.018 55);
+  --battle-color-board: oklch(18% 0.012 55);
+  --battle-color-empty: oklch(23% 0.012 55);
+  --battle-color-rule: oklch(74% 0.018 55);
+  --battle-color-rule-strong: oklch(48% 0.025 55);
+  --battle-color-muted: oklch(43% 0.025 55);
+  --battle-color-ink: oklch(19% 0.018 55);
+  --battle-color-ink-inverse: oklch(95% 0.008 55);
+  --battle-color-accent: oklch(62% 0.18 32);
+  --battle-color-accent-ink: oklch(97% 0.008 55);
+  --battle-color-focus: oklch(48% 0.19 32);
+  --battle-color-error: oklch(52% 0.2 25);
+  --battle-color-success: oklch(45% 0.13 155);
+  --battle-color-cell: oklch(67% 0.022 55);
+  --battle-color-garbage: oklch(48% 0.018 55);
+  --battle-piece-i: oklch(75% 0.13 210);
+  --battle-piece-j: oklch(62% 0.17 260);
+  --battle-piece-l: oklch(73% 0.16 65);
+  --battle-piece-o: oklch(84% 0.14 95);
+  --battle-piece-s: oklch(72% 0.16 145);
+  --battle-piece-t: oklch(65% 0.18 315);
+  --battle-piece-z: oklch(64% 0.2 25);
+  --battle-board-max: 22rem;
+}

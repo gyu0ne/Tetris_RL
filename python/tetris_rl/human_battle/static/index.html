@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>사람 대 모델 · 로컬 테트리스</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="wordmark">TETRIS / HUMAN MATCH</p>
+        <h1>체크포인트와 직접 대국</h1>
+      </div>
+      <div class="connection" id="connection" data-state="loading" role="status" aria-live="polite">
+        <span class="connection__mark" aria-hidden="true"></span>
+        <span id="connection-label">연결 중</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="match" aria-label="사람 대 모델 대전장">
+        <article class="side side--human" aria-labelledby="human-title">
+          <header class="side__head">
+            <div><h2 id="human-title">나</h2><p>프레임 입력</p></div>
+            <dl><div><dt>블록</dt><dd id="human-pieces">0</dd></div><div><dt>공격</dt><dd id="human-sent">0</dd></div></dl>
+          </header>
+          <div class="playfield">
+            <aside class="piece-rail"><span>HOLD</span><strong id="human-hold">—</strong><span>GARBAGE</span><strong id="human-garbage">0</strong></aside>
+            <div class="board-wrap"><div class="board" id="human-board" role="img" aria-label="내 20행 10열 보드"></div></div>
+            <aside class="next-rail"><span>NEXT</span><ol id="human-next"></ol></aside>
+          </div>
+        </article>
+
+        <article class="side side--model" aria-labelledby="model-title">
+          <header class="side__head">
+            <div><h2 id="model-title">모델</h2><p id="model-cadence">12 frame / placement</p></div>
+            <dl><div><dt>블록</dt><dd id="model-pieces">0</dd></div><div><dt>공격</dt><dd id="model-sent">0</dd></div></dl>
+          </header>
+          <div class="playfield">
+            <aside class="piece-rail"><span>HOLD</span><strong id="model-hold">—</strong><span>GARBAGE</span><strong id="model-garbage">0</strong></aside>
+            <div class="board-wrap"><div class="board" id="model-board" role="img" aria-label="모델 20행 10열 보드"></div></div>
+            <aside class="next-rail"><span>NEXT</span><ol id="model-next"></ol></aside>
+          </div>
+        </article>
+
+        <div class="result" id="result" hidden role="alert"><strong id="result-label"></strong><button id="rematch" type="button">다시 대국</button></div>
+      </section>
+
+      <section class="console" aria-label="대전 조작과 진단">
+        <div class="controls">
+          <button id="pause" type="button" aria-pressed="true">시작</button>
+          <button id="single-step" type="button">1 frame</button>
+          <label for="seed">시드</label>
+          <input id="seed" type="number" min="0" step="1" value="1" inputmode="numeric" />
+          <button id="reset" type="button">시드 적용</button>
+        </div>
+        <dl class="readout">
+          <div><dt>frame</dt><dd id="frame">0</dd></div>
+          <div><dt>bot next</dt><dd id="bot-next">0</dd></div>
+          <div><dt>candidates</dt><dd id="candidates">—</dd></div>
+          <div><dt>inference</dt><dd id="inference">—</dd></div>
+          <div><dt>checkpoint update</dt><dd id="update">—</dd></div>
+          <div><dt>parameters</dt><dd id="parameters">—</dd></div>
+        </dl>
+        <p class="key-help"><kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>↓</kbd> 소프트 드롭 · <kbd>Space</kbd> 하드 드롭 · <kbd>Z</kbd>/<kbd>X</kbd> 회전 · <kbd>A</kbd> 180° · <kbd>C</kbd> 홀드 · <kbd>P</kbd> 일시정지</p>
+      </section>
+    </main>
+
+    <footer class="foot-stmt">
+      <p class="foot-stmt__line">사람의 프레임 입력과 모델의 착지 결정을 같은 대전 규칙에서 비교합니다.</p>
+      <div class="foot-stmt__meta"><span id="checkpoint">checkpoint</span><span>권위 Rust battle frame · 모델만 placement-level</span></div>
+    </footer>
+    <div class="error-banner" id="error" role="alert" hidden></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

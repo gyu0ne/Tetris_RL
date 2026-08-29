@@ -33,6 +33,7 @@ TETR.IO의 학습 관련 mechanics를 독립적으로 재현하고 1 대 1 bot�
 - 교사 라벨 부가 계산을 제거한 추론 전용 Rust 후보 경로와 seed-sharded closed-loop 병렬 평가
 - 모델이 방문한 상태에 휴리스틱 교사 점수를 다시 붙이는 learner-state dataset aggregation
 - 승격된 실제 checkpoint의 착지 선택을 재생·일시정지·단일 진행할 수 있는 로컬 모델 관전자
+- 사람의 frame-level 키보드 입력과 checkpoint의 placement-level 결정을 같은 `BattleSession`에서 처리하는 로컬 1대1 대국 도구
 - 진행 중 경기와 상대 배정을 update 경계에서 정확히 복원하고 normalized-entropy PPO, 상대 풀, 기술·공격 진단을 제공하는 1대1 자기대전 학습기
 
 선언된 학습 mechanics의 실행 경로는 `TETR.IO BETA 1.7.8 / TL S2` current client asset을 기준으로 구현되어 있다. 여기에는 `0.02G`, 120초 이후 gravity 증가, client의 `locking > locktime`/reset-cap 경계, 공격·garbage·Clutch·round terminal 순서가 포함된다. version-pinned capture를 strict JSON과 정확한 SHA-256으로 읽는 adapter 경계도 구현했다. 다만 실제 기준 board/attack/garbage checkpoint corpus가 없으므로 profile 표기는 계속 `OBSERVED_NOT_FUNCTIONALLY_VERIFIED`다. 이 표시는 픽셀이나 UI가 다르다는 뜻이 아니라 아직 외부 mechanics corpus를 모두 채우지 않았다는 뜻이다. 운영자의 승인이나 공식 인증은 요구하지 않는다. formal report에서는 같은 조건·입력의 version-pinned reference trace와 exact diff가 0이고 필수 mechanics claim 및 기본 randomized battle 하한이 모두 통과하면 `Conformant`로 판정한다. 이 formal label은 수동 테스트와 heuristic/모방학습 도구 개발을 막지 않는다. TL은 room handling을 강제하지 않으므로 DAS/ARR/DCD/SDF는 player/replay config로 공급한다. 브라우저 OS event의 0.1 subframe 재생은 검증 adapter 범위이며, 주 학습 action인 reachable locked afterstate와 1 대 1 상태 전이는 raw keyboard timestamp에 의존하지 않는다.
@@ -92,6 +93,16 @@ docker compose up --build spectator
 ```
 
 브라우저에서 `http://127.0.0.1:8788`을 연다. 재생·일시정지·1수 진행, 속도 변경, seed 초기화를 지원한다. 보드는 학습 action과 같은 도달 지점 단위이며 화면의 후보 수·선택 점수·추론 시간은 현재 `model.pt`를 직접 채점한 결과다. 종료 명령은 `docker compose stop spectator`다. 상세 구조는 `Explanation/Solo_Model_Spectator_and_Fast_Evaluation.md`에 있다.
+
+## 모델과 직접 대국
+
+현재 1대1 checkpoint를 상대로 키보드 대국을 하려면 다음을 실행한다.
+
+```text
+docker compose up --build human-battle
+```
+
+브라우저에서 `http://127.0.0.1:8789`을 연 뒤 `시작`을 누른다. 방향키, `Space`, `Z`/`X`, `A`, `C`, `P`를 사용한다. 사람 쪽은 실제 프레임 입력을 처리하고, 모델 쪽은 학습과 같은 착지점 action을 기본 12프레임마다 직접 적용한다. 둘의 공격·상쇄·garbage·사망 판정은 같은 권위 Rust `BattleSession`에서 동시에 해결된다. 서버 시작 시 checkpoint를 한 번 읽으므로 학습 중 갱신된 모델을 시험하려면 `docker compose restart human-battle`로 다시 불러온다. 상세 구조와 checkpoint 교체법은 `Explanation/Human_Versus_Model_Local_Battle.md`에 있다.
 
 ## 컨테이너 검증
 

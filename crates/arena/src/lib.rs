@@ -7,6 +7,7 @@
 
 mod closed_loop;
 mod features;
+mod human_battle;
 mod record;
 mod solo;
 mod teacher;
@@ -14,6 +15,9 @@ mod versus_arena;
 
 pub use closed_loop::{CandidateBatch, ClosedLoopError, SoloBatch, SoloSnapshot};
 pub use features::{FEATURE_COUNT, FEATURE_NAMES, extract_afterstate_features};
+pub use human_battle::{
+    HumanBattle, HumanBattleCandidateBatch, HumanBattlePlayerSnapshot, HumanBattleSnapshot,
+};
 pub use record::{
     ActionToken, CandidateRecord, DatasetManifest, DecisionRecord, ImmediateEvents,
     ObservationRecord, SoloGenerationConfig, SoloGenerationSummary, TeacherRecord,
