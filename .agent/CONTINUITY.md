@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-29T19:42:40+09:00 [USER] Inspect the active training log and audit a human-match loss that appeared inconsistent with the visible board; diagnose before changing adjudication.
+
 - 2026-08-29T19:17:33+09:00 [USER] Implement option 2: a local real-time keyboard match in which the user directly plays against the current 1v1 model checkpoint.
 
 - 2026-08-29T10:29:25+09:00 [USER] Supersede further short r2 patching with an r3 reward/credit redesign now, before a long run; retain attack, stable clearing and defense as the intended behavior while preserving the terminal objective.
@@ -264,6 +266,10 @@
 - 2026-08-25T20:09:50+09:00 [CODE] Replaced the obsolete short-run manuals and synchronized RULE, README, Korean plan, architecture, execution, bootstrap, evaluation and model explanations with the long-run protocol. Generated records/checkpoints/reports remain ignored and are not automatically deleted.
 
 ## [DISCOVERIES]
+
+- 2026-08-29T19:42:40+09:00 [TOOL] The disputed human match had already been reset, so its terminal state is no longer recoverable. HTTP access logs contain only successful frame/reset requests; the two complete recent runs had 5,397 and 4,511 frame requests. Rust result mapping is not inverted and its one-sided player-one BlockOut test passes.
+- 2026-08-29T19:42:40+09:00 [CODE] Human-battle snapshots expose only 20 of the 40 board rows and omit `TopOutReason`; the active profile enables BlockOut and GarbageOut while lock-out variants remain disabled. Hidden buffer occupancy can therefore make a valid loss look unexplained, but the reset and missing reason mean this specific loss is UNCONFIRMED rather than proven correct.
+- 2026-08-29T19:42:40+09:00 [TOOL] Training updates 557–566 remain numerically stable: mean attack/piece 0.1732, lines/piece 0.4860, danger rate 0.0060, normalized entropy 0.1506 and update time 69.0 s. Mean explained variance is only 0.0350, so value prediction remains weak; the battle server still has update 533 cached while training reached update 566.
 
 - 2026-08-29T19:17:33+09:00 [TOOL] Browser smoke on the real update-533 r3 checkpoint verified an initially paused frame 0, a human `Space` lock, model candidate inference and continued battle state. Widths 320/375/414/768/1280 had zero horizontal overflow and no wrapped button labels; a fresh page reported zero console errors.
 - 2026-08-29T19:17:33+09:00 [CODE] The request-response clock is intentionally back-pressured. Inference/HTTP latency can lower wall-clock FPS, but no authoritative engine frame is skipped or reordered; this is a presentation-speed limitation, not a mechanics divergence.
