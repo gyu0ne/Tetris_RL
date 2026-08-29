@@ -1,5 +1,15 @@
 # PROJECT Explain: Versus Self-Play RL
 
+## r3 보상·크레딧 확정 (2026-08-29)
+
+- 최종 목적은 계속 zero-sum terminal outcome이다. 구조 잠재함수 75%와 합법 후보 전체에서 계산한 공격·상쇄·Full T-spin 준비도 25%를 결합한다. 전술 성분도 own-opponent 상대값이고 terminal에서 0이므로 반대칭·bounded potential-based invariance를 유지한다.
+- 전술 local 값은 outgoing, `total-outgoing` cancellation, Full T-spin attack을 각각 8로 정규화하고 `0.4/0.4/0.2`로 결합한다. 직접 attack/line/T-spin event reward는 추가하지 않는다.
+- GAE lambda는 `0.999`로 높인다. `gamma*lambda=0.9985005`, trace 유효 길이는 약 667 decision이고 500 decision 전 terminal trace 비율은 약 0.472다.
+- 임시 전술 커리큘럼은 절대 teacher logit 크기에 의존하지 않는다. 상태별 teacher logit을 unit-range로 정규화하고 bounded tactical score를 더한 argmax를 목표로 삼는다. cross-entropy 계수는 `0.0001 -> 0` over 300 updates다.
+- 순수 tactical soft target은 첫 스모크에서 KL `43.924`, loss contribution `0.439`로 PPO를 압도해 폐기했다. unit-range teacher constrained hard target은 목표 변경률 `0.003497`, contribution `5.76e-5`로 normalized entropy 항과 같은 규모였다.
+- terminal과 shaping reward-only lambda trace, cosine, 9개 성분의 signed/absolute mean을 로그로 분리한다. combined GAE/value target은 기존 PPO 경로를 유지한다.
+- v4/r3는 `configs/training/versus_selfplay_ppo_v4.json`과 기본 `scripts/run-versus-selfplay.ps1`을 사용하고 `checkpoints/versus-selfplay-r3`에 새로 저장한다. r2 config/checkpoint는 별도 legacy script로 resume-compatible하게 보존한다.
+
 ## 성능·보상 관측 확정 (2026-08-28)
 
 - 후보 하나마다 `reachable_locks`를 다시 실행하던 경로를 폐기한다. 최초 검증된 `GeometricPlacement`는 비변이 `preview_reachable_placement`로 lock/clear afterstate를 계산한다. preview와 실제 deferred lock의 board/event equality를 테스트한다.

@@ -4,7 +4,7 @@ param(
     [double]$Hours = 24,
     [int]$MaxUpdates = 0,
     [string]$InitializeFrom = '',
-    [string]$OutputDir = 'checkpoints/versus-selfplay-r3',
+    [string]$OutputDir = 'checkpoints/versus-selfplay-r2',
     [switch]$Resume
 )
 
@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw 'training image build failed.' }
 $arguments = @(
     'compose', 'run', '--rm', '-e', "RAYON_NUM_THREADS=$RayonThreads", 'training',
     'python', '-m', 'tetris_rl.training.selfplay',
-    '--config', 'configs/training/versus_selfplay_ppo_v4.json',
+    '--config', 'configs/training/versus_selfplay_ppo_v3.json',
     '--bootstrap', 'checkpoints/solo-imitation-versus-bootstrap-v1/model.pt',
     '--output-dir', $OutputDir,
     '--hours', "$Hours",
@@ -48,6 +48,6 @@ if ($Resume) {
     $arguments += @('--initialize-from', $InitializeFrom)
 }
 
-Write-Host "Self-play r3: $ResourceProfile (Rust $RayonThreads / PyTorch $TorchThreads threads, $Hours hours, output $OutputDir)"
+Write-Host "Self-play r2: $ResourceProfile (Rust $RayonThreads / PyTorch $TorchThreads threads, $Hours hours, output $OutputDir)"
 docker @arguments
 if ($LASTEXITCODE -ne 0) { throw "self-play failed with exit code $LASTEXITCODE" }

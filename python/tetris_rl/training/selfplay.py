@@ -24,6 +24,8 @@ from tetris_rl.models import (
 from tetris_rl.training.reward import (
     POTENTIAL_COMPONENT_NAMES,
     PotentialConfig,
+    tactical_candidate_scores,
+    tactical_potential_components,
     transition_reward_details,
 )
 
@@ -63,6 +65,11 @@ class SelfPlayConfig:
     pfsp_exponent: float = 1.0
     pfsp_min_weight: float = 0.05
     anchor_checkpoints: list[str] | None = None
+    tactical_potential_fraction: float = 0.0
+    tactical_curriculum_coefficient: float = 0.0
+    tactical_curriculum_coefficient_final: float = 0.0
+    tactical_curriculum_decay_updates: int = 1
+    tactical_curriculum_temperature: float = 1.0
 
     @classmethod
     def load(cls, path: Path) -> "SelfPlayConfig":
@@ -76,6 +83,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v1",
             "versus-selfplay-ppo-v2",
             "versus-selfplay-ppo-v3",
+            "versus-selfplay-ppo-v4",
         }:
             raise ValueError("unsupported self-play config schema")
         positive = (
@@ -105,7 +113,7 @@ class SelfPlayConfig:
                 raise ValueError("v2 requires a nonnegative final entropy coefficient")
             if self.entropy_decay_updates <= 0 or not self.normalize_entropy:
                 raise ValueError("v2 requires normalized entropy and positive decay updates")
-        if self.schema_version == "versus-selfplay-ppo-v3":
+        if self.schema_version in {"versus-selfplay-ppo-v3", "versus-selfplay-ppo-v4"}:
             if self.model_architecture != "joint-residual-v2":
                 raise ValueError("v3 requires the joint residual model")
             if self.entropy_coefficient_final is None or self.entropy_coefficient_final < 0.0:
@@ -120,6 +128,21 @@ class SelfPlayConfig:
                 raise ValueError("kickstart decay must be positive")
             if self.pfsp_exponent <= 0.0 or self.pfsp_min_weight <= 0.0:
                 raise ValueError("PFSP settings must be positive")
+        if self.schema_version == "versus-selfplay-ppo-v4":
+            if not 0.0 <= self.tactical_potential_fraction <= 1.0:
+                raise ValueError("tactical potential fraction must be in [0, 1]")
+            if (
+                min(
+                    self.tactical_curriculum_coefficient,
+                    self.tactical_curriculum_coefficient_final,
+                )
+                < 0.0
+            ):
+                raise ValueError("tactical curriculum coefficients must be nonnegative")
+            if self.tactical_curriculum_decay_updates <= 0:
+                raise ValueError("tactical curriculum decay must be positive")
+            if self.tactical_curriculum_temperature <= 0.0:
+                raise ValueError("tactical curriculum temperature must be positive")
 
 
 @dataclass(frozen=True)
@@ -148,11 +171,14 @@ class MatchAssignment:
 @dataclass
 class DecisionTransition:
     candidates: Tensor
+    candidate_diagnostics: Tensor
     state: Tensor
     action: int
     old_log_probability: float
     old_value: float
     reward: float
+    terminal_reward: float
+    shaping_reward: float
     next_value: float
     terminal: bool
     is_learner: bool
@@ -264,7 +290,11 @@ def main() -> None:
         raise ValueError("match assignment count differs from restored environment")
 
     observation = env.observe()
-    reward_config = PotentialConfig(gamma=config.gamma, shaping_scale=config.shaping_scale)
+    reward_config = PotentialConfig(
+        gamma=config.gamma,
+        shaping_scale=config.shaping_scale,
+        tactical_fraction=config.tactical_potential_fraction,
+    )
     deadline = time.monotonic() + args.hours * 3600.0
 
     try:
@@ -299,6 +329,7 @@ def main() -> None:
                 rollout_seconds = time.monotonic() - rollout_started
                 entropy_coefficient = _entropy_coefficient(config, update)
                 kickstart_coefficient = _kickstart_coefficient(config, update)
+                tactical_coefficient = _tactical_curriculum_coefficient(config, update)
                 ppo_started = time.monotonic()
                 metrics = _ppo_update(
                     model,
@@ -308,6 +339,8 @@ def main() -> None:
                     config,
                     entropy_coefficient,
                     kickstart_coefficient,
+                    tactical_coefficient,
+                    reward_config,
                 )
                 ppo_seconds = time.monotonic() - ppo_started
                 metrics.update(rollout_metrics)
@@ -340,6 +373,7 @@ def main() -> None:
                     "environment_steps": environment_steps,
                     "entropy_coefficient": entropy_coefficient,
                     "kickstart_coefficient": kickstart_coefficient,
+                    "tactical_curriculum_coefficient": tactical_coefficient,
                     "seconds": time.monotonic() - started,
                 }
             )
@@ -498,18 +532,25 @@ def _collect_rollout(
     shaping_nonzero = 0
     shaping_max_absolute = 0.0
     shaping_component_absolute_sums = torch.zeros(len(POTENTIAL_COMPONENT_NAMES))
+    shaping_component_signed_sums = torch.zeros(len(POTENTIAL_COMPONENT_NAMES))
     for _ in range(config.rollout_steps):
         if bool(torch.any(observation.done)):
             raise RuntimeError("rollout started with an unreset completed match")
         value_started = time.monotonic()
         with torch.no_grad():
             values = model.value(observation.state_features)
+            current_tactical = tactical_potential_components(
+                observation.candidate_diagnostics,
+                observation.offsets,
+                reward_config,
+            )
         value_reward_seconds += time.monotonic() - value_started
         policy_started = time.monotonic()
         logits_by_decision = _batched_actor_logits(observation, actor_assignments, model)
         selections: list[int] = []
         log_probabilities: list[float] = []
         candidate_views: list[Tensor] = []
+        diagnostic_views: list[Tensor] = []
         for decision in range(decision_count):
             start, end = observation.offsets[decision : decision + 2]
             logits = logits_by_decision[decision]
@@ -519,6 +560,7 @@ def _collect_rollout(
             selections.append(selected)
             log_probabilities.append(float(distribution.log_prob(action).item()))
             candidate_views.append(observation.candidate_features[start:end].clone())
+            diagnostic_views.append(observation.candidate_diagnostics[start:end].clone())
             if actor_assignments[decision] is None:
                 candidate_count = end - start
                 entropy = float(distribution.entropy().item())
@@ -558,12 +600,19 @@ def _collect_rollout(
         with torch.no_grad():
             next_values = model.value(next_observation.state_features)
             next_values = torch.where(terminal, torch.zeros_like(next_values), next_values)
+            next_tactical = tactical_potential_components(
+                next_observation.candidate_diagnostics,
+                next_observation.offsets,
+                reward_config,
+            )
             rewards, shaping_components = transition_reward_details(
                 observation.state_features,
                 next_observation.state_features,
                 next_observation.results,
                 terminal,
                 reward_config,
+                current_tactical=current_tactical,
+                next_tactical=next_tactical,
             )
         value_reward_seconds += time.monotonic() - value_started
         for index, assignment in enumerate(actor_assignments):
@@ -575,6 +624,7 @@ def _collect_rollout(
             shaping_nonzero += int(dense_absolute > 1e-12)
             shaping_max_absolute = max(shaping_max_absolute, dense_absolute)
             shaping_component_absolute_sums += dense.abs()
+            shaping_component_signed_sums += dense
             if bool(terminal[index].item()):
                 outcome = int(next_observation.results[index].item())
                 counters["learner_terminal_decisions"] += 1
@@ -584,11 +634,14 @@ def _collect_rollout(
         step_transitions = [
             DecisionTransition(
                 candidates=candidate_views[index],
+                candidate_diagnostics=diagnostic_views[index],
                 state=observation.state_features[index].clone(),
                 action=selections[index],
                 old_log_probability=log_probabilities[index],
                 old_value=float(values[index].item()),
                 reward=float(rewards[index].item()),
+                terminal_reward=float(next_observation.results[index].item()),
+                shaping_reward=float(shaping_components[index].sum().item()),
                 next_value=float(next_values[index].item()),
                 terminal=bool(terminal[index].item()),
                 is_learner=actor_assignments[index] is None,
@@ -646,7 +699,11 @@ def _collect_rollout(
         observation = next_observation
 
     advantages = torch.zeros((config.rollout_steps, decision_count), dtype=torch.float32)
+    terminal_traces = torch.zeros_like(advantages)
+    shaping_traces = torch.zeros_like(advantages)
     running = torch.zeros(decision_count, dtype=torch.float32)
+    running_terminal = torch.zeros(decision_count, dtype=torch.float32)
+    running_shaping = torch.zeros(decision_count, dtype=torch.float32)
     for step in range(config.rollout_steps - 1, -1, -1):
         records = by_time[step]
         rewards = torch.tensor([record.reward for record in records])
@@ -654,14 +711,24 @@ def _collect_rollout(
         next_values = torch.tensor([record.next_value for record in records])
         terminals = torch.tensor([record.terminal for record in records], dtype=torch.float32)
         delta = rewards + config.gamma * next_values - values
-        running = delta + config.gamma * config.gae_lambda * (1.0 - terminals) * running
+        trace_discount = config.gamma * config.gae_lambda * (1.0 - terminals)
+        running = delta + trace_discount * running
+        terminal_rewards = torch.tensor([record.terminal_reward for record in records])
+        shaping_rewards = torch.tensor([record.shaping_reward for record in records])
+        running_terminal = terminal_rewards + trace_discount * running_terminal
+        running_shaping = shaping_rewards + trace_discount * running_shaping
         advantages[step] = running
+        terminal_traces[step] = running_terminal
+        shaping_traces[step] = running_shaping
 
     flattened = [record for records in by_time for record in records]
     for record, advantage in zip(flattened, advantages.flatten(), strict=True):
         record.advantage = float(advantage.item())
         record.return_target = record.advantage + record.old_value
     learner_transitions = [record for record in flattened if record.is_learner]
+    learner_mask = torch.tensor([record.is_learner for record in flattened], dtype=torch.bool)
+    learner_terminal_traces = terminal_traces.flatten()[learner_mask]
+    learner_shaping_traces = shaping_traces.flatten()[learner_mask]
     learner_decisions = counters["learner_decisions"]
     rollout_metrics: dict[str, float | int] = dict(counters)
     if learner_decisions:
@@ -679,6 +746,17 @@ def _collect_rollout(
                 "shaping_reward_mean_abs": shaping_absolute_sum / learner_decisions,
                 "shaping_reward_nonzero_rate": shaping_nonzero / learner_decisions,
                 "shaping_reward_max_abs": shaping_max_absolute,
+                "terminal_trace_mean_abs": float(learner_terminal_traces.abs().mean().item()),
+                "terminal_trace_nonzero_rate": float(
+                    (learner_terminal_traces.abs() > 1e-12).float().mean().item()
+                ),
+                "shaping_trace_mean_abs": float(learner_shaping_traces.abs().mean().item()),
+                "shaping_trace_nonzero_rate": float(
+                    (learner_shaping_traces.abs() > 1e-12).float().mean().item()
+                ),
+                "terminal_shaping_trace_cosine": _cosine_similarity(
+                    learner_terminal_traces, learner_shaping_traces
+                ),
                 "terminal_transition_rate": counters["learner_terminal_decisions"]
                 / learner_decisions,
                 "nonzero_terminal_reward_rate": (
@@ -707,6 +785,9 @@ def _collect_rollout(
         for index, name in enumerate(POTENTIAL_COMPONENT_NAMES):
             rollout_metrics[f"shaping_{name}_mean_abs"] = (
                 float(shaping_component_absolute_sums[index].item()) / learner_decisions
+            )
+            rollout_metrics[f"shaping_{name}_mean"] = (
+                float(shaping_component_signed_sums[index].item()) / learner_decisions
             )
     return learner_transitions, observation, seed_index, len(flattened), rollout_metrics
 
@@ -773,7 +854,7 @@ def _ragged_policy_terms(
     teacher_log_probability: Tensor,
     candidate_counts: Tensor,
     actions: Tensor,
-) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
     """Vectorized categorical terms for concatenated variable-size decisions."""
     decision_count = candidate_counts.shape[0]
     segment = torch.repeat_interleave(
@@ -804,7 +885,47 @@ def _ragged_policy_terms(
         segment,
         teacher_probability * (teacher_log_probability - student_log_probability),
     )
-    return selected_log_probability, entropy, normalized_entropy, kickstart
+    return (
+        selected_log_probability,
+        entropy,
+        normalized_entropy,
+        kickstart,
+        student_log_probability,
+    )
+
+
+def _ragged_kl_from_log_probabilities(
+    student_log_probability: Tensor,
+    target_log_probability: Tensor,
+    candidate_counts: Tensor,
+) -> Tensor:
+    decision_count = candidate_counts.shape[0]
+    segment = torch.repeat_interleave(
+        torch.arange(decision_count, device=student_log_probability.device), candidate_counts
+    )
+    target_probability = target_log_probability.exp()
+    return torch.zeros(
+        decision_count,
+        dtype=student_log_probability.dtype,
+        device=student_log_probability.device,
+    ).scatter_add_(
+        0,
+        segment,
+        target_probability * (target_log_probability - student_log_probability),
+    )
+
+
+def _ragged_target_kl(
+    student_logits: Tensor,
+    target_logits: Tensor,
+    candidate_counts: Tensor,
+) -> Tensor:
+    """KL(target || student) for consecutive variable-size decisions."""
+    student_log_probability = _segmented_log_probabilities(student_logits, candidate_counts)
+    target_log_probability = _segmented_log_probabilities(target_logits, candidate_counts)
+    return _ragged_kl_from_log_probabilities(
+        student_log_probability, target_log_probability, candidate_counts
+    )
 
 
 def _precompute_teacher_log_probabilities(
@@ -825,6 +946,66 @@ def _precompute_teacher_log_probabilities(
     return cached
 
 
+def _segmented_unit_range(values: Tensor, candidate_counts: Tensor) -> Tensor:
+    decision_count = candidate_counts.shape[0]
+    segment = torch.repeat_interleave(
+        torch.arange(decision_count, device=values.device), candidate_counts
+    )
+    maxima = torch.full((decision_count,), -torch.inf, dtype=values.dtype, device=values.device)
+    minima = torch.full((decision_count,), torch.inf, dtype=values.dtype, device=values.device)
+    maxima.scatter_reduce_(0, segment, values, reduce="amax", include_self=True)
+    minima.scatter_reduce_(0, segment, values, reduce="amin", include_self=True)
+    ranges = (maxima - minima).clamp_min(1e-6)
+    return (values - minima[segment]) / ranges[segment]
+
+
+def _segmented_argmax(values: Tensor, candidate_counts: Tensor) -> Tensor:
+    decision_count = candidate_counts.shape[0]
+    segment = torch.repeat_interleave(
+        torch.arange(decision_count, device=values.device), candidate_counts
+    )
+    maxima = torch.full((decision_count,), -torch.inf, dtype=values.dtype, device=values.device)
+    maxima.scatter_reduce_(0, segment, values, reduce="amax", include_self=True)
+    starts = torch.cumsum(candidate_counts, dim=0) - candidate_counts
+    local_indices = torch.arange(values.shape[0], device=values.device) - starts[segment]
+    sentinel = candidate_counts.max()
+    candidates = torch.where(values == maxima[segment], local_indices, sentinel)
+    actions = torch.full_like(candidate_counts, sentinel)
+    actions.scatter_reduce_(0, segment, candidates, reduce="amin", include_self=True)
+    return actions
+
+
+def _precompute_tactical_target_actions(
+    teacher_log_probabilities: list[Tensor],
+    transitions: list[DecisionTransition],
+    config: SelfPlayConfig,
+    reward_config: PotentialConfig,
+    chunk_decisions: int,
+) -> tuple[list[int], float]:
+    cached: list[int] = []
+    changed = 0
+    with torch.no_grad():
+        for start in range(0, len(transitions), chunk_decisions):
+            records = transitions[start : start + chunk_decisions]
+            counts = torch.tensor(
+                [record.candidates.shape[0] for record in records], dtype=torch.long
+            )
+            teacher_log_probability = torch.cat(
+                teacher_log_probabilities[start : start + chunk_decisions]
+            )
+            diagnostics = torch.cat([record.candidate_diagnostics for record in records], dim=0)
+            teacher_unit_range = _segmented_unit_range(teacher_log_probability, counts)
+            target_scores = teacher_unit_range + (
+                tactical_candidate_scores(diagnostics, reward_config)
+                / config.tactical_curriculum_temperature
+            )
+            target_actions = _segmented_argmax(target_scores, counts)
+            teacher_actions = _segmented_argmax(teacher_log_probability, counts)
+            changed += int((target_actions != teacher_actions).sum().item())
+            cached.extend(target_actions.tolist())
+    return cached, changed / len(transitions)
+
+
 def _ppo_update(
     model: VersusActorCritic,
     teacher: VersusActorCritic,
@@ -833,11 +1014,24 @@ def _ppo_update(
     config: SelfPlayConfig,
     entropy_coefficient: float,
     kickstart_coefficient: float,
+    tactical_coefficient: float,
+    reward_config: PotentialConfig,
 ) -> dict[str, float]:
     advantages = torch.tensor([record.advantage for record in transitions])
     advantages = (advantages - advantages.mean()) / advantages.std().clamp_min(1e-6)
     teacher_log_probabilities = _precompute_teacher_log_probabilities(
         teacher, transitions, config.minibatch_decisions * 4
+    )
+    tactical_target_actions, tactical_target_change_rate = (
+        _precompute_tactical_target_actions(
+            teacher_log_probabilities,
+            transitions,
+            config,
+            reward_config,
+            config.minibatch_decisions * 4,
+        )
+        if tactical_coefficient > 0.0
+        else ([], 0.0)
     )
     losses: list[float] = []
     policy_losses: list[float] = []
@@ -849,6 +1043,7 @@ def _ppo_update(
     gradient_norms: list[float] = []
     explained_variances: list[float] = []
     kickstart_losses: list[float] = []
+    tactical_losses: list[float] = []
     for _ in range(config.ppo_epochs):
         order = torch.randperm(len(transitions)).tolist()
         for start in range(0, len(order), config.minibatch_decisions):
@@ -863,12 +1058,24 @@ def _ppo_update(
                 [record.candidates.shape[0] for record in records], dtype=torch.long
             )
             actions = torch.tensor([record.action for record in records], dtype=torch.long)
-            new_log_probability, entropy_values, normalized_entropy_values, kickstart_values = (
-                _ragged_policy_terms(logits, teacher_log_probability, candidate_counts, actions)
-            )
+            (
+                new_log_probability,
+                entropy_values,
+                normalized_entropy_values,
+                kickstart_values,
+                student_log_probability,
+            ) = _ragged_policy_terms(logits, teacher_log_probability, candidate_counts, actions)
             entropy = entropy_values.mean()
             normalized_entropy = normalized_entropy_values.mean()
             kickstart_loss = kickstart_values.mean()
+            if tactical_coefficient > 0.0:
+                tactical_actions = torch.tensor(
+                    [tactical_target_actions[index] for index in indices], dtype=torch.long
+                )
+                starts = torch.cumsum(candidate_counts, dim=0) - candidate_counts
+                tactical_loss = -student_log_probability[starts + tactical_actions].mean()
+            else:
+                tactical_loss = torch.zeros((), dtype=logits.dtype, device=logits.device)
             old_log_probability = torch.tensor([record.old_log_probability for record in records])
             batch_advantage = advantages[indices]
             log_ratio = new_log_probability - old_log_probability
@@ -889,6 +1096,7 @@ def _ppo_update(
                 + config.value_coefficient * value_loss
                 - entropy_coefficient * entropy_objective
                 + kickstart_coefficient * kickstart_loss
+                + tactical_coefficient * tactical_loss
             )
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -911,6 +1119,7 @@ def _ppo_update(
                     float((1.0 - residual_variance / target_variance).item())
                 )
             kickstart_losses.append(float(kickstart_loss.item()))
+            tactical_losses.append(float(tactical_loss.item()))
 
     return {
         "loss": _mean(losses),
@@ -922,6 +1131,9 @@ def _ppo_update(
         * _mean(normalized_entropies if config.normalize_entropy else entropies),
         "kickstart_kl": _mean(kickstart_losses),
         "kickstart_loss_contribution": kickstart_coefficient * _mean(kickstart_losses),
+        "tactical_curriculum_cross_entropy": _mean(tactical_losses),
+        "tactical_curriculum_loss_contribution": tactical_coefficient * _mean(tactical_losses),
+        "tactical_target_change_rate": tactical_target_change_rate,
         "approximate_kl": _mean(approximate_kls),
         "clip_fraction": _mean(clip_fractions),
         "gradient_norm": _mean(gradient_norms),
@@ -1028,6 +1240,13 @@ def _kickstart_coefficient(config: SelfPlayConfig, update: int) -> float:
     )
 
 
+def _tactical_curriculum_coefficient(config: SelfPlayConfig, update: int) -> float:
+    fraction = min(max(update, 0) / config.tactical_curriculum_decay_updates, 1.0)
+    return config.tactical_curriculum_coefficient + fraction * (
+        config.tactical_curriculum_coefficient_final - config.tactical_curriculum_coefficient
+    )
+
+
 def _build_optimizer(model: VersusActorCritic, config: SelfPlayConfig) -> torch.optim.Optimizer:
     if model.config.architecture_version == 1:
         return torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -1106,7 +1325,7 @@ def _save_progress(
 ) -> None:
     payload = {
         "checkpoint_schema": CHECKPOINT_SCHEMA,
-        "config": asdict(config),
+        "config": _config_payload(config),
         "config_sha256": config_hash,
         "bootstrap_sha256": bootstrap_hash,
         "initialization_sha256": initialization_hash,
@@ -1143,7 +1362,7 @@ def _save_inference(
                 else "versus-actor-critic-v2"
             ),
             "mechanics_status": MECHANICS_STATUS,
-            "config": asdict(config),
+            "config": _config_payload(config),
             "config_sha256": config_hash,
             "bootstrap_sha256": bootstrap_hash,
             "initialization_sha256": initialization_hash,
@@ -1165,7 +1384,10 @@ def _validate_resume(
 ) -> None:
     if payload.get("checkpoint_schema") != CHECKPOINT_SCHEMA:
         raise ValueError("incompatible self-play checkpoint schema")
-    if payload.get("config") != asdict(config) or payload.get("config_sha256") != config_hash:
+    if (
+        payload.get("config") != _config_payload(config)
+        or payload.get("config_sha256") != config_hash
+    ):
         raise ValueError("self-play config changed; refusing semantic resume")
     if payload.get("bootstrap_sha256") != bootstrap_hash:
         raise ValueError("solo bootstrap changed; refusing resume")
@@ -1196,6 +1418,27 @@ def _sha256_file(path: Path) -> str:
 
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _cosine_similarity(one: Tensor, two: Tensor) -> float:
+    denominator = float((torch.linalg.vector_norm(one) * torch.linalg.vector_norm(two)).item())
+    if denominator <= 1e-12:
+        return 0.0
+    return float(torch.dot(one, two).item()) / denominator
+
+
+def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
+    payload = asdict(config)
+    if config.schema_version != "versus-selfplay-ppo-v4":
+        for name in (
+            "tactical_potential_fraction",
+            "tactical_curriculum_coefficient",
+            "tactical_curriculum_coefficient_final",
+            "tactical_curriculum_decay_updates",
+            "tactical_curriculum_temperature",
+        ):
+            payload.pop(name)
+    return payload
 
 
 def _as_random_state(value: object) -> tuple:

@@ -13,10 +13,14 @@ from tetris_rl.training.selfplay import (
     _kickstart_coefficient,
     _new_match_assignment,
     _ragged_policy_terms,
+    _ragged_target_kl,
     _resolve_actor_assignments,
     _sample_pfsp_opponent,
+    _segmented_argmax,
     _segmented_log_probabilities,
+    _segmented_unit_range,
     _stratified_paths,
+    _tactical_curriculum_coefficient,
 )
 from torch.distributions import Categorical
 
@@ -39,7 +43,7 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         actions = torch.tensor([1, 2, 0])
         teacher_log_probability = _segmented_log_probabilities(teacher_logits, counts)
 
-        selected, entropy, normalized_entropy, kickstart = _ragged_policy_terms(
+        selected, entropy, normalized_entropy, kickstart, _ = _ragged_policy_terms(
             logits, teacher_log_probability, counts, actions
         )
         offset = 0
@@ -95,6 +99,33 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         self.assertTrue(torch.equal(logits[0], torch.tensor([1.0, 2.0])))
         self.assertTrue(torch.equal(logits[1], torch.tensor([-3.0, -4.0, -5.0])))
         self.assertTrue(torch.equal(logits[2], torch.tensor([6.0])))
+
+    def test_ragged_target_kl_matches_categorical_reference(self) -> None:
+        student_logits = torch.tensor([0.2, -0.5, 1.1, 0.3, -0.7], requires_grad=True)
+        target_logits = torch.tensor([-0.1, 0.7, 0.2, -0.4, 0.9])
+        counts = torch.tensor([2, 3])
+
+        actual = _ragged_target_kl(student_logits, target_logits, counts)
+        expected = []
+        offset = 0
+        for count in counts.tolist():
+            end = offset + count
+            target_log = torch.log_softmax(target_logits[offset:end], dim=0)
+            student_log = torch.log_softmax(student_logits[offset:end], dim=0)
+            expected.append(torch.sum(target_log.exp() * (target_log - student_log)))
+            offset = end
+
+        self.assertTrue(torch.allclose(actual, torch.stack(expected)))
+        actual.mean().backward()
+        self.assertTrue(torch.isfinite(student_logits.grad).all())
+
+    def test_segmented_tactical_ranking_is_scale_independent(self) -> None:
+        values = torch.tensor([100.0, 50.0, 0.0, -2.0, -1.0])
+        counts = torch.tensor([3, 2])
+
+        normalized = _segmented_unit_range(values, counts)
+        torch.testing.assert_close(normalized, torch.tensor([1.0, 0.5, 0.0, 0.0, 1.0]))
+        torch.testing.assert_close(_segmented_argmax(values, counts), torch.tensor([0, 1]))
 
     def test_assignments_use_current_historical_and_bootstrap_ratios(self) -> None:
         config = SelfPlayConfig(
@@ -206,6 +237,47 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         self.assertAlmostEqual(_kickstart_coefficient(config, 100), 0.001)
         paths = [Path(f"{index}.pt") for index in range(10)]
         self.assertEqual(_stratified_paths(paths, 3), [paths[0], paths[4], paths[9]])
+
+    def test_v4_tactical_curriculum_decays_to_zero(self) -> None:
+        config = SelfPlayConfig(
+            schema_version="versus-selfplay-ppo-v4",
+            frames_per_placement=12,
+            parallel_matches=2,
+            rollout_steps=4,
+            ppo_epochs=1,
+            minibatch_decisions=8,
+            learning_rate=0.0001,
+            gamma=0.9995,
+            gae_lambda=0.999,
+            clip_ratio=0.2,
+            entropy_coefficient=0.0003,
+            value_coefficient=0.5,
+            max_grad_norm=0.5,
+            shaping_scale=0.05,
+            base_seed=1,
+            seed_stride=104729,
+            snapshot_interval_updates=1,
+            self_play_fraction=0.35,
+            historical_fraction=0.5,
+            opponent_pool_limit=32,
+            entropy_coefficient_final=0.00003,
+            entropy_decay_updates=500,
+            normalize_entropy=True,
+            model_architecture="joint-residual-v2",
+            solo_learning_rate_multiplier=0.1,
+            kickstart_coefficient=0.02,
+            kickstart_coefficient_final=0.001,
+            kickstart_decay_updates=500,
+            tactical_potential_fraction=0.25,
+            tactical_curriculum_coefficient=0.0001,
+            tactical_curriculum_coefficient_final=0.0,
+            tactical_curriculum_decay_updates=300,
+            tactical_curriculum_temperature=1.0,
+        )
+        config.validate()
+        self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 0), 0.0001)
+        self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 150), 0.00005)
+        self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 300), 0.0)
 
     def test_pfsp_samples_hard_opponent_more_often(self) -> None:
         config = SelfPlayConfig(

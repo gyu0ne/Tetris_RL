@@ -5,6 +5,8 @@ from tetris_rl.training.reward import (
     PotentialConfig,
     state_potential,
     state_potential_components,
+    tactical_candidate_scores,
+    tactical_potential_components,
     transition_reward,
     transition_reward_details,
 )
@@ -65,6 +67,43 @@ class PotentialRewardTest(unittest.TestCase):
         discounted = sum((self.config.gamma**index) * value for index, value in enumerate(shaping))
 
         torch.testing.assert_close(discounted, -phi[0])
+
+    def test_tactical_readiness_is_bounded_and_player_antisymmetric(self) -> None:
+        config = PotentialConfig(tactical_fraction=0.25)
+        diagnostics = torch.tensor(
+            [
+                [0, 0, 0, 2, 2],
+                [2, 2, 0, 6, 4],
+                [0, 0, 0, 0, 0],
+                [1, 0, 0, 1, 0],
+            ],
+            dtype=torch.float32,
+        )
+        components = tactical_potential_components(diagnostics, (0, 2, 4), config)
+
+        torch.testing.assert_close(components[0], -components[1])
+        self.assertLessEqual(float(components[0].abs().sum().item()), 1.0)
+        scores = tactical_candidate_scores(diagnostics, config)
+        self.assertGreater(float(scores[1].item()), float(scores[0].item()))
+        self.assertGreater(float(scores[0].item()), float(scores[2].item()))
+
+    def test_tactical_transition_keeps_terminal_reward_zero_sum(self) -> None:
+        config = PotentialConfig(tactical_fraction=0.25)
+        swapped = self.state.reshape(1, 6, 2).flip(-1).reshape(1, 12)
+        current = torch.cat((self.state, swapped), dim=0)
+        tactical = torch.tensor([[0.2, 0.1, 0.05], [-0.2, -0.1, -0.05]])
+        reward, components = transition_reward_details(
+            current,
+            torch.zeros_like(current),
+            torch.tensor([1.0, -1.0]),
+            torch.tensor([True, True]),
+            config,
+            current_tactical=tactical,
+            next_tactical=torch.zeros_like(tactical),
+        )
+
+        torch.testing.assert_close(reward[0], -reward[1])
+        self.assertEqual(components.shape, (2, 9))
 
 
 if __name__ == "__main__":
