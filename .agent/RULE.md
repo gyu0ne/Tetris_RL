@@ -1,6 +1,6 @@
 # Project Rules
 
-Last updated: 2026-08-29T19:17:33+09:00
+Last updated: 2026-08-30T10:55:00+09:00
 
 ## 1. Authority and scope
 
@@ -97,6 +97,8 @@ Explanation/         # Korean standalone explanations for implemented components
 - The unshaped objective is zero-sum terminal round outcome. Dense shaping is allowed only when it is potential-based, `F(s,a,s') = gamma*Phi(s') - Phi(s)`, antisymmetric across players, bounded, terminal-normalized, and accompanied by an MDP/stochastic-game policy or Nash-equilibrium invariance check.
 - Every proposed potential feature must define units, normalization, bound, expected causal effect, failure mode, and an ablation with confidence intervals. Correlation alone is not causation.
 - Evaluate against frozen historical opponents and baselines, never only the current self-play policy. Seeds, code revision, configuration hash, hardware, wall time, and confidence interval must be reported.
+- Historical opponent membership must be persisted and change gradually; recomputing a bounded pool in a way that replaces many opponents at one snapshot boundary is prohibited. Current-policy matchup estimates must expire or be re-evaluated rather than combining all learner generations indefinitely.
+- Final versus promotion must compare a bounded shortlist against fixed anchors and peer candidates with paired sides and cadence sensitivity. The latest snapshot or one training metric may not be promoted automatically.
 - A self-play match keeps its opponent kind/checkpoint and learner side fixed until terminal. Update boundaries and resume must persist this assignment; changing an opponent during an active match invalidates terminal credit.
 - Variable-length action entropy must be reported both raw and normalized by `log(legal candidate count)`. Entropy coefficients and schedules are committed experiment semantics, not resource-profile controls.
 - Before RL, bootstrap candidates from versioned heuristic/search demonstrations. Store every legal candidate score/rank plus rules, engine, seed, opponent and teacher hashes; split datasets by match/seed, not individual rows.

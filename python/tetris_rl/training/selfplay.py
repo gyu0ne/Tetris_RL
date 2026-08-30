@@ -21,6 +21,7 @@ from tetris_rl.models import (
     load_scorer,
     load_versus_actor,
 )
+from tetris_rl.training.opponent_pool import OpponentPoolState
 from tetris_rl.training.reward import (
     POTENTIAL_COMPONENT_NAMES,
     PotentialConfig,
@@ -30,6 +31,7 @@ from tetris_rl.training.reward import (
 )
 
 CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v3"
+CHECKPOINT_SCHEMA_V5 = "versus-selfplay-ppo-progress-v4"
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,15 @@ class SelfPlayConfig:
     tactical_curriculum_coefficient_final: float = 0.0
     tactical_curriculum_decay_updates: int = 1
     tactical_curriculum_temperature: float = 1.0
+    pool_promotion_interval_updates: int = 50
+    opponent_recent_slots: int = 12
+    opponent_score_half_life_updates: float = 100.0
+    opponent_result_history_limit: int = 256
+    historical_balanced_fraction: float = 0.4
+    historical_hard_fraction: float = 0.3
+    historical_uniform_fraction: float = 0.3
+    value_learning_rate_multiplier: float = 1.0
+    value_extra_epochs: int = 0
 
     @classmethod
     def load(cls, path: Path) -> "SelfPlayConfig":
@@ -84,6 +95,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v2",
             "versus-selfplay-ppo-v3",
             "versus-selfplay-ppo-v4",
+            "versus-selfplay-ppo-v5",
         }:
             raise ValueError("unsupported self-play config schema")
         positive = (
@@ -113,7 +125,11 @@ class SelfPlayConfig:
                 raise ValueError("v2 requires a nonnegative final entropy coefficient")
             if self.entropy_decay_updates <= 0 or not self.normalize_entropy:
                 raise ValueError("v2 requires normalized entropy and positive decay updates")
-        if self.schema_version in {"versus-selfplay-ppo-v3", "versus-selfplay-ppo-v4"}:
+        if self.schema_version in {
+            "versus-selfplay-ppo-v3",
+            "versus-selfplay-ppo-v4",
+            "versus-selfplay-ppo-v5",
+        }:
             if self.model_architecture != "joint-residual-v2":
                 raise ValueError("v3 requires the joint residual model")
             if self.entropy_coefficient_final is None or self.entropy_coefficient_final < 0.0:
@@ -128,7 +144,7 @@ class SelfPlayConfig:
                 raise ValueError("kickstart decay must be positive")
             if self.pfsp_exponent <= 0.0 or self.pfsp_min_weight <= 0.0:
                 raise ValueError("PFSP settings must be positive")
-        if self.schema_version == "versus-selfplay-ppo-v4":
+        if self.schema_version in {"versus-selfplay-ppo-v4", "versus-selfplay-ppo-v5"}:
             if not 0.0 <= self.tactical_potential_fraction <= 1.0:
                 raise ValueError("tactical potential fraction must be in [0, 1]")
             if (
@@ -143,6 +159,28 @@ class SelfPlayConfig:
                 raise ValueError("tactical curriculum decay must be positive")
             if self.tactical_curriculum_temperature <= 0.0:
                 raise ValueError("tactical curriculum temperature must be positive")
+        if self.schema_version == "versus-selfplay-ppo-v5":
+            if self.pool_promotion_interval_updates <= 0:
+                raise ValueError("pool promotion interval must be positive")
+            if self.pool_promotion_interval_updates % self.snapshot_interval_updates != 0:
+                raise ValueError("pool promotions must align with snapshot updates")
+            if not 0 < self.opponent_recent_slots < self.opponent_pool_limit:
+                raise ValueError("recent opponent slots must fit inside the pool")
+            if self.opponent_score_half_life_updates <= 0.0:
+                raise ValueError("opponent score half-life must be positive")
+            if self.opponent_result_history_limit <= 0:
+                raise ValueError("opponent result history limit must be positive")
+            fractions = (
+                self.historical_balanced_fraction,
+                self.historical_hard_fraction,
+                self.historical_uniform_fraction,
+            )
+            if any(fraction < 0.0 for fraction in fractions) or not math.isclose(
+                sum(fractions), 1.0, abs_tol=1e-9
+            ):
+                raise ValueError("historical sampling fractions must be nonnegative and sum to one")
+            if self.value_learning_rate_multiplier <= 0.0 or self.value_extra_epochs < 0:
+                raise ValueError("invalid value-learning settings")
 
 
 @dataclass(frozen=True)
@@ -156,16 +194,31 @@ class MatchAssignment:
     kind: str
     learner_side: int | None
     opponent_checkpoint: str | None = None
+    sampling_mode: str | None = None
 
     def validate(self) -> None:
         if self.kind == "self_play":
-            if self.learner_side is not None or self.opponent_checkpoint is not None:
+            if (
+                self.learner_side is not None
+                or self.opponent_checkpoint is not None
+                or self.sampling_mode is not None
+            ):
                 raise ValueError("self-play assignment cannot name one learner side or opponent")
             return
         if self.kind not in {"bootstrap", "historical"} or self.learner_side not in {0, 1}:
             raise ValueError("invalid fixed-opponent assignment")
         if (self.kind == "historical") != (self.opponent_checkpoint is not None):
             raise ValueError("historical assignment checkpoint mismatch")
+        if self.kind == "historical" and self.sampling_mode not in {
+            None,
+            "legacy",
+            "balanced",
+            "hard",
+            "uniform",
+        }:
+            raise ValueError("invalid historical sampling mode")
+        if self.kind == "bootstrap" and self.sampling_mode is not None:
+            raise ValueError("bootstrap assignment cannot name a historical sampling mode")
 
 
 @dataclass
@@ -236,6 +289,7 @@ def main() -> None:
     seed_index = 0
     history: list[dict[str, float | int | str | None]] = []
     league_stats: dict[str, dict[str, int]] = {}
+    pool_state: OpponentPoolState | None = None
     match_assignments: list[MatchAssignment]
 
     if args.resume and progress_path.exists():
@@ -251,6 +305,11 @@ def main() -> None:
             str(checkpoint): {str(key): int(value) for key, value in stats.items()}
             for checkpoint, stats in payload.get("league_stats", {}).items()
         }
+        if config.schema_version == "versus-selfplay-ppo-v5":
+            raw_pool_state = payload.get("opponent_pool_state")
+            if not isinstance(raw_pool_state, dict):
+                raise ValueError("v5 resume checkpoint lacks stable opponent-pool state")
+            pool_state = OpponentPoolState.from_payload(raw_pool_state)
         initialization_hash = payload.get("initialization_sha256")  # type: ignore[assignment]
         match_assignments = [
             MatchAssignment(**assignment) for assignment in payload["match_assignments"]
@@ -270,9 +329,24 @@ def main() -> None:
         ]
         seed_index = config.parallel_matches
         env = VersusVectorEnv(initial_seeds, config.frames_per_placement)
-        historical = _load_opponent_pool(args.output_dir, config, args.allow_observed)
+        if config.schema_version == "versus-selfplay-ppo-v5":
+            anchors = list(config.anchor_checkpoints or [])
+            if args.initialize_from is not None:
+                anchors.insert(0, str(args.initialize_from))
+            pool_state = OpponentPoolState.initialize(anchors)
+            if len(pool_state.members) > config.opponent_pool_limit:
+                raise ValueError("initial anchors exceed opponent-pool limit")
+        historical = _load_opponent_pool(args.output_dir, config, args.allow_observed, pool_state)
         match_assignments = [
-            _new_match_assignment(config, index, seed, historical, league_stats)
+            _new_match_assignment(
+                config,
+                index,
+                seed,
+                historical,
+                league_stats,
+                pool_state=pool_state,
+                update=update,
+            )
             for index, seed in enumerate(initial_seeds)
         ]
         _save_inference(
@@ -308,8 +382,11 @@ def main() -> None:
             environment_before = env.state_dict()
             assignments_before = list(match_assignments)
             league_stats_before = deepcopy(league_stats)
+            pool_state_before = deepcopy(pool_state)
             try:
-                historical = _load_opponent_pool(args.output_dir, config, args.allow_observed)
+                historical = _load_opponent_pool(
+                    args.output_dir, config, args.allow_observed, pool_state
+                )
                 rollout_started = time.monotonic()
                 transitions, observation, seed_index, simulated_decisions, rollout_metrics = (
                     _collect_rollout(
@@ -324,6 +401,8 @@ def main() -> None:
                         reward_config,
                         seed_index,
                         league_stats,
+                        pool_state,
+                        update,
                     )
                 )
                 rollout_seconds = time.monotonic() - rollout_started
@@ -361,6 +440,7 @@ def main() -> None:
                 seed_index = seed_index_before
                 match_assignments = assignments_before
                 league_stats = league_stats_before
+                pool_state = pool_state_before
                 env = VersusVectorEnv.restore(environment_before)
                 observation = env.observe()
                 raise
@@ -380,6 +460,35 @@ def main() -> None:
             _add_rolling_scores(metrics, history)
             history.append(metrics)
             history = history[-100:]
+            pool_event: dict[str, object] | None = None
+            if pool_state is not None and update % config.pool_promotion_interval_updates == 0:
+                promoted_path = args.output_dir / "snapshots" / f"update-{update:06d}-model.pt"
+                _save_inference(
+                    promoted_path,
+                    model,
+                    config,
+                    config_hash,
+                    bootstrap_hash,
+                    initialization_hash,
+                    update,
+                    environment_steps,
+                )
+                pool_event = pool_state.promote(
+                    str(promoted_path),
+                    update,
+                    limit=config.opponent_pool_limit,
+                    recent_slots=config.opponent_recent_slots,
+                )
+            if pool_state is not None:
+                metrics.update(_opponent_pool_metrics(pool_state, config, update))
+                if pool_event is not None:
+                    metrics.update(
+                        {
+                            "opponent_pool_added": pool_event["added"],
+                            "opponent_pool_removed": pool_event["removed"],
+                            "opponent_pool_demoted": pool_event["demoted"],
+                        }
+                    )
             _save_progress(
                 progress_path,
                 model,
@@ -395,6 +504,7 @@ def main() -> None:
                 match_assignments,
                 initialization_hash,
                 league_stats,
+                pool_state,
             )
             _save_inference(
                 args.output_dir / "latest-model.pt",
@@ -423,6 +533,7 @@ def main() -> None:
                     match_assignments,
                     initialization_hash,
                     league_stats,
+                    pool_state,
                 )
                 _save_inference(
                     args.output_dir / "snapshots" / f"update-{update:06d}-model.pt",
@@ -451,6 +562,7 @@ def main() -> None:
             match_assignments,
             initialization_hash,
             league_stats,
+            pool_state,
         )
         _save_inference(
             args.output_dir / "model.pt",
@@ -476,6 +588,8 @@ def _collect_rollout(
     reward_config: PotentialConfig,
     seed_index: int,
     league_stats: dict[str, dict[str, int]],
+    pool_state: OpponentPoolState | None = None,
+    update: int = 0,
 ) -> tuple[
     list[DecisionTransition],
     VersusObservation,
@@ -501,6 +615,9 @@ def _collect_rollout(
         "historical_wins": 0,
         "historical_losses": 0,
         "historical_draws": 0,
+        "historical_balanced_games": 0,
+        "historical_hard_games": 0,
+        "historical_uniform_games": 0,
         "learner_decisions": 0,
         "learner_lines": 0,
         "learner_attack": 0,
@@ -680,6 +797,15 @@ def _collect_rollout(
                     stats["wins"] += int(outcome > 0)
                     stats["losses"] += int(outcome < 0)
                     stats["draws"] += int(outcome == 0)
+                    if pool_state is not None:
+                        pool_state.record_result(
+                            checkpoint,
+                            update,
+                            1.0 if outcome > 0 else 0.5 if outcome == 0 else 0.0,
+                            history_limit=config.opponent_result_history_limit,
+                        )
+                        mode = assignment.sampling_mode or "uniform"
+                        counters[f"historical_{mode}_games"] += 1
             reset_seeds = [
                 _scheduled_seed(config, seed_index + offset)
                 for offset in range(len(completed_indices))
@@ -690,7 +816,13 @@ def _collect_rollout(
             environment_seconds += time.monotonic() - environment_started
             for match_index, seed in zip(completed_indices, reset_seeds, strict=True):
                 assignment = _new_match_assignment(
-                    config, match_index, seed, historical, league_stats
+                    config,
+                    match_index,
+                    seed,
+                    historical,
+                    league_stats,
+                    pool_state=pool_state,
+                    update=update,
                 )
                 match_assignments[match_index] = assignment
                 pair = _actors_for_assignment(assignment, bootstrap, model_cache, allow_observed)
@@ -1044,6 +1176,8 @@ def _ppo_update(
     explained_variances: list[float] = []
     kickstart_losses: list[float] = []
     tactical_losses: list[float] = []
+    extra_value_losses: list[float] = []
+    extra_value_gradient_norms: list[float] = []
     for _ in range(config.ppo_epochs):
         order = torch.randperm(len(transitions)).tolist()
         for start in range(0, len(order), config.minibatch_decisions):
@@ -1121,6 +1255,34 @@ def _ppo_update(
             kickstart_losses.append(float(kickstart_loss.item()))
             tactical_losses.append(float(tactical_loss.item()))
 
+    if config.value_extra_epochs > 0:
+        value_parameters = list(model.value_core.parameters())
+        for _ in range(config.value_extra_epochs):
+            order = torch.randperm(len(transitions)).tolist()
+            for start in range(0, len(order), config.minibatch_decisions):
+                indices = order[start : start + config.minibatch_decisions]
+                states = torch.stack([transitions[index].state for index in indices])
+                targets = torch.tensor([transitions[index].return_target for index in indices])
+                value_loss = torch.nn.functional.mse_loss(model.value(states), targets)
+                optimizer.zero_grad(set_to_none=True)
+                (config.value_coefficient * value_loss).backward()
+                gradient_norm = torch.nn.utils.clip_grad_norm_(
+                    value_parameters, config.max_grad_norm
+                )
+                optimizer.step()
+                extra_value_losses.append(float(value_loss.item()))
+                extra_value_gradient_norms.append(float(gradient_norm.item()))
+
+    all_states = torch.stack([record.state for record in transitions])
+    all_targets = torch.tensor([record.return_target for record in transitions])
+    with torch.no_grad():
+        postfit_values = model.value(all_states)
+    target_variance = all_targets.var(unbiased=False)
+    postfit_explained_variance = 0.0
+    if float(target_variance.item()) > 1e-12:
+        residual_variance = (all_targets - postfit_values).var(unbiased=False)
+        postfit_explained_variance = float((1.0 - residual_variance / target_variance).item())
+
     return {
         "loss": _mean(losses),
         "policy_loss": _mean(policy_losses),
@@ -1138,16 +1300,25 @@ def _ppo_update(
         "clip_fraction": _mean(clip_fractions),
         "gradient_norm": _mean(gradient_norms),
         "explained_variance": _mean(explained_variances) if explained_variances else 0.0,
+        "value_postfit_explained_variance": postfit_explained_variance,
+        "value_extra_loss": _mean(extra_value_losses),
+        "value_extra_gradient_norm": _mean(extra_value_gradient_norms),
         "mean_reward": _mean([record.reward for record in transitions]),
     }
 
 
 def _load_opponent_pool(
-    output_dir: Path, config: SelfPlayConfig, allow_observed: bool
+    output_dir: Path,
+    config: SelfPlayConfig,
+    allow_observed: bool,
+    pool_state: OpponentPoolState | None = None,
 ) -> list[OpponentPoolEntry]:
-    snapshots = sorted((output_dir / "snapshots").glob("update-*-model.pt"))
-    paths = [Path(path) for path in config.anchor_checkpoints or []]
-    paths.extend(_stratified_paths(snapshots, config.opponent_pool_limit))
+    if pool_state is None:
+        snapshots = sorted((output_dir / "snapshots").glob("update-*-model.pt"))
+        paths = [Path(path) for path in config.anchor_checkpoints or []]
+        paths.extend(_stratified_paths(snapshots, config.opponent_pool_limit))
+    else:
+        paths = [Path(path) for path in pool_state.checkpoints()]
     unique_paths = list(dict.fromkeys(paths))
     entries = []
     for path in unique_paths:
@@ -1167,6 +1338,9 @@ def _new_match_assignment(
     seed: int,
     historical: list[OpponentPoolEntry],
     league_stats: dict[str, dict[str, int]] | None = None,
+    *,
+    pool_state: OpponentPoolState | None = None,
+    update: int = 0,
 ) -> MatchAssignment:
     self_play_matches = round(config.parallel_matches * config.self_play_fraction)
     historical_matches = round(config.parallel_matches * config.historical_fraction)
@@ -1174,11 +1348,26 @@ def _new_match_assignment(
         return MatchAssignment(kind="self_play", learner_side=None)
     learner_side = seed % 2
     if match_index < self_play_matches + historical_matches and historical:
-        opponent = _sample_pfsp_opponent(config, seed, historical, league_stats or {})
+        if pool_state is None:
+            opponent = _sample_pfsp_opponent(config, seed, historical, league_stats or {})
+            opponent_checkpoint = opponent.checkpoint
+            sampling_mode = "legacy"
+        else:
+            opponent_checkpoint, sampling_mode = pool_state.sample(
+                seed,
+                update,
+                half_life_updates=config.opponent_score_half_life_updates,
+                balanced_fraction=config.historical_balanced_fraction,
+                hard_fraction=config.historical_hard_fraction,
+                uniform_fraction=config.historical_uniform_fraction,
+                exponent=config.pfsp_exponent,
+                min_weight=config.pfsp_min_weight,
+            )
         return MatchAssignment(
             kind="historical",
             learner_side=learner_side,
-            opponent_checkpoint=opponent.checkpoint,
+            opponent_checkpoint=opponent_checkpoint,
+            sampling_mode=sampling_mode,
         )
     return MatchAssignment(kind="bootstrap", learner_side=learner_side)
 
@@ -1251,6 +1440,26 @@ def _build_optimizer(model: VersusActorCritic, config: SelfPlayConfig) -> torch.
     if model.config.architecture_version == 1:
         return torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     solo_parameters = list(model.solo_model.parameters())
+    if config.schema_version == "versus-selfplay-ppo-v5":
+        value_parameters = list(model.value_core.parameters())
+        actor_parameters = [
+            parameter
+            for name, parameter in model.named_parameters()
+            if not name.startswith("solo_model.") and not name.startswith("value_core.")
+        ]
+        return torch.optim.Adam(
+            [
+                {"params": actor_parameters, "lr": config.learning_rate},
+                {
+                    "params": value_parameters,
+                    "lr": config.learning_rate * config.value_learning_rate_multiplier,
+                },
+                {
+                    "params": solo_parameters,
+                    "lr": config.learning_rate * config.solo_learning_rate_multiplier,
+                },
+            ]
+        )
     adaptation_parameters = [
         parameter
         for name, parameter in model.named_parameters()
@@ -1294,6 +1503,20 @@ def _sample_pfsp_opponent(
     return chooser.choices(historical, weights=weights, k=1)[0]
 
 
+def _opponent_pool_metrics(
+    pool_state: OpponentPoolState, config: SelfPlayConfig, update: int
+) -> dict[str, float | int]:
+    return pool_state.metrics(
+        update,
+        half_life_updates=config.opponent_score_half_life_updates,
+        balanced_fraction=config.historical_balanced_fraction,
+        hard_fraction=config.historical_hard_fraction,
+        uniform_fraction=config.historical_uniform_fraction,
+        exponent=config.pfsp_exponent,
+        min_weight=config.pfsp_min_weight,
+    )
+
+
 def _add_rolling_scores(
     metrics: dict[str, float | int | str | None],
     history: list[dict[str, float | int | str | None]],
@@ -1322,9 +1545,14 @@ def _save_progress(
     match_assignments: list[MatchAssignment],
     initialization_hash: str | None,
     league_stats: dict[str, dict[str, int]],
+    pool_state: OpponentPoolState | None = None,
 ) -> None:
     payload = {
-        "checkpoint_schema": CHECKPOINT_SCHEMA,
+        "checkpoint_schema": (
+            CHECKPOINT_SCHEMA_V5
+            if config.schema_version == "versus-selfplay-ppo-v5"
+            else CHECKPOINT_SCHEMA
+        ),
         "config": _config_payload(config),
         "config_sha256": config_hash,
         "bootstrap_sha256": bootstrap_hash,
@@ -1340,6 +1568,7 @@ def _save_progress(
         "environment_state": environment_state,
         "match_assignments": [asdict(assignment) for assignment in match_assignments],
         "league_stats": league_stats,
+        "opponent_pool_state": pool_state.to_payload() if pool_state is not None else None,
     }
     _atomic_torch_save(payload, path)
 
@@ -1382,7 +1611,12 @@ def _validate_resume(
     config_hash: str,
     bootstrap_hash: str,
 ) -> None:
-    if payload.get("checkpoint_schema") != CHECKPOINT_SCHEMA:
+    expected_schema = (
+        CHECKPOINT_SCHEMA_V5
+        if config.schema_version == "versus-selfplay-ppo-v5"
+        else CHECKPOINT_SCHEMA
+    )
+    if payload.get("checkpoint_schema") != expected_schema:
         raise ValueError("incompatible self-play checkpoint schema")
     if (
         payload.get("config") != _config_payload(config)
@@ -1395,6 +1629,10 @@ def _validate_resume(
         raise ValueError("progress checkpoint lacks exact environment state")
     if "match_assignments" not in payload:
         raise ValueError("progress checkpoint lacks persistent opponent assignments")
+    if config.schema_version == "versus-selfplay-ppo-v5" and not isinstance(
+        payload.get("opponent_pool_state"), dict
+    ):
+        raise ValueError("progress checkpoint lacks stable opponent-pool state")
 
 
 def _atomic_torch_save(payload: dict[str, object], path: Path) -> None:
@@ -1429,13 +1667,26 @@ def _cosine_similarity(one: Tensor, two: Tensor) -> float:
 
 def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
     payload = asdict(config)
-    if config.schema_version != "versus-selfplay-ppo-v4":
+    if config.schema_version not in {"versus-selfplay-ppo-v4", "versus-selfplay-ppo-v5"}:
         for name in (
             "tactical_potential_fraction",
             "tactical_curriculum_coefficient",
             "tactical_curriculum_coefficient_final",
             "tactical_curriculum_decay_updates",
             "tactical_curriculum_temperature",
+        ):
+            payload.pop(name)
+    if config.schema_version != "versus-selfplay-ppo-v5":
+        for name in (
+            "pool_promotion_interval_updates",
+            "opponent_recent_slots",
+            "opponent_score_half_life_updates",
+            "opponent_result_history_limit",
+            "historical_balanced_fraction",
+            "historical_hard_fraction",
+            "historical_uniform_fraction",
+            "value_learning_rate_multiplier",
+            "value_extra_epochs",
         ):
             payload.pop(name)
     return payload

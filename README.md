@@ -76,13 +76,13 @@ dataset shard는 deterministic gzip 임시 파일이며 저장소에 commit하�
 
 ## 1대1 자기대전 학습
 
-r0 진단을 반영한 v2 학습은 현재 작업공간에 r0 update 50 모델이 있으면 이를 초기화에 사용하고 새 r1 실험을 만든다. 해당 파일이 없는 새 checkout에서는 승격된 솔로 bootstrap으로 시작한다.
+현재 기본 r4는 r3에서 확인된 상대 풀 순환과 낮은 critic 설명력을 함께 수정한다. r3 update 700·1050을 고정 anchor로 보존하고, 시간 감쇠 전적과 balanced/hard/uniform 혼합 상대 선택을 사용한다. 종료 후에는 8/12/15 frame 대국으로 `selected-model.pt`를 자동 생성한다.
 
 ```powershell
 ./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24
 ```
 
-중단 후에는 `./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24 -Resume`으로 `latest.pt`의 모델·optimizer·진행 경기·고정 상대 배정을 이어간다. 보조 보상, entropy 수정, update 로그와 paired 평가 방법은 `Explanation/Versus_Self_Play_Reinforcement_Learning.md`에 정리되어 있다.
+중단 후에는 `./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24 -Resume`으로 `latest.pt`의 모델·optimizer·진행 경기·고정 상대 배정·상대 풀·최근 전적을 이어간다. 실행과 자동 선택은 `Explanation/Versus_Self_Play_R4_Stable_League.md`, 보상은 `Explanation/Versus_Self_Play_R3_Reward_and_Credit.md`에 정리되어 있다. 기존 r3와 r2의 정확 재개는 각각 `run-versus-selfplay-r3.ps1`, `run-versus-selfplay-r2.ps1`을 사용한다.
 
 ## 최종 모델 관전
 

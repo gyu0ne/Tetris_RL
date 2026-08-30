@@ -93,7 +93,7 @@ shaping_back_to_back_mean_abs
 변경 전 컨테이너는 실행 당시 빌드된 binary를 계속 사용하므로 자동으로 빨라지지 않는다. 중지된 상태에서 변경 사항이 commit된 뒤 다음 명령으로 재개한다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 `
+./scripts/run-versus-selfplay-r2.ps1 `
   -ResourceProfile max `
   -Hours 24 `
   -OutputDir checkpoints/versus-selfplay-r2 `

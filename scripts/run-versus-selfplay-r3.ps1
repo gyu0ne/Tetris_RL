@@ -3,11 +3,8 @@ param(
     [string]$ResourceProfile = 'balanced',
     [double]$Hours = 24,
     [int]$MaxUpdates = 0,
-    [string]$InitializeFrom = 'checkpoints/versus-selfplay-r3/snapshots/update-001050-model.pt',
-    [string]$OutputDir = 'checkpoints/versus-selfplay-r4',
-    [int]$SelectionSeeds = 8,
-    [int]$SelectionHorizon = 2000,
-    [switch]$SkipSelection,
+    [string]$InitializeFrom = '',
+    [string]$OutputDir = 'checkpoints/versus-selfplay-r3',
     [switch]$Resume
 )
 
@@ -21,9 +18,6 @@ switch ($ResourceProfile) {
 }
 if ($Hours -le 0) { throw 'Hours must be positive.' }
 if ($MaxUpdates -lt 0) { throw 'MaxUpdates must be nonnegative.' }
-if ($SelectionSeeds -le 0 -or $SelectionHorizon -le 0) {
-    throw 'Selection seeds and horizon must be positive.'
-}
 
 $dirtyFiles = @(git status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw 'git status failed.' }
@@ -37,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw 'training image build failed.' }
 $arguments = @(
     'compose', 'run', '--rm', '-e', "RAYON_NUM_THREADS=$RayonThreads", 'training',
     'python', '-m', 'tetris_rl.training.selfplay',
-    '--config', 'configs/training/versus_selfplay_ppo_v5.json',
+    '--config', 'configs/training/versus_selfplay_ppo_v4.json',
     '--bootstrap', 'checkpoints/solo-imitation-versus-bootstrap-v1/model.pt',
     '--output-dir', $OutputDir,
     '--hours', "$Hours",
@@ -54,24 +48,6 @@ if ($Resume) {
     $arguments += @('--initialize-from', $InitializeFrom)
 }
 
-Write-Host "Self-play r4: $ResourceProfile (Rust $RayonThreads / PyTorch $TorchThreads threads, $Hours hours, output $OutputDir)"
+Write-Host "Self-play r3: $ResourceProfile (Rust $RayonThreads / PyTorch $TorchThreads threads, $Hours hours, output $OutputDir)"
 docker @arguments
 if ($LASTEXITCODE -ne 0) { throw "self-play failed with exit code $LASTEXITCODE" }
-
-if (-not $SkipSelection) {
-    $selectionArguments = @(
-        'compose', 'run', '--rm', '-e', "RAYON_NUM_THREADS=$RayonThreads", 'training',
-        'python', '-m', 'tetris_rl.evaluation.versus_select',
-        '--output-dir', $OutputDir,
-        '--anchor', 'checkpoints/versus-selfplay-r3/snapshots/update-000700-model.pt',
-        '--anchor', 'checkpoints/versus-selfplay-r3/snapshots/update-001050-model.pt',
-        '--seeds', "$SelectionSeeds",
-        '--horizon', "$SelectionHorizon",
-        '--cadences', '8,12,15',
-        '--threads', "$TorchThreads",
-        '--allow-observed'
-    )
-    Write-Host "Selecting the cadence-robust r4 champion..."
-    docker @selectionArguments
-    if ($LASTEXITCODE -ne 0) { throw "champion selection failed with exit code $LASTEXITCODE" }
-}

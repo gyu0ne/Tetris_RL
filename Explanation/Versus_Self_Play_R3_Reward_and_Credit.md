@@ -61,19 +61,19 @@ target(a) = argmax [teacher_unit(a) + tactical(a)]
 새 r3를 처음 시작한다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile balanced -Hours 24
+./scripts/run-versus-selfplay-r3.ps1 -ResourceProfile balanced -Hours 24
 ```
 
 중단된 r3를 같은 설정으로 이어간다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile balanced -Hours 24 -Resume
+./scripts/run-versus-selfplay-r3.ps1 -ResourceProfile balanced -Hours 24 -Resume
 ```
 
 최대 자원 프로필은 다음과 같다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24
+./scripts/run-versus-selfplay-r3.ps1 -ResourceProfile max -Hours 24
 ```
 
 기존 r2를 재개해야 할 때만 보존된 legacy 스크립트를 사용한다.

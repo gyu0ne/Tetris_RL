@@ -113,7 +113,7 @@ learner가 잘 못 이기는 상대일수록 더 자주 뽑지만 모든 상대�
 PowerShell에서 다음 명령으로 새 r2를 시작한다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24
+./scripts/run-versus-selfplay-r2.ps1 -ResourceProfile max -Hours 24
 ```
 
 자원 프로필은 Rust 후보 생성과 PyTorch의 작은 MLP에 같은 thread 수를 주지 않는다. `max`는 `Rayon 12 / PyTorch 2`, `balanced`는 `6 / 2`, `light`는 `2 / 1`이다. 실제 측정에서 PyTorch 12-thread는 작은 minibatch의 scheduling 비용 때문에 2-thread보다 느렸다.
@@ -123,7 +123,7 @@ PowerShell에서 다음 명령으로 새 r2를 시작한다.
 중단 후 재개:
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 `
+./scripts/run-versus-selfplay-r2.ps1 `
   -ResourceProfile max `
   -Hours 24 `
   -OutputDir checkpoints/versus-selfplay-r2 `

@@ -8,7 +8,7 @@
 - 임시 전술 커리큘럼은 절대 teacher logit 크기에 의존하지 않는다. 상태별 teacher logit을 unit-range로 정규화하고 bounded tactical score를 더한 argmax를 목표로 삼는다. cross-entropy 계수는 `0.0001 -> 0` over 300 updates다.
 - 순수 tactical soft target은 첫 스모크에서 KL `43.924`, loss contribution `0.439`로 PPO를 압도해 폐기했다. unit-range teacher constrained hard target은 목표 변경률 `0.003497`, contribution `5.76e-5`로 normalized entropy 항과 같은 규모였다.
 - terminal과 shaping reward-only lambda trace, cosine, 9개 성분의 signed/absolute mean을 로그로 분리한다. combined GAE/value target은 기존 PPO 경로를 유지한다.
-- v4/r3는 `configs/training/versus_selfplay_ppo_v4.json`과 기본 `scripts/run-versus-selfplay.ps1`을 사용하고 `checkpoints/versus-selfplay-r3`에 새로 저장한다. r2 config/checkpoint는 별도 legacy script로 resume-compatible하게 보존한다.
+- v4/r3는 `configs/training/versus_selfplay_ppo_v4.json`과 보존된 `scripts/run-versus-selfplay-r3.ps1`을 사용한다. 기본 `run-versus-selfplay.ps1`은 이후 r4를 가리키며 r2도 별도 legacy script로 resume-compatible하게 보존한다.
 
 ## 성능·보상 관측 확정 (2026-08-28)
 

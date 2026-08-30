@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-30T11:03:33+09:00 [USER] Replace one-change-per-day experimentation with one comprehensive r4 revision that addresses opponent-pool cycling, stale matchup evidence, critic underfitting, observability and final champion selection before the next long run.
+
 - 2026-08-29T19:42:40+09:00 [USER] Inspect the active training log and audit a human-match loss that appeared inconsistent with the visible board; diagnose before changing adjudication.
 
 - 2026-08-29T19:17:33+09:00 [USER] Implement option 2: a local real-time keyboard match in which the user directly plays against the current 1v1 model checkpoint.
@@ -49,6 +51,10 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-30T11:03:33+09:00 [CODE] r4 uses an explicit checkpointed league: two protected r3 anchors, at most one membership replacement per 50-update promotion, 12 recent slots in a 32-member pool, and timestamped results with a 100-update exponential half-life. This preserves strategic memory while allowing gradual adaptation.
+- 2026-08-30T11:03:33+09:00 [CODE] Historical opponents are sampled as a 40% balanced / 30% hard / 30% uniform mixture instead of one cumulative PFSP distribution; uniform coverage prevents starvation, hard sampling targets weaknesses, and balanced sampling keeps informative near-even matchups.
+- 2026-08-30T11:03:33+09:00 [CODE] r4 retains the r3 actor/reward semantics but gives the critic a 2x learning-rate group and four value-only refit passes over existing rollout states. Final promotion is automatic and ranks shortlisted snapshots by paired, side-swapped, multi-cadence worst-opponent score before aggregate score.
 
 - 2026-08-29T19:17:33+09:00 [CODE] Keep human input frame-level while retaining the learned model's reachable-placement action space at the configured 12-frame cadence; resolve a due model placement and the human's same-frame input through one transactional `BattleSession` frame so cancellation, garbage and terminal ordering remain authoritative.
 - 2026-08-29T19:17:33+09:00 [CODE] Make the browser a renderer/input relay only. Python owns checkpoint inference and Rust owns every mechanic; the server loads a compatible `*-model.pt` once at process start and requires restart for refreshed weights.
@@ -143,6 +149,10 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-30T11:03:33+09:00 [CODE] Added `opponent_pool.py`, self-play config/progress schema v5/v4, serialized stable membership and decayed results, mixed historical sampling, critic post-fit diagnostics, production/smoke v5 configs, and backward-compatible r2/r3 runners.
+- 2026-08-30T11:03:33+09:00 [CODE] Added `versus_select.py` and made the default r4 runner automatically screen promotion snapshots, evaluate a bounded shortlist against fixed anchors/reference/peers at cadences 8/12/15, and produce `selection-report.json` plus `selected-model.pt`.
+- 2026-08-30T11:03:33+09:00 [CODE] Added 9 focused pool/selection tests and synchronized RULE, README, internal design records and Korean component manuals. Existing r3 artifacts and exact r3 resume behavior remain available through `run-versus-selfplay-r3.ps1`.
 
 - 2026-08-29T19:17:33+09:00 [CODE] Added the Rust human/model arena, simultaneous mixed-action battle adapter, PyO3 bridge, Python controller/server, responsive keyboard UI, Compose service, Rust/Python tests, repository rules, internal design explanation and Korean runbook. The default service targets `checkpoints/versus-selfplay-r3/latest-model.pt` on `127.0.0.1:8789`.
 - 2026-08-29T19:17:33+09:00 [CODE] Added `.playwright-mcp/` to `.gitignore` because browser QA emits temporary snapshots and screenshots that are not project artifacts.
@@ -267,6 +277,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-30T11:03:33+09:00 [TOOL] The completed r3 run had 150 snapshots but a 32-member recomputed active pool; one new snapshot could replace 16 active opponents, while matchup statistics remained cumulative across learner generations. The resulting effective sampling size was 30.8/32, so neither stable memory nor focused weakness sampling was achieved.
+- 2026-08-30T11:03:33+09:00 [TOOL] A real production-shape r4 update (32 matches x 512 steps) completed in 50.27 s versus the observed r3 range of roughly 58-62 s; rollout took 21.82 s and PPO plus value refits took 28.43 s. The critic post-fit explained variance was finite at 0.0527, but strength improvement remains UNCONFIRMED until the long run and held-out selection complete.
+
 - 2026-08-29T19:42:40+09:00 [TOOL] The disputed human match had already been reset, so its terminal state is no longer recoverable. HTTP access logs contain only successful frame/reset requests; the two complete recent runs had 5,397 and 4,511 frame requests. Rust result mapping is not inverted and its one-sided player-one BlockOut test passes.
 - 2026-08-29T19:42:40+09:00 [CODE] Human-battle snapshots expose only 20 of the 40 board rows and omit `TopOutReason`; the active profile enables BlockOut and GarbageOut while lock-out variants remain disabled. Hidden buffer occupancy can therefore make a valid loss look unexplained, but the reset and missing reason mean this specific loss is UNCONFIRMED rather than proven correct.
 - 2026-08-29T19:42:40+09:00 [TOOL] Training updates 557–566 remain numerically stable: mean attack/piece 0.1732, lines/piece 0.4860, danger rate 0.0060, normalized entropy 0.1506 and update time 69.0 s. Mean explained variance is only 0.0350, so value prediction remains weak; the battle server still has update 533 cached while training reached update 566.
@@ -354,6 +367,9 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-30T11:03:33+09:00 [TOOL] r4 implementation gates passed: training image build, Ruff formatting/lint, all 47 Python tests, Rust formatting, Clippy with denied warnings, all 147 Rust tests, release workspace build, Compose validation, PowerShell parsing and `git diff --check`. Fresh/resumed v5 smoke runs and an end-to-end selector smoke also passed.
+- 2026-08-30T11:03:33+09:00 [CODE] The next long experiment is now a single r4 run followed by automatic selection; r3 is preserved as immutable initialization/anchor evidence. No r4 champion strength is claimed before that run.
 
 - 2026-08-29T19:17:33+09:00 [TOOL] Human-versus-model implementation passed Rust fmt, workspace Clippy with `-D warnings`, all 147 Rust tests, release build, training-image build, Ruff format/check, all 41 Python tests, Compose validation and live API/browser smoke. The existing long r3 training container remained running throughout; the battle service is running separately and ready at `http://127.0.0.1:8789`.
 
