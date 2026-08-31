@@ -12,6 +12,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Get-Sha256Hex {
+    param([string]$Path)
+
+    $ResolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $Stream = [System.IO.File]::OpenRead($ResolvedPath)
+    $Hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Hash = $Hasher.ComputeHash($Stream)
+        return (($Hash | ForEach-Object { $_.ToString('x2') }) -join '')
+    } finally {
+        $Hasher.Dispose()
+        $Stream.Dispose()
+    }
+}
+
 switch ($ResourceProfile) {
     'light' { $RayonThreads = 2; $TorchThreads = 1 }
     'balanced' { $RayonThreads = 6; $TorchThreads = 2 }
@@ -172,7 +187,7 @@ $AggressiveReport = [pscustomobject]@{
     warning = 'attack-only research artifact; not a production promotion'
     baseline_outgoing_attack_per_piece = $Baseline.outgoing_attack_per_piece
     selected = $AttackChampion
-    checkpoint_sha256 = (Get-FileHash -LiteralPath $AggressiveModel -Algorithm SHA256).Hash.ToLowerInvariant()
+    checkpoint_sha256 = Get-Sha256Hex -Path $AggressiveModel
     candidates = $StageRows
 }
 $AggressiveReport | ConvertTo-Json -Depth 5 | Set-Content `
