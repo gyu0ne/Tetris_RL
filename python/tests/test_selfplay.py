@@ -6,6 +6,7 @@ import torch
 from tetris_rl.envs import VersusObservation
 from tetris_rl.models import VersusActorCritic
 from tetris_rl.training.selfplay import (
+    DecisionTransition,
     OpponentPoolEntry,
     SelfPlayConfig,
     _batched_actor_logits,
@@ -14,6 +15,7 @@ from tetris_rl.training.selfplay import (
     _net_offense_rewards,
     _new_match_assignment,
     _offense_reward_coefficient,
+    _policy_advantages,
     _ragged_policy_terms,
     _ragged_target_kl,
     _resolve_actor_assignments,
@@ -299,6 +301,59 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         self.assertAlmostEqual(_offense_reward_coefficient(config, 2), 0.0125)
         self.assertAlmostEqual(_offense_reward_coefficient(config, 3), 0.005)
         self.assertAlmostEqual(_offense_reward_coefficient(config, 30), 0.005)
+
+    def test_v7_convex_offense_utility_favors_spikes_and_has_separate_advantage(self) -> None:
+        config = SelfPlayConfig.load(Path("configs/training/versus_selfplay_smoke_v7.json"))
+        rewards = _net_offense_rewards(
+            torch.tensor([1.0, 0.0, 4.0, 0.0]),
+            coefficient=config.offense_reward_coefficient,
+            attack_scale=config.offense_reward_attack_scale,
+            power=config.offense_reward_power,
+        )
+        torch.testing.assert_close(
+            rewards,
+            torch.tensor([0.0075, -0.0075, 0.06, -0.06]),
+        )
+        contested = _net_offense_rewards(
+            torch.tensor([4.0, 1.0]),
+            coefficient=config.offense_reward_coefficient,
+            attack_scale=config.offense_reward_attack_scale,
+            power=config.offense_reward_power,
+        )
+        expected_contested = 0.06 * (0.75**1.5)
+        torch.testing.assert_close(
+            contested,
+            torch.tensor([expected_contested, -expected_contested]),
+        )
+        transitions = []
+        for offense in (-1.0, 1.0):
+            transitions.append(
+                DecisionTransition(
+                    candidates=torch.zeros((1, 1)),
+                    candidate_diagnostics=torch.zeros((1, 5)),
+                    state=torch.zeros(1),
+                    action=0,
+                    old_log_probability=0.0,
+                    old_value=0.0,
+                    reward=offense,
+                    terminal_reward=0.0,
+                    shaping_reward=0.0,
+                    offense_reward=offense,
+                    next_value=0.0,
+                    terminal=False,
+                    is_learner=True,
+                    advantage=offense,
+                    base_advantage=0.0,
+                    offense_advantage=offense,
+                )
+            )
+
+        advantages, metrics = _policy_advantages(transitions, config)
+
+        self.assertLess(float(advantages[0].item()), 0.0)
+        self.assertGreater(float(advantages[1].item()), 0.0)
+        self.assertAlmostEqual(metrics["policy_offense_advantage_weight"], 0.7)
+        self.assertGreater(metrics["offense_advantage_std"], 0.0)
 
     def test_pfsp_samples_hard_opponent_more_often(self) -> None:
         config = SelfPlayConfig(
