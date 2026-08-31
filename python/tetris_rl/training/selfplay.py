@@ -34,6 +34,16 @@ CHECKPOINT_SCHEMA = "versus-selfplay-ppo-progress-v3"
 CHECKPOINT_SCHEMA_V5 = "versus-selfplay-ppo-progress-v4"
 CHECKPOINT_SCHEMA_V6 = "versus-selfplay-ppo-progress-v5"
 CHECKPOINT_SCHEMA_V7 = "versus-selfplay-ppo-progress-v6"
+CHECKPOINT_SCHEMA_V8 = "versus-selfplay-ppo-progress-v7"
+ATTACK_SETUP_COMPONENT_NAMES = (
+    "combo",
+    "back_to_back",
+    "attack_readiness",
+    "full_t_spin_readiness",
+)
+ATTACK_SETUP_COMPONENT_INDICES = tuple(
+    POTENTIAL_COMPONENT_NAMES.index(name) for name in ATTACK_SETUP_COMPONENT_NAMES
+)
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,8 @@ class SelfPlayConfig:
     offense_reward_power: float = 1.0
     offense_advantage_weight: float = 0.0
     target_kl: float = 0.0
+    base_advantage_weight: float = 1.0
+    setup_advantage_weight: float = 0.0
 
     @classmethod
     def load(cls, path: Path) -> "SelfPlayConfig":
@@ -108,6 +120,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             raise ValueError("unsupported self-play config schema")
         positive = (
@@ -143,6 +156,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             if self.model_architecture != "joint-residual-v2":
                 raise ValueError("v3 requires the joint residual model")
@@ -163,6 +177,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             if not 0.0 <= self.tactical_potential_fraction <= 1.0:
                 raise ValueError("tactical potential fraction must be in [0, 1]")
@@ -182,6 +197,7 @@ class SelfPlayConfig:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             if self.pool_promotion_interval_updates <= 0:
                 raise ValueError("pool promotion interval must be positive")
@@ -204,7 +220,11 @@ class SelfPlayConfig:
                 raise ValueError("historical sampling fractions must be nonnegative and sum to one")
             if self.value_learning_rate_multiplier <= 0.0 or self.value_extra_epochs < 0:
                 raise ValueError("invalid value-learning settings")
-        if self.schema_version in {"versus-selfplay-ppo-v6", "versus-selfplay-ppo-v7"}:
+        if self.schema_version in {
+            "versus-selfplay-ppo-v6",
+            "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
+        }:
             if not (
                 0.0 <= self.offense_reward_coefficient_final <= self.offense_reward_coefficient
             ):
@@ -216,13 +236,20 @@ class SelfPlayConfig:
                 raise ValueError("offense reward decay must end after its nonnegative hold")
             if self.offense_reward_attack_scale <= 0.0:
                 raise ValueError("offense reward attack scale must be positive")
-        if self.schema_version == "versus-selfplay-ppo-v7":
+        if self.schema_version in {"versus-selfplay-ppo-v7", "versus-selfplay-ppo-v8"}:
             if self.offense_reward_power < 1.0:
                 raise ValueError("offense reward power must be at least one")
             if self.offense_advantage_weight <= 0.0:
-                raise ValueError("v7 requires a positive offense advantage weight")
+                raise ValueError("v7+ requires a positive offense advantage weight")
             if self.target_kl <= 0.0:
-                raise ValueError("v7 requires a positive target KL")
+                raise ValueError("v7+ requires a positive target KL")
+        if self.schema_version == "versus-selfplay-ppo-v8":
+            if self.base_advantage_weight < 0.0:
+                raise ValueError("v8 base advantage weight must be nonnegative")
+            if self.setup_advantage_weight <= 0.0:
+                raise ValueError("v8 requires a positive setup advantage weight")
+            if self.base_advantage_weight + self.offense_advantage_weight <= 0.0:
+                raise ValueError("v8 policy advantage cannot be empty")
 
 
 @dataclass(frozen=True)
@@ -278,9 +305,11 @@ class DecisionTransition:
     next_value: float
     terminal: bool
     is_learner: bool
+    setup_reward: float = 0.0
     advantage: float = 0.0
     base_advantage: float = 0.0
     offense_advantage: float = 0.0
+    setup_advantage: float = 0.0
     return_target: float = 0.0
 
 
@@ -354,6 +383,7 @@ def main() -> None:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             raw_pool_state = payload.get("opponent_pool_state")
             if not isinstance(raw_pool_state, dict):
@@ -382,6 +412,7 @@ def main() -> None:
             "versus-selfplay-ppo-v5",
             "versus-selfplay-ppo-v6",
             "versus-selfplay-ppo-v7",
+            "versus-selfplay-ppo-v8",
         }:
             anchors = list(config.anchor_checkpoints or [])
             if args.initialize_from is not None:
@@ -715,6 +746,10 @@ def _collect_rollout(
     offense_reward_absolute_sum = 0.0
     offense_reward_nonzero = 0
     offense_reward_max_absolute = 0.0
+    setup_reward_sum = 0.0
+    setup_reward_absolute_sum = 0.0
+    setup_reward_nonzero = 0
+    setup_reward_max_absolute = 0.0
     for _ in range(config.rollout_steps):
         if bool(torch.any(observation.done)):
             raise RuntimeError("rollout started with an unreset completed match")
@@ -817,6 +852,7 @@ def _collect_rollout(
                 current_tactical=current_tactical,
                 next_tactical=next_tactical,
             )
+            setup_rewards = _attack_setup_rewards(shaping_components, terminal)
             rewards = rewards + offense_rewards
         value_reward_seconds += time.monotonic() - value_started
         for index, assignment in enumerate(actor_assignments):
@@ -834,6 +870,11 @@ def _collect_rollout(
             offense_reward_absolute_sum += abs(offense)
             offense_reward_nonzero += int(abs(offense) > 1e-12)
             offense_reward_max_absolute = max(offense_reward_max_absolute, abs(offense))
+            setup = float(setup_rewards[index].item())
+            setup_reward_sum += setup
+            setup_reward_absolute_sum += abs(setup)
+            setup_reward_nonzero += int(abs(setup) > 1e-12)
+            setup_reward_max_absolute = max(setup_reward_max_absolute, abs(setup))
             if bool(terminal[index].item()):
                 outcome = int(next_observation.results[index].item())
                 counters["learner_terminal_decisions"] += 1
@@ -852,6 +893,7 @@ def _collect_rollout(
                 terminal_reward=float(next_observation.results[index].item()),
                 shaping_reward=float(shaping_components[index].sum().item()),
                 offense_reward=float(offense_rewards[index].item()),
+                setup_reward=float(setup_rewards[index].item()),
                 next_value=float(next_values[index].item()),
                 terminal=bool(terminal[index].item()),
                 is_learner=actor_assignments[index] is None,
@@ -927,10 +969,12 @@ def _collect_rollout(
     terminal_traces = torch.zeros_like(advantages)
     shaping_traces = torch.zeros_like(advantages)
     offense_traces = torch.zeros_like(advantages)
+    setup_traces = torch.zeros_like(advantages)
     running = torch.zeros(decision_count, dtype=torch.float32)
     running_terminal = torch.zeros(decision_count, dtype=torch.float32)
     running_shaping = torch.zeros(decision_count, dtype=torch.float32)
     running_offense = torch.zeros(decision_count, dtype=torch.float32)
+    running_setup = torch.zeros(decision_count, dtype=torch.float32)
     for step in range(config.rollout_steps - 1, -1, -1):
         records = by_time[step]
         rewards = torch.tensor([record.reward for record in records])
@@ -943,30 +987,36 @@ def _collect_rollout(
         terminal_rewards = torch.tensor([record.terminal_reward for record in records])
         shaping_rewards = torch.tensor([record.shaping_reward for record in records])
         offense_rewards = torch.tensor([record.offense_reward for record in records])
+        setup_rewards = torch.tensor([record.setup_reward for record in records])
         running_terminal = terminal_rewards + trace_discount * running_terminal
         running_shaping = shaping_rewards + trace_discount * running_shaping
         running_offense = offense_rewards + trace_discount * running_offense
+        running_setup = setup_rewards + trace_discount * running_setup
         advantages[step] = running
         terminal_traces[step] = running_terminal
         shaping_traces[step] = running_shaping
         offense_traces[step] = running_offense
+        setup_traces[step] = running_setup
 
     flattened = [record for records in by_time for record in records]
-    for record, advantage, offense_advantage in zip(
+    for record, advantage, offense_advantage, setup_advantage in zip(
         flattened,
         advantages.flatten(),
         offense_traces.flatten(),
+        setup_traces.flatten(),
         strict=True,
     ):
         record.advantage = float(advantage.item())
         record.offense_advantage = float(offense_advantage.item())
-        record.base_advantage = record.advantage - record.offense_advantage
+        record.setup_advantage = float(setup_advantage.item())
+        record.base_advantage = record.advantage - record.offense_advantage - record.setup_advantage
         record.return_target = record.advantage + record.old_value
     learner_transitions = [record for record in flattened if record.is_learner]
     learner_mask = torch.tensor([record.is_learner for record in flattened], dtype=torch.bool)
     learner_terminal_traces = terminal_traces.flatten()[learner_mask]
     learner_shaping_traces = shaping_traces.flatten()[learner_mask]
     learner_offense_traces = offense_traces.flatten()[learner_mask]
+    learner_setup_traces = setup_traces.flatten()[learner_mask]
     learner_decisions = counters["learner_decisions"]
     rollout_metrics: dict[str, float | int] = dict(counters)
     if learner_decisions:
@@ -988,6 +1038,10 @@ def _collect_rollout(
                 "offense_reward_mean_abs": offense_reward_absolute_sum / learner_decisions,
                 "offense_reward_nonzero_rate": offense_reward_nonzero / learner_decisions,
                 "offense_reward_max_abs": offense_reward_max_absolute,
+                "setup_reward_mean": setup_reward_sum / learner_decisions,
+                "setup_reward_mean_abs": setup_reward_absolute_sum / learner_decisions,
+                "setup_reward_nonzero_rate": setup_reward_nonzero / learner_decisions,
+                "setup_reward_max_abs": setup_reward_max_absolute,
                 "terminal_trace_mean_abs": float(learner_terminal_traces.abs().mean().item()),
                 "terminal_trace_nonzero_rate": float(
                     (learner_terminal_traces.abs() > 1e-12).float().mean().item()
@@ -1000,11 +1054,19 @@ def _collect_rollout(
                 "offense_trace_nonzero_rate": float(
                     (learner_offense_traces.abs() > 1e-12).float().mean().item()
                 ),
+                "setup_trace_mean_abs": float(learner_setup_traces.abs().mean().item()),
+                "setup_trace_mean": float(learner_setup_traces.mean().item()),
+                "setup_trace_nonzero_rate": float(
+                    (learner_setup_traces.abs() > 1e-12).float().mean().item()
+                ),
                 "terminal_shaping_trace_cosine": _cosine_similarity(
                     learner_terminal_traces, learner_shaping_traces
                 ),
                 "terminal_offense_trace_cosine": _cosine_similarity(
                     learner_terminal_traces, learner_offense_traces
+                ),
+                "terminal_setup_trace_cosine": _cosine_similarity(
+                    learner_terminal_traces, learner_setup_traces
                 ),
                 "terminal_transition_rate": counters["learner_terminal_decisions"]
                 / learner_decisions,
@@ -1279,23 +1341,44 @@ def _policy_advantages(
     transitions: list[DecisionTransition], config: SelfPlayConfig
 ) -> tuple[Tensor, dict[str, float]]:
     total = torch.tensor([record.advantage for record in transitions])
-    if config.schema_version != "versus-selfplay-ppo-v7":
+    if config.schema_version not in {"versus-selfplay-ppo-v7", "versus-selfplay-ppo-v8"}:
         return _standardize(total), {
+            "policy_base_advantage_weight": 1.0,
             "policy_offense_advantage_weight": 0.0,
+            "policy_setup_advantage_weight": 0.0,
             "base_advantage_std": float(total.std(unbiased=False).item()),
             "offense_advantage_std": 0.0,
+            "setup_advantage_std": 0.0,
             "base_offense_advantage_cosine": 0.0,
+            "base_setup_advantage_cosine": 0.0,
+            "setup_offense_advantage_cosine": 0.0,
         }
 
     base = torch.tensor([record.base_advantage for record in transitions])
     offense = torch.tensor([record.offense_advantage for record in transitions])
-    combined = _standardize(base) + config.offense_advantage_weight * _standardize(offense)
+    setup = torch.tensor([record.setup_advantage for record in transitions])
+    base_weight = (
+        config.base_advantage_weight if config.schema_version == "versus-selfplay-ppo-v8" else 1.0
+    )
+    setup_weight = (
+        config.setup_advantage_weight if config.schema_version == "versus-selfplay-ppo-v8" else 0.0
+    )
+    combined = (
+        base_weight * _standardize(base)
+        + setup_weight * _standardize(setup)
+        + config.offense_advantage_weight * _standardize(offense)
+    )
     combined = _standardize(combined)
     return combined, {
+        "policy_base_advantage_weight": base_weight,
         "policy_offense_advantage_weight": config.offense_advantage_weight,
+        "policy_setup_advantage_weight": setup_weight,
         "base_advantage_std": float(base.std(unbiased=False).item()),
         "offense_advantage_std": float(offense.std(unbiased=False).item()),
+        "setup_advantage_std": float(setup.std(unbiased=False).item()),
         "base_offense_advantage_cosine": _cosine_similarity(base, offense),
+        "base_setup_advantage_cosine": _cosine_similarity(base, setup),
+        "setup_offense_advantage_cosine": _cosine_similarity(setup, offense),
     }
 
 
@@ -1616,7 +1699,11 @@ def _tactical_curriculum_coefficient(config: SelfPlayConfig, update: int) -> flo
 
 
 def _offense_reward_coefficient(config: SelfPlayConfig, update: int) -> float:
-    if config.schema_version not in {"versus-selfplay-ppo-v6", "versus-selfplay-ppo-v7"}:
+    if config.schema_version not in {
+        "versus-selfplay-ppo-v6",
+        "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
+    }:
         return 0.0
     if update <= config.offense_reward_hold_updates:
         return config.offense_reward_coefficient
@@ -1628,6 +1715,17 @@ def _offense_reward_coefficient(config: SelfPlayConfig, update: int) -> float:
     return config.offense_reward_coefficient + fraction * (
         config.offense_reward_coefficient_final - config.offense_reward_coefficient
     )
+
+
+def _attack_setup_rewards(shaping_components: Tensor, terminal: Tensor) -> Tensor:
+    if shaping_components.ndim != 2 or shaping_components.shape[1] != len(
+        POTENTIAL_COMPONENT_NAMES
+    ):
+        raise ValueError("setup reward requires every potential component")
+    if terminal.ndim != 1 or terminal.shape[0] != shaping_components.shape[0]:
+        raise ValueError("setup reward terminal mask differs from component batch")
+    setup = shaping_components[:, list(ATTACK_SETUP_COMPONENT_INDICES)].sum(dim=1)
+    return torch.where(terminal, torch.zeros_like(setup), setup)
 
 
 def _net_offense_rewards(
@@ -1652,6 +1750,7 @@ def _build_optimizer(model: VersusActorCritic, config: SelfPlayConfig) -> torch.
         "versus-selfplay-ppo-v5",
         "versus-selfplay-ppo-v6",
         "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
     }:
         value_parameters = list(model.value_core.parameters())
         actor_parameters = [
@@ -1761,7 +1860,9 @@ def _save_progress(
 ) -> None:
     payload = {
         "checkpoint_schema": (
-            CHECKPOINT_SCHEMA_V7
+            CHECKPOINT_SCHEMA_V8
+            if config.schema_version == "versus-selfplay-ppo-v8"
+            else CHECKPOINT_SCHEMA_V7
             if config.schema_version == "versus-selfplay-ppo-v7"
             else CHECKPOINT_SCHEMA_V6
             if config.schema_version == "versus-selfplay-ppo-v6"
@@ -1828,7 +1929,9 @@ def _validate_resume(
     bootstrap_hash: str,
 ) -> None:
     expected_schema = (
-        CHECKPOINT_SCHEMA_V7
+        CHECKPOINT_SCHEMA_V8
+        if config.schema_version == "versus-selfplay-ppo-v8"
+        else CHECKPOINT_SCHEMA_V7
         if config.schema_version == "versus-selfplay-ppo-v7"
         else CHECKPOINT_SCHEMA_V6
         if config.schema_version == "versus-selfplay-ppo-v6"
@@ -1853,6 +1956,7 @@ def _validate_resume(
         "versus-selfplay-ppo-v5",
         "versus-selfplay-ppo-v6",
         "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
     } and not isinstance(payload.get("opponent_pool_state"), dict):
         raise ValueError("progress checkpoint lacks stable opponent-pool state")
 
@@ -1898,6 +2002,7 @@ def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
         "versus-selfplay-ppo-v5",
         "versus-selfplay-ppo-v6",
         "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
     }:
         for name in (
             "tactical_potential_fraction",
@@ -1911,6 +2016,7 @@ def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
         "versus-selfplay-ppo-v5",
         "versus-selfplay-ppo-v6",
         "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
     }:
         for name in (
             "pool_promotion_interval_updates",
@@ -1924,7 +2030,11 @@ def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
             "value_extra_epochs",
         ):
             payload.pop(name)
-    if config.schema_version not in {"versus-selfplay-ppo-v6", "versus-selfplay-ppo-v7"}:
+    if config.schema_version not in {
+        "versus-selfplay-ppo-v6",
+        "versus-selfplay-ppo-v7",
+        "versus-selfplay-ppo-v8",
+    }:
         for name in (
             "offense_reward_coefficient",
             "offense_reward_coefficient_final",
@@ -1933,11 +2043,17 @@ def _config_payload(config: SelfPlayConfig) -> dict[str, object]:
             "offense_reward_attack_scale",
         ):
             payload.pop(name)
-    if config.schema_version != "versus-selfplay-ppo-v7":
+    if config.schema_version not in {"versus-selfplay-ppo-v7", "versus-selfplay-ppo-v8"}:
         for name in (
             "offense_reward_power",
             "offense_advantage_weight",
             "target_kl",
+        ):
+            payload.pop(name)
+    if config.schema_version != "versus-selfplay-ppo-v8":
+        for name in (
+            "base_advantage_weight",
+            "setup_advantage_weight",
         ):
             payload.pop(name)
     return payload

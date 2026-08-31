@@ -9,6 +9,7 @@ from tetris_rl.training.selfplay import (
     DecisionTransition,
     OpponentPoolEntry,
     SelfPlayConfig,
+    _attack_setup_rewards,
     _batched_actor_logits,
     _entropy_coefficient,
     _kickstart_coefficient,
@@ -354,6 +355,51 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         self.assertGreater(float(advantages[1].item()), 0.0)
         self.assertAlmostEqual(metrics["policy_offense_advantage_weight"], 0.7)
         self.assertGreater(metrics["offense_advantage_std"], 0.0)
+
+    def test_v8_attack_setup_channel_suppresses_base_survival_dominance(self) -> None:
+        config = SelfPlayConfig.load(Path("configs/training/versus_selfplay_smoke_v8.json"))
+        components = torch.zeros((2, 9))
+        components[0, 4] = 0.1
+        components[0, 5] = 0.2
+        components[0, 6] = 0.3
+        components[0, 8] = 0.4
+        components[1] = components[0]
+        setup_rewards = _attack_setup_rewards(
+            components,
+            torch.tensor([False, True]),
+        )
+        torch.testing.assert_close(setup_rewards, torch.tensor([1.0, 0.0]))
+
+        transitions = []
+        for base, setup, offense in ((1.0, -1.0, -1.0), (-1.0, 1.0, 1.0)):
+            transitions.append(
+                DecisionTransition(
+                    candidates=torch.zeros((1, 1)),
+                    candidate_diagnostics=torch.zeros((1, 5)),
+                    state=torch.zeros(1),
+                    action=0,
+                    old_log_probability=0.0,
+                    old_value=0.0,
+                    reward=0.0,
+                    terminal_reward=0.0,
+                    shaping_reward=0.0,
+                    offense_reward=0.0,
+                    next_value=0.0,
+                    terminal=False,
+                    is_learner=True,
+                    base_advantage=base,
+                    setup_advantage=setup,
+                    offense_advantage=offense,
+                )
+            )
+
+        advantages, metrics = _policy_advantages(transitions, config)
+
+        self.assertLess(float(advantages[0].item()), 0.0)
+        self.assertGreater(float(advantages[1].item()), 0.0)
+        self.assertAlmostEqual(metrics["policy_base_advantage_weight"], 0.25)
+        self.assertAlmostEqual(metrics["policy_setup_advantage_weight"], 2.0)
+        self.assertAlmostEqual(metrics["policy_offense_advantage_weight"], 3.0)
 
     def test_pfsp_samples_hard_opponent_more_often(self) -> None:
         config = SelfPlayConfig(

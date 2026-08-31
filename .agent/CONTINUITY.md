@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-09-01T00:10:16+09:00 [USER] Replace the conservative r6 failure with an intentionally attack-inducing experiment; accept a deliberately offensive research direction instead of continuing to preserve survival behavior.
+
 - 2026-08-31T16:03:43+09:00 [USER] Supersede preserving r5's flat attack behavior: implement an attack-discovery revision now, with enough coordinated changes and early evidence gates to avoid another day-long ineffective run.
 
 - 2026-08-31T09:51:16+09:00 [USER] Reject a survival-dominated conservative reward adjustment; implement an attack-first fine-tune in which refusing to create real pressure is disadvantageous while bounded gates prevent reward-hacked promotion.
@@ -55,6 +57,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-09-01T00:10:16+09:00 [CODE] r7 partitions policy credit into base, attack-setup and realized-attack channels and uses `std(0.25*std(A_base)+2.0*std(A_setup)+3.0*std(A_attack))`; setup comprises the existing combo, B2B, attack-readiness and Full-T-spin-readiness potential components, while the critic still fits total return.
+- 2026-09-01T00:10:16+09:00 [CODE] r7 deliberately releases the solo placement prior with a `1.0x` trunk learning rate, uses squared net-outgoing utility capped at `0.10`, stronger tactical curriculum, and runs all 25/50/75/100 stages. The highest-attack stage is always retained as the explicitly unsafe `aggressive-model.pt`; only separately gated candidates may become `selected-model.pt`.
 
 - 2026-08-31T16:03:43+09:00 [CODE] r6 starts from the selected r4 baseline and gives the actor a separate standardized attack trace: `std(std(A_total-A_attack)+0.7*std(A_attack))`; the critic retains the total realized return. Relative post-own-cancellation outgoing uses bounded zero-sum convex utility `0.06*sign(d)*clamp(abs(d),0,1)^1.5`, `d=(g0-g1)/4`, while technique labels remain excluded from event reward.
 - 2026-08-31T16:03:43+09:00 [CODE] r6 is a maximum-200-update finite curriculum with 50-update probes, automatic stop at update 100 below `1.10x` r4 outgoing attack, and final promotion only at `1.20x` attack plus the existing score/direct-baseline/danger/holes gates. It restores the tactical candidate curriculum, uses actor LR `3e-4`, KL target `0.003`, and current/historical/bootstrap sampling `20/65/15`.
@@ -159,6 +164,8 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-09-01T00:10:16+09:00 [CODE] Added config/progress schemas v8/v7, setup reward/trace diagnostics, three-channel policy advantage, aggressive production/smoke configs, staged r7 runner, separate attack-only artifact selection, unit coverage, Korean explanation and internal design record.
 
 - 2026-08-31T16:03:43+09:00 [CODE] Added `versus-selfplay-ppo-v7`, progress schema v6, convex outgoing utility, separated policy advantage, target-KL epoch stopping, attack/spike opportunity diagnostics, r6 full/smoke configs, staged runner, unit coverage and Korean/internal explanations. Preserved v6 reward and serialized-config semantics.
 - 2026-08-31T16:03:43+09:00 [TOOL] Stopped r5 cleanly and retained `checkpoints/versus-selfplay-r5/latest.pt` plus update-230 inference snapshot; no r5 output was promoted.
@@ -293,6 +300,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-01T00:10:16+09:00 [TOOL] r6 stopped normally at update 100: held-out outgoing attack/piece was `0.087125` versus r4 `0.08675` (`1.0043x`), below its `1.10x` gate. Internal attack capture remained about 80% and spike capture about 99%, but attack opportunity was `0.1038` and spike opportunity `0.00555`; state construction, not immediate capture, was the measured bottleneck.
+- 2026-09-01T00:10:16+09:00 [TOOL] Fresh/resumed v8 smoke reached update 2 with setup trace nonzero rate `1.0`, policy weights `0.25/2.0/3.0`, attack opportunity `0.1328` and outgoing attack/piece `0.15625`; mean holes also rose to `1.289`. This confirms intentionally aggressive signal plumbing, not held-out strength.
+
 - 2026-08-31T16:03:43+09:00 [TOOL] r5 attack did not improve: updates 1-50 outgoing attack/piece averaged approximately `0.1389`, updates 181-230 approximately `0.1360`; recent approximate KL was `0.000361`, clip fraction `0.00346`, offense trace mean absolute value `0.0170` versus terminal trace `0.1270`. The limiting evidence was weak offensive policy credit and very small policy movement, not insufficient run length alone.
 - 2026-08-31T16:03:43+09:00 [TOOL] Fresh and resumed v7 native smoke reached updates 1 and 2, restored exact progress, logged separate offense advantage and opportunity metrics, and observed update-2 tactical target change rate `0.0078125`; update 2 captured 6 of 7 available attack opportunities. This verifies signal plumbing, not long-run attack improvement.
 
@@ -389,6 +399,9 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-09-01T00:18:05+09:00 [TOOL] r7 implementation gates passed: training and Rust image builds, Ruff format/lint, all 51 Python tests, fresh and exact-resume v8 native smoke, PowerShell/JSON parsing, Compose validation, Rust format, Clippy with denied warnings, all 147 Rust tests, release workspace build and `git diff --check`.
+- 2026-09-01T00:18:05+09:00 [CODE] The deliberately attack-inducing r7 experiment is implementation-complete and runnable through `scripts/run-versus-aggressive-r7.ps1`. Its attack-only winner is isolated as `aggressive-model.pt` and cannot silently replace the safety-gated champion. The retained 100-update experiment has not started; held-out attack improvement remains UNCONFIRMED.
 
 - 2026-08-31T16:03:43+09:00 [TOOL] r6 implementation gates passed: training/rust image builds, Ruff format/lint, all 50 Python tests, fresh and exact-resume v7 native smoke, paired versus probe, PowerShell/JSON parsing, Rust format, Clippy with denied warnings, all 147 Rust tests and release workspace build.
 - 2026-08-31T16:03:43+09:00 [CODE] r6 implementation and execution contract are complete. The retained long run has not been started; long-run attack improvement remains UNCONFIRMED until the staged probes execute.

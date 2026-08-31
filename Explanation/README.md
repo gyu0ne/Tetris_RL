@@ -15,6 +15,7 @@
 - [1대1 자기대전 r4 안정적 리그](./Versus_Self_Play_R4_Stable_League.md): 고정 membership, 시간 감쇠 전적, 혼합 상대 선택, critic 보강과 자동 cadence-robust champion 선택
 - [1대1 자기대전 r5 공격형 미세조정](./Versus_Self_Play_R5_Offense_Finetune.md): 실제 순송신 공격의 bounded zero-sum curriculum, 모방 제약 해제, 400-update 실행과 공격·승점·안정성 승격 gate
 - [1대1 자기대전 r6 공격 발견 학습](./Versus_Self_Play_R6_Attack_Discovery.md): 분리 공격 advantage, spike 우대 효용, 공격 기회·선택 진단, 100-update 자동 중단과 200-update 승격 gate
+- [1대1 자기대전 r7 공격 유도형 실험](./Versus_Self_Play_R7_Aggressive_Experiment.md): 생존 base 억제, 공격 준비·실행 우선 advantage, 100-update 단계 평가와 공격 전용 모델 분리
 - [1대1 학습 성능 최적화와 보상 진단](./Versus_Training_Performance_and_Reward_Diagnostics.md): 후보 생성·PPO 병목 제거, Rayon/PyTorch 분리, terminal·potential shaping 로그 해석
 - [1대1 자기대전 r1 기록](./Versus_Self_Play_Reinforcement_Learning.md): 기존 placement-level PPO와 entropy 실패·수정의 역사적 설명
 - [사람 대 모델 로컬 대국](./Human_Versus_Model_Local_Battle.md): 실제 키보드 입력으로 현재 1대1 checkpoint와 겨루는 방법과 프레임/착지점 혼합 실행 구조

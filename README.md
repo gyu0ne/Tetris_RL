@@ -76,13 +76,13 @@ dataset shard는 deterministic gzip 임시 파일이며 저장소에 commit하�
 
 ## 1대1 자기대전 학습
 
-현재 공격 탐색 r6는 r5에서 공격 보상이 승패 trace에 묻혀 실제 공격량이 늘지 않은 결과를 반영한다. 승패·생존 advantage와 공격 advantage를 분리하고, 4줄급 spike를 우대하는 bounded zero-sum 순송신 효용을 사용한다. r4에서 시작해 누적 50/100/150/200 update마다 고정 조건으로 평가하며, update 100에서 공격량이 10%도 늘지 않으면 자동 중단한다.
+현재 공격 유도형 r7은 r6의 공격 후보 선택률은 높지만 공격 기회 자체가 적었던 결과를 반영한다. 생존 base advantage를 0.25로 낮추고 공격 준비 2.0, 실제 순공격 3.0의 독립 채널을 사용하며, 보수적인 솔로 배치 scorer도 전체 학습률로 갱신한다. r4에서 시작해 누적 25/50/75/100 update를 모두 평가한다.
 
 ```powershell
-./scripts/run-versus-offense-r6.ps1 -ResourceProfile max
+./scripts/run-versus-aggressive-r7.ps1 -ResourceProfile max
 ```
 
-중단 후 같은 명령을 다시 실행하면 완료 snapshot을 재사용하고 `latest.pt`에서 정확히 이어간다. 최종 후보는 공격량 20% 증가, r4 직접 대국, 고정 상대 승점, 구멍·위험도 gate를 모두 통과해야 한다. 세부 수식·로그·판정법은 `Explanation/Versus_Self_Play_R6_Attack_Discovery.md`에 있다. r5/r4/r3/r2 경로도 기존 스크립트로 보존된다.
+중단 후 같은 명령을 다시 실행하면 완료 stage를 재사용하고 `latest.pt`에서 정확히 이어간다. 가장 공격적인 stage는 안전성 여부와 별개로 `aggressive-model.pt`에 보존하고, 대국력·안정성 gate를 통과한 모델만 별도의 `selected-model.pt`가 된다. 세부 수식과 판정법은 `Explanation/Versus_Self_Play_R7_Aggressive_Experiment.md`에 있다. r6 이하 경로도 기존 스크립트로 보존된다.
 
 ## 최종 모델 관전
 
