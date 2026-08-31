@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-08-31T09:51:16+09:00 [USER] Reject a survival-dominated conservative reward adjustment; implement an attack-first fine-tune in which refusing to create real pressure is disadvantageous while bounded gates prevent reward-hacked promotion.
+
 - 2026-08-30T11:03:33+09:00 [USER] Replace one-change-per-day experimentation with one comprehensive r4 revision that addresses opponent-pool cycling, stale matchup evidence, critic underfitting, observability and final champion selection before the next long run.
 
 - 2026-08-29T19:42:40+09:00 [USER] Inspect the active training log and audit a human-match loss that appeared inconsistent with the visible board; diagnose before changing adjudication.
@@ -51,6 +53,9 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-08-31T09:51:16+09:00 [CODE] r5 adds a non-potential but zero-sum event curriculum `+/- alpha*clamp((outgoing_0-outgoing_1)/4,-1,1)`, using post-own-cancellation outgoing attack rather than clear labels or gross attack. `alpha` is 0.02 through the initial 150-update phase and decays to 0.005 at update 400; the explicit objective change supersedes the previous potential-only rule for this bounded curriculum.
+- 2026-08-31T09:51:16+09:00 [CODE] r5 removes the remaining solo kickstart constraint from 0.001 to 0 by update 100 and trains at most 400 updates from the selected r4 checkpoint. Promotion requires fixed-anchor score within -0.03, direct r4 score >=0.47, outgoing attack >=1.20x, and danger/holes <=1.15x; no eligible candidate retains r4.
 
 - 2026-08-30T11:03:33+09:00 [CODE] r4 uses an explicit checkpointed league: two protected r3 anchors, at most one membership replacement per 50-update promotion, 12 recent slots in a 32-member pool, and timestamped results with a 100-update exponential half-life. This preserves strategic memory while allowing gradual adaptation.
 - 2026-08-30T11:03:33+09:00 [CODE] Historical opponents are sampled as a 40% balanced / 30% hard / 30% uniform mixture instead of one cumulative PFSP distribution; uniform coverage prevents starvation, hard sampling targets weaknesses, and balanced sampling keeps informative near-even matchups.
@@ -149,6 +154,9 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-08-31T09:51:16+09:00 [CODE] Added self-play config/checkpoint schema v6/v5, pairwise offense rewards and separate reward/trace diagnostics; v1-v5 payload behavior remains excluded from the new fields and v5 stable-pool/critic paths are reused.
+- 2026-08-31T09:51:16+09:00 [CODE] Extended champion selection with an optional fixed baseline and attack/score/stability gates, added production/smoke v6 configs and the one-command `run-versus-offense-finetune.ps1` workflow, and documented r5 internally and under `Explanation/`.
 
 - 2026-08-30T11:03:33+09:00 [CODE] Added `opponent_pool.py`, self-play config/progress schema v5/v4, serialized stable membership and decayed results, mixed historical sampling, critic post-fit diagnostics, production/smoke v5 configs, and backward-compatible r2/r3 runners.
 - 2026-08-30T11:03:33+09:00 [CODE] Added `versus_select.py` and made the default r4 runner automatically screen promotion snapshots, evaluate a bounded shortlist against fixed anchors/reference/peers at cadences 8/12/15, and produce `selection-report.json` plus `selected-model.pt`.
@@ -277,6 +285,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-08-31T09:51:16+09:00 [TOOL] r4 had stopped with an update-900 snapshot and exact latest progress at update 906. Its inspected updates 870-891 had outgoing attack/piece 0.1452, historical score 0.4649, Full T-spin 0.0091/100 pieces, terminal trace mean absolute 0.1352 and shaping trace 0.00287; the resumed command had requested a fresh 24-hour wall-clock deadline rather than remaining time.
+- 2026-08-31T09:51:16+09:00 [TOOL] Native v6 smoke from the real r4 update-900 model produced capped 0.005 one-line offense rewards, offense trace mean absolute 0.00323 versus potential trace 0.00162, exact fresh/resume progress-v5 restoration, and baseline retention when every candidate failed the promotion gates. These prove signal plumbing, not learned strength.
+
 - 2026-08-30T11:03:33+09:00 [TOOL] The completed r3 run had 150 snapshots but a 32-member recomputed active pool; one new snapshot could replace 16 active opponents, while matchup statistics remained cumulative across learner generations. The resulting effective sampling size was 30.8/32, so neither stable memory nor focused weakness sampling was achieved.
 - 2026-08-30T11:03:33+09:00 [TOOL] A real production-shape r4 update (32 matches x 512 steps) completed in 50.27 s versus the observed r3 range of roughly 58-62 s; rollout took 21.82 s and PPO plus value refits took 28.43 s. The critic post-fit explained variance was finite at 0.0527, but strength improvement remains UNCONFIRMED until the long run and held-out selection complete.
 
@@ -367,6 +378,9 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-08-31T09:54:57+09:00 [TOOL] r5 implementation gates passed: training image build, Ruff formatting/lint, all 49 Python tests, Rust formatting, Clippy with denied warnings, all 147 Rust tests, release workspace build, Compose validation, PowerShell parsing, fresh/resumed v6 reward smoke, baseline-fallback selector smoke and `git diff --check`.
+- 2026-08-31T09:54:57+09:00 [CODE] The attack-first r5 fine-tune is implementation-complete and runnable through `scripts/run-versus-offense-finetune.ps1`; it automatically derives the r4 baseline when absent, trains at most 400 cumulative updates, and promotes only a materially more offensive candidate that remains within stability gates. r5 playing strength remains UNCONFIRMED until the long run completes.
 
 - 2026-08-30T11:03:33+09:00 [TOOL] r4 implementation gates passed: training image build, Ruff formatting/lint, all 47 Python tests, Rust formatting, Clippy with denied warnings, all 147 Rust tests, release workspace build, Compose validation, PowerShell parsing and `git diff --check`. Fresh/resumed v5 smoke runs and an end-to-end selector smoke also passed.
 - 2026-08-30T11:03:33+09:00 [CODE] The next long experiment is now a single r4 run followed by automatic selection; r3 is preserved as immutable initialization/anchor evidence. No r4 champion strength is claimed before that run.

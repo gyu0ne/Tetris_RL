@@ -76,13 +76,13 @@ dataset shard는 deterministic gzip 임시 파일이며 저장소에 commit하�
 
 ## 1대1 자기대전 학습
 
-현재 기본 r4는 r3에서 확인된 상대 풀 순환과 낮은 critic 설명력을 함께 수정한다. r3 update 700·1050을 고정 anchor로 보존하고, 시간 감쇠 전적과 balanced/hard/uniform 혼합 상대 선택을 사용한다. 종료 후에는 8/12/15 frame 대국으로 `selected-model.pt`를 자동 생성한다.
+현재 공격형 r5는 r4의 안정 리그와 critic을 유지하면서, 자기 상쇄 후 실제 송신된 양쪽 공격의 차이를 bounded zero-sum 보상으로 사용한다. r4의 강한 생존 prior에서 시작해 최대 400 update만 미세조정하고, 공격량 20% 증가와 승점·구멍·위험도 gate를 모두 통과한 경우에만 승격한다.
 
 ```powershell
-./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24
+./scripts/run-versus-offense-finetune.ps1
 ```
 
-중단 후에는 `./scripts/run-versus-selfplay.ps1 -ResourceProfile max -Hours 24 -Resume`으로 `latest.pt`의 모델·optimizer·진행 경기·고정 상대 배정·상대 풀·최근 전적을 이어간다. 실행과 자동 선택은 `Explanation/Versus_Self_Play_R4_Stable_League.md`, 보상은 `Explanation/Versus_Self_Play_R3_Reward_and_Credit.md`에 정리되어 있다. 기존 r3와 r2의 정확 재개는 각각 `run-versus-selfplay-r3.ps1`, `run-versus-selfplay-r2.ps1`을 사용한다.
+중단 후에는 `./scripts/run-versus-offense-finetune.ps1 -Resume`으로 이어간다. `MaxUpdates=400`은 누적 상한이므로 resume 때 또 400 update를 추가하지 않는다. 세부 보상과 승격 기준은 `Explanation/Versus_Self_Play_R5_Offense_Finetune.md`에 정리되어 있다. 기존 r4/r3/r2 경로는 각각 `run-versus-selfplay.ps1`, `run-versus-selfplay-r3.ps1`, `run-versus-selfplay-r2.ps1`로 보존된다.
 
 ## 최종 모델 관전
 

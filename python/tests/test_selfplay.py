@@ -11,7 +11,9 @@ from tetris_rl.training.selfplay import (
     _batched_actor_logits,
     _entropy_coefficient,
     _kickstart_coefficient,
+    _net_offense_rewards,
     _new_match_assignment,
+    _offense_reward_coefficient,
     _ragged_policy_terms,
     _ragged_target_kl,
     _resolve_actor_assignments,
@@ -278,6 +280,25 @@ class SelfPlayOpponentPoolTest(unittest.TestCase):
         self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 0), 0.0001)
         self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 150), 0.00005)
         self.assertAlmostEqual(_tactical_curriculum_coefficient(config, 300), 0.0)
+
+    def test_v6_offense_reward_is_zero_sum_capped_and_decays_after_hold(self) -> None:
+        config = SelfPlayConfig.load(Path("configs/training/versus_selfplay_smoke_v6.json"))
+        rewards = _net_offense_rewards(
+            torch.tensor([0.0, 0.0, 1.0, 0.0, 8.0, 1.0]),
+            coefficient=0.02,
+            attack_scale=4.0,
+        )
+
+        torch.testing.assert_close(
+            rewards,
+            torch.tensor([0.0, 0.0, 0.005, -0.005, 0.02, -0.02]),
+        )
+        torch.testing.assert_close(rewards.reshape(-1, 2).sum(dim=1), torch.zeros(3))
+        self.assertAlmostEqual(_offense_reward_coefficient(config, 0), 0.02)
+        self.assertAlmostEqual(_offense_reward_coefficient(config, 1), 0.02)
+        self.assertAlmostEqual(_offense_reward_coefficient(config, 2), 0.0125)
+        self.assertAlmostEqual(_offense_reward_coefficient(config, 3), 0.005)
+        self.assertAlmostEqual(_offense_reward_coefficient(config, 30), 0.005)
 
     def test_pfsp_samples_hard_opponent_more_often(self) -> None:
         config = SelfPlayConfig(

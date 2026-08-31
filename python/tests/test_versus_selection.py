@@ -3,7 +3,12 @@ from dataclasses import asdict
 from unittest.mock import patch
 
 from tetris_rl.evaluation.versus import MatchSummary
-from tetris_rl.evaluation.versus_select import _candidate_summary, _shortlist_candidates
+from tetris_rl.evaluation.versus_select import (
+    PromotionThresholds,
+    _candidate_summary,
+    _promotion_gate,
+    _shortlist_candidates,
+)
 
 
 class VersusChampionSelectionTest(unittest.TestCase):
@@ -41,6 +46,31 @@ class VersusChampionSelectionTest(unittest.TestCase):
 
         self.assertEqual(shortlist[:3], candidates[-1:-4:-1])
         self.assertIn(candidates[len(candidates) // 2], shortlist)
+
+    def test_offense_promotion_requires_attack_without_sacrificing_strength(self) -> None:
+        baseline = {
+            "mean_score": 0.55,
+            "robust_score": 0.50,
+            "outgoing_attack_per_piece": 0.15,
+            "danger_rate": 0.01,
+            "holes_per_piece": 0.60,
+        }
+        candidate = {
+            "mean_score": 0.53,
+            "robust_score": 0.48,
+            "outgoing_attack_per_piece": 0.18,
+            "danger_rate": 0.011,
+            "holes_per_piece": 0.66,
+        }
+
+        passed = _promotion_gate(candidate, baseline, 0.49, PromotionThresholds())
+        candidate["outgoing_attack_per_piece"] = 0.17
+        failed = _promotion_gate(candidate, baseline, 0.49, PromotionThresholds())
+
+        self.assertTrue(passed["eligible"])
+        self.assertAlmostEqual(float(passed["attack_ratio"]), 1.2)
+        self.assertFalse(failed["eligible"])
+        self.assertFalse(failed["gate_attack"])
 
 
 if __name__ == "__main__":
