@@ -1,17 +1,64 @@
+import tempfile
 import unittest
 from dataclasses import asdict
+from pathlib import Path
 from unittest.mock import patch
 
+import torch
 from tetris_rl.evaluation.versus import MatchSummary
 from tetris_rl.evaluation.versus_select import (
     PromotionThresholds,
     _candidate_summary,
+    _discover_candidates,
     _promotion_gate,
     _shortlist_candidates,
 )
 
 
 class VersusChampionSelectionTest(unittest.TestCase):
+    def test_candidate_discovery_deduplicates_identical_checkpoints(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            snapshot_dir = output_dir / "snapshots"
+            snapshot_dir.mkdir()
+            update_25 = snapshot_dir / "update-000025-model.pt"
+            update_50 = snapshot_dir / "update-000050-model.pt"
+            torch.save(
+                {
+                    "training_config": {"pool_promotion_interval_updates": 25},
+                    "model_state": {
+                        "actor.weight": torch.tensor([25.0]),
+                        "value_core.weight": torch.tensor([1.0]),
+                    },
+                },
+                update_25,
+            )
+            torch.save(
+                {
+                    "training_config": {"pool_promotion_interval_updates": 25},
+                    "model_state": {
+                        "actor.weight": torch.tensor([50.0]),
+                        "value_core.weight": torch.tensor([2.0]),
+                    },
+                },
+                update_50,
+            )
+            torch.save(
+                {
+                    "training_config": {"pool_promotion_interval_updates": 25},
+                    "model_state": {
+                        "actor.weight": torch.tensor([50.0]),
+                        "value_core.weight": torch.tensor([999.0]),
+                    },
+                    "different_metadata": True,
+                },
+                output_dir / "model.pt",
+            )
+
+            candidates = _discover_candidates(output_dir)
+
+        self.assertEqual(candidates, [str(update_25), str(update_50)])
+
     def test_candidate_summary_uses_worst_opponent_before_mean_score(self) -> None:
         rows = []
         for opponent, summary in (

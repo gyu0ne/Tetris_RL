@@ -95,3 +95,20 @@ r1_attack = -r0_attack
 - 기존 attack/spike opportunity와 capture 지표
 
 신규 smoke update 2에서는 공격 기회율 `0.133`, outgoing attack/piece `0.156`, setup trace nonzero rate `1.0`이 관찰됐다. 같은 짧은 구간에서 mean holes도 `1.289`로 상승했다. 이는 공격 신호가 실제 정책을 움직인다는 배관 검증이며 장기 성능 증거는 아니다.
+
+## 8. 장기 실행 결과
+
+2026-09-01 장기 실행은 100 update와 네 번의 고정 probe를 모두 완료했다. r4의 outgoing attack/piece `0.08125`에 대해 다음 결과를 얻었다.
+
+| update | outgoing attack/piece | r4 대비 | mean holes | danger rate |
+|---:|---:|---:|---:|---:|
+| 25 | 0.09275 | 1.142x | 0.4214 | 0.0000 |
+| 50 | 0.07813 | 0.962x | 0.4048 | 0.0000 |
+| 75 | 0.11250 | 1.385x | 0.4601 | 0.0000 |
+| 100 | 0.10125 | 1.246x | 0.6070 | 0.0044 |
+
+따라서 공격 전용 산출물은 update 75이며 `aggressive-model.pt`로 저장됐다. SHA-256은 `9cfd5e5d4701cc92ad68725b1373bad37402860dc09bf8976bc8c5ac838cc15c`이다.
+
+더 넓은 8/12/15 frame·두 anchor·r4 직접 대국 선택에서 update 75는 직접 r4 점수 `0.528`, 고정 평균 score delta `0.0`, holes ratio `0.969`, danger ratio `0.712`를 기록했다. 그러나 고정 상대 공격 비율은 `1.069`로 `1.20` gate에 미달했고 robust score도 `0.25`여서 실사용 승격에는 실패했다. `selected-model.pt`는 SHA-256 `857beb95a7f9d64abff3738bf760d6940347e42f1a8231e209ddd8da527a341b`인 기존 r4 모델을 유지한다.
+
+최초 후처리는 Windows PowerShell에서 `Get-FileHash`를 찾지 못해 공격 보고서 작성 직전에 종료됐다. 러너는 .NET SHA-256 구현으로 바뀌었으며 재학습 없이 후처리를 완료했다. 이때 선택기가 같은 actor 가중치를 가진 update 100 snapshot과 `model.pt`를 경로만 보고 중복 평가하는 문제도 발견됐다. 승격 gate는 고정 anchor와 직접 r4 대국만 사용하므로 이번 baseline 유지 판정은 바뀌지 않지만, 이후 실행에서는 저장 메타데이터와 critic 차이를 제외한 actor 가중치 지문으로 후보를 중복 제거한다.

@@ -210,7 +210,15 @@ def _discover_candidates(output_dir: Path) -> list[str]:
         candidates.append(final)
     if not candidates:
         raise FileNotFoundError(f"no versus candidates found under {output_dir}")
-    return [str(path) for path in candidates]
+    unique_candidates = []
+    seen_policies = set()
+    for path in candidates:
+        policy_fingerprint = _policy_fingerprint(path)
+        if policy_fingerprint in seen_policies:
+            continue
+        seen_policies.add(policy_fingerprint)
+        unique_candidates.append(str(path))
+    return unique_candidates
 
 
 def _shortlist_candidates(candidates: list[str], limit: int) -> list[str]:
@@ -374,6 +382,21 @@ def _sha256_file(path: Path) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _policy_fingerprint(path: Path) -> str:
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    model_state = payload["model_state"]
+    digest = hashlib.sha256()
+    for name in sorted(model_state):
+        if name.startswith("value_core."):
+            continue
+        tensor = model_state[name].detach().cpu().contiguous()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(str(tuple(tensor.shape)).encode("ascii"))
+        digest.update(tensor.numpy().tobytes())
     return digest.hexdigest()
 
 

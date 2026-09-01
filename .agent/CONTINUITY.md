@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-09-01T08:57:10+09:00 [USER] Complete the stopped r7 finalization without retraining: repair the hash failure, produce the aggressive report, run the full research selector and preserve the attack-only versus safety-gated artifact boundary.
+
 - 2026-09-01T00:10:16+09:00 [USER] Replace the conservative r6 failure with an intentionally attack-inducing experiment; accept a deliberately offensive research direction instead of continuing to preserve survival behavior.
 
 - 2026-08-31T16:03:43+09:00 [USER] Supersede preserving r5's flat attack behavior: implement an attack-discovery revision now, with enough coordinated changes and early evidence gates to avoid another day-long ineffective run.
@@ -165,6 +167,10 @@
 
 ## [PROGRESS]
 
+- 2026-09-01T08:57:10+09:00 [CODE] Replaced the r7 runner's unavailable `Get-FileHash` dependency with a Windows PowerShell-compatible .NET SHA-256 helper; commit `413bbce` records the isolated portability fix. The existing four stage checkpoints and probes were reused, so no training update was repeated.
+- 2026-09-01T08:57:10+09:00 [TOOL] Finalization completed with exit code 0. `aggressive-selection.json`, `selection-report.json`, `aggressive-model.pt` and `selected-model.pt` now exist; the aggressive artifact hash and retained r4 hash were independently verified.
+- 2026-09-01T08:57:10+09:00 [CODE] Champion discovery now fingerprints actor tensors while excluding `value_core.*`, so aliases with identical policies but different metadata or critic state are removed before shortlisting. A regression test creates such a `model.pt` alias and proves only unique policies remain.
+
 - 2026-09-01T00:10:16+09:00 [CODE] Added config/progress schemas v8/v7, setup reward/trace diagnostics, three-channel policy advantage, aggressive production/smoke configs, staged r7 runner, separate attack-only artifact selection, unit coverage, Korean explanation and internal design record.
 
 - 2026-08-31T16:03:43+09:00 [CODE] Added `versus-selfplay-ppo-v7`, progress schema v6, convex outgoing utility, separated policy advantage, target-KL epoch stopping, attack/spike opportunity diagnostics, r6 full/smoke configs, staged runner, unit coverage and Korean/internal explanations. Preserved v6 reward and serialized-config semantics.
@@ -300,6 +306,10 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-01T08:57:10+09:00 [TOOL] r7 fixed probes measured outgoing attack/piece ratios versus r4 of `1.142x`, `0.962x`, `1.385x` and `1.246x` at updates 25/50/75/100. Update 75 is the attack champion with danger rate `0` and mean holes `0.4601`; update 100 regressed to danger `0.0044` and holes `0.6070`.
+- 2026-09-01T08:57:10+09:00 [TOOL] In the broader selector update 75 passed direct-r4 score (`0.528`), fixed mean score, danger and holes gates, but failed fixed attack (`1.069x < 1.20x`) and robust score (`0.25`) gates. No r7 candidate was eligible, so r4 was retained.
+- 2026-09-01T08:57:10+09:00 [TOOL] The completed selector treated the update-100 snapshot and `model.pt`, whose actor tensors are identical despite different file hashes, as separate candidates, causing redundant symmetric self-play. This did not affect the promotion decision: update 75's failed fields derive only from fixed anchors and update 100 independently failed its direct-r4 gate. Future discovery is actor-fingerprint-deduplicated.
+
 - 2026-09-01T00:10:16+09:00 [TOOL] r6 stopped normally at update 100: held-out outgoing attack/piece was `0.087125` versus r4 `0.08675` (`1.0043x`), below its `1.10x` gate. Internal attack capture remained about 80% and spike capture about 99%, but attack opportunity was `0.1038` and spike opportunity `0.00555`; state construction, not immediate capture, was the measured bottleneck.
 - 2026-09-01T00:10:16+09:00 [TOOL] Fresh/resumed v8 smoke reached update 2 with setup trace nonzero rate `1.0`, policy weights `0.25/2.0/3.0`, attack opportunity `0.1328` and outgoing attack/piece `0.15625`; mean holes also rose to `1.289`. This confirms intentionally aggressive signal plumbing, not held-out strength.
 
@@ -399,6 +409,9 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-09-01T08:57:10+09:00 [CODE] The r7 retained experiment and finalization are complete. `aggressive-model.pt` is update 75 and demonstrates a `1.385x` attack increase on the fixed probe; `selected-model.pt` deliberately remains the prior r4 baseline because no r7 candidate met the broad promotion contract. Hash portability and duplicate-candidate defects are fixed for future runs.
+- 2026-09-01T08:57:10+09:00 [TOOL] Post-fix gates passed: training image build, Ruff format/lint and all 52 Python tests, including the new identical-checkpoint discovery regression.
 
 - 2026-09-01T00:18:05+09:00 [TOOL] r7 implementation gates passed: training and Rust image builds, Ruff format/lint, all 51 Python tests, fresh and exact-resume v8 native smoke, PowerShell/JSON parsing, Compose validation, Rust format, Clippy with denied warnings, all 147 Rust tests, release workspace build and `git diff --check`.
 - 2026-09-01T00:18:05+09:00 [CODE] The deliberately attack-inducing r7 experiment is implementation-complete and runnable through `scripts/run-versus-aggressive-r7.ps1`. Its attack-only winner is isolated as `aggressive-model.pt` and cannot silently replace the safety-gated champion. The retained 100-update experiment has not started; held-out attack improvement remains UNCONFIRMED.

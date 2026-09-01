@@ -41,3 +41,9 @@ Stages 25/50/75/100 are evaluated against the same fixed r3 opponent and seeds. 
 - logs for setup scale, alignment, opportunity and KL
 - full Python/Rust/container gates
 - staged PowerShell runner syntax and checkpoint identity checks
+
+## Empirical outcome
+
+The retained 100-update run completed on 2026-09-01. Fixed-probe outgoing attack/piece peaked at update 75 with `0.1125`, or `1.3846x` the r4 baseline, so that checkpoint is the retained `aggressive-model.pt`. The broader fixed-anchor selector measured only `1.0686x` attack for update 75 and robust score `0.25`; no r7 checkpoint passed all promotion gates and `selected-model.pt` therefore retains r4.
+
+The first finalization attempt exposed two portability/performance defects. Windows PowerShell did not provide `Get-FileHash`, so the runner now computes SHA-256 through .NET. Candidate discovery also treated `model.pt` and the update-100 snapshot, which have identical actor weights but different serialized metadata, as different models; future selectors fingerprint actor tensors while excluding the critic before shortlisting. The completed report retains the original duplicate rows as an audit artifact, but the promotion decision is invariant because attack/robust gates use fixed anchors and the direct gate uses r4 only.
