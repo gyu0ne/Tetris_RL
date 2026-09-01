@@ -1,0 +1,47 @@
+{
+  "schema_version": "target-cadence-reevaluation-v1",
+  "candidate": "checkpoints/versus-selfplay-r7/aggressive-model.pt",
+  "baseline": "checkpoints/versus-selfplay-r4/selected-model.pt",
+  "frames_per_placement": 12,
+  "seeds_per_matchup": 64,
+  "horizon": 4000,
+  "paired_sides_are_identical": true,
+  "effective_independent_seeds_per_matchup": 64,
+  "direct_baseline": {
+    "score": 0.546875,
+    "decisive_win_rate_95ci_per_seed": [0.4257359722005412, 0.6627055221938833],
+    "completion_rate": 1.0
+  },
+  "fixed_anchors": {
+    "candidate_mean_score": 0.3828125,
+    "baseline_mean_score": 0.3984375,
+    "mean_score_delta": -0.015625,
+    "candidate_worst_score": 0.28125,
+    "baseline_worst_score": 0.34375,
+    "candidate_mean_outgoing_attack_per_piece": 0.1589323556142913,
+    "baseline_mean_outgoing_attack_per_piece": 0.1444561536478,
+    "attack_ratio": 1.1002117362323371,
+    "holes_ratio": 1.0677625362937668,
+    "danger_ratio": 1.3186269274006854
+  },
+  "matchups": [
+    {
+      "opponent": "checkpoints/versus-selfplay-r3/snapshots/update-000700-model.pt",
+      "candidate_score": 0.28125,
+      "baseline_score": 0.453125,
+      "score_delta": -0.171875,
+      "candidate_outgoing_attack_per_piece": 0.15357986816466979,
+      "baseline_outgoing_attack_per_piece": 0.14597727225854354
+    },
+    {
+      "opponent": "checkpoints/versus-selfplay-r3/snapshots/update-001050-model.pt",
+      "candidate_score": 0.484375,
+      "baseline_score": 0.34375,
+      "score_delta": 0.140625,
+      "candidate_outgoing_attack_per_piece": 0.16428484306391283,
+      "baseline_outgoing_attack_per_piece": 0.14293503503705648
+    }
+  ],
+  "decision": "reject_production_promotion_and_initialize_r8_from_r7_update_75",
+  "reason": "attack improved by about 10%, but the r3 update-700 score regressed by 17.2 percentage points and worst-anchor score regressed by 6.25 percentage points"
+}

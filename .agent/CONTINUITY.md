@@ -2,6 +2,8 @@
 
 ## [PLANS]
 
+- 2026-09-01T14:05:43+09:00 [USER] Re-evaluate the r7 attack checkpoint at the actual 12-frame deployment cadence, then proceed through the evidence-selected next stage rather than starting another unchanged long run.
+
 - 2026-09-01T08:57:10+09:00 [USER] Complete the stopped r7 finalization without retraining: repair the hash failure, produce the aggressive report, run the full research selector and preserve the attack-only versus safety-gated artifact boundary.
 
 - 2026-09-01T00:10:16+09:00 [USER] Replace the conservative r6 failure with an intentionally attack-inducing experiment; accept a deliberately offensive research direction instead of continuing to preserve survival behavior.
@@ -59,6 +61,8 @@
 - 2026-08-25T20:09:50+09:00 [USER] Supersede short-run optimization: complete a real project-grade training path, allow roughly a full day of computation and many games, vary every game seed, and require a solo prior that does not top out before starting 1v1 RL.
 
 ## [DECISIONS]
+
+- 2026-09-01T14:05:43+09:00 [CODE] Reject r7 update 75 for production despite its direct r4 score: 12-frame r8 starts from that attack policy, preserves `setup=2` and `attack=3`, restores `base=1`, uses 85% historical play with 70% squared hard-PFSP, and selects only at cadence 12 with an attack-retention floor of `1.05x` r4.
 
 - 2026-09-01T00:10:16+09:00 [CODE] r7 partitions policy credit into base, attack-setup and realized-attack channels and uses `std(0.25*std(A_base)+2.0*std(A_setup)+3.0*std(A_attack))`; setup comprises the existing combo, B2B, attack-readiness and Full-T-spin-readiness potential components, while the critic still fits total return.
 - 2026-09-01T00:10:16+09:00 [CODE] r7 deliberately releases the solo placement prior with a `1.0x` trunk learning rate, uses squared net-outgoing utility capped at `0.10`, stronger tactical curriculum, and runs all 25/50/75/100 stages. The highest-attack stage is always retained as the explicitly unsafe `aggressive-model.pt`; only separately gated candidates may become `selected-model.pt`.
@@ -166,6 +170,8 @@
 - 2026-08-25T20:09:50+09:00 [CODE] A fixed base seed is only the identity of a reproducible schedule. Dataset game `i` uses `base_seed + seed_stride × i`; candidate-selection and final-evaluation seed sets change across aggregation rounds and remain disjoint from training schedules.
 
 ## [PROGRESS]
+
+- 2026-09-01T14:05:43+09:00 [CODE] Added the r8 config, staged/resumable runner, internal design record, Korean runbook and retained 12-frame evaluation corpus under `research/versus-r7-cadence12-final/`; the runner trains updates 25..150 from `r7/aggressive-model.pt` and applies a separate final selector.
 
 - 2026-09-01T08:57:10+09:00 [CODE] Replaced the r7 runner's unavailable `Get-FileHash` dependency with a Windows PowerShell-compatible .NET SHA-256 helper; commit `413bbce` records the isolated portability fix. The existing four stage checkpoints and probes were reused, so no training update was repeated.
 - 2026-09-01T08:57:10+09:00 [TOOL] Finalization completed with exit code 0. `aggressive-selection.json`, `selection-report.json`, `aggressive-model.pt` and `selected-model.pt` now exist; the aggressive artifact hash and retained r4 hash were independently verified.
@@ -306,6 +312,9 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-01T14:05:43+09:00 [TOOL] On 64 held-out seeds per matchup at cadence 12 and horizon 4,000, r7 update 75 completed every game, scored `0.5469` directly versus r4 and raised fixed-anchor outgoing attack `1.1002x`, but regressed versus r3 update 700 from r4's `0.4531` to `0.2813`; fixed-anchor mean score changed `0.3984 -> 0.3828`, holes `1.0678x` and danger `1.3186x`.
+- 2026-09-01T14:05:43+09:00 [TOOL] Side-swapped deterministic evaluations were byte-identical for every aggregate, so the combined 128 rows are paired duplicates rather than 128 independent samples; the report treats 64 seeds as the effective sample size.
+
 - 2026-09-01T08:57:10+09:00 [TOOL] r7 fixed probes measured outgoing attack/piece ratios versus r4 of `1.142x`, `0.962x`, `1.385x` and `1.246x` at updates 25/50/75/100. Update 75 is the attack champion with danger rate `0` and mean holes `0.4601`; update 100 regressed to danger `0.0044` and holes `0.6070`.
 - 2026-09-01T08:57:10+09:00 [TOOL] In the broader selector update 75 passed direct-r4 score (`0.528`), fixed mean score, danger and holes gates, but failed fixed attack (`1.069x < 1.20x`) and robust score (`0.25`) gates. No r7 candidate was eligible, so r4 was retained.
 - 2026-09-01T08:57:10+09:00 [TOOL] The completed selector treated the update-100 snapshot and `model.pt`, whose actor tensors are identical despite different file hashes, as separate candidates, causing redundant symmetric self-play. This did not affect the promotion decision: update 75's failed fields derive only from fixed anchors and update 100 independently failed its direct-r4 gate. Future discovery is actor-fingerprint-deduplicated.
@@ -409,6 +418,8 @@
 - 2026-08-25T16:55:29+09:00 [CODE] The engine board intentionally stores occupancy and garbage provenance, not historical locked-piece identity; the manual board therefore uses neutral locked colors without losing any learning-relevant mechanics.
 
 ## [OUTCOMES]
+
+- 2026-09-01T14:05:43+09:00 [TOOL] r8 readiness gates passed: config load, Compose validation, PowerShell parsing, one real 32-match/512-step update initialized from r7, Ruff format/lint, all 52 Python tests and `git diff --check`. The retained r8 long run has not started and strength remains UNCONFIRMED.
 
 - 2026-09-01T08:57:10+09:00 [CODE] The r7 retained experiment and finalization are complete. `aggressive-model.pt` is update 75 and demonstrates a `1.385x` attack increase on the fixed probe; `selected-model.pt` deliberately remains the prior r4 baseline because no r7 candidate met the broad promotion contract. Hash portability and duplicate-candidate defects are fixed for future runs.
 - 2026-09-01T08:57:10+09:00 [TOOL] Post-fix gates passed: training image build, Ruff format/lint and all 52 Python tests, including the new identical-checkpoint discovery regression.
